@@ -15,6 +15,7 @@ import { claimedIdentity, registrableDomain, type IdentityFact } from "./sender-
 import { authScreens } from "./sender-headers.js";
 import { isProviderBrand, providerBrand } from "./authserv-ids.js";
 import { isSharedProviderDomain } from "./rule-order.js";
+import { ADDRESS_SHAPE } from "./list-address.js";
 import { classifyDedup, type DedupOutcome } from "./dedup.js";
 // The leaf predicate, not `adapters/imap.js`: this module is the model layer and naming the
 // adapter here would pull `imapflow` into the desktop engine. `gone.ts` carries the rule this
@@ -851,7 +852,7 @@ function sentCopyRecipients(
     .map((part) => /<([^<>@\s]+@[^<>\s]+)>/.exec(part)?.[1] ?? part.trim());
   return [...new Set([...msg.to.map((a) => a.address), ...msg.cc.map((a) => a.address), ...bcc]
     .map((a) => a.trim().toLowerCase())
-    .filter((a) => /^[^\s@<>,"]+@[^\s@<>,"]+$/.test(a)))];
+    .filter((a) => ADDRESS_SHAPE.test(a)))];
 }
 
 /**

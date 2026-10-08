@@ -605,7 +605,7 @@ function isServiceSender(addr: string): boolean {
  */
 
 /** Own-property header values, or `null` when the header is genuinely absent. */
-function headerValues(
+export function headerValues(
   headers: Readonly<Record<string, unknown>>, name: string,
 ): string[] | null {
   if (!Object.prototype.hasOwnProperty.call(headers, name)) return null;
