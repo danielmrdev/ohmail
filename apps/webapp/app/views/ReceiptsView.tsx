@@ -511,7 +511,8 @@ export function ReceiptsView({
           onMarkAllRead ? (
             <MarkAllRead
               unreadCount={unreadCount}
-              freshCount={fresh}
+              /* Rows above a COMMITTED line only: with none, every row is fresh and none is new. */
+              freshCount={waterline != null ? fresh : 0}
               onMarkAllRead={markAllRead}
             />
           ) : null

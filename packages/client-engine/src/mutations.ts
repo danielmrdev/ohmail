@@ -6,6 +6,7 @@ import { ruleKeyOf, twinWinner } from "./rule-twins.js";
 import { ruleMatchKey } from "@trafficflow/core/rule-order";
 import { rulesList, senderKey } from "./selectors.js";
 import type { EntityReader } from "./store.js";
+import { storeInstantOf } from "./store-pages.js";
 import {
   FOLDER_OF_VIEW,
   type EmailAddress,
@@ -751,11 +752,12 @@ export function mutationEffects(reader: EntityReader, m: EngineMutation, ctx: Ef
       // that passes ids alone leaves the line where the last visit put it: "new since last
       // visit" may not drift mid-visit. The anchor must be IN the view's folder — an anchor
       // the partition could not find would draw no line at all.
-      if (m.upToId && feed.some((msg) => msg.id === m.upToId)) {
+      const anchor = m.upToId ? feed.find((msg) => msg.id === m.upToId) : undefined;
+      if (anchor) {
         effects.push({
           type: "view_meta",
           id: waterlineIdOf(view),
-          entity: { newestSeenId: m.upToId, at: iso } satisfies WaterlineMeta,
+          entity: { newestSeenId: anchor.id, at: iso, anchorAt: new Date(storeInstantOf(anchor)).toISOString() } satisfies WaterlineMeta,
         });
       }
       return effects;

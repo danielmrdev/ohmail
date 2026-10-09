@@ -10,12 +10,14 @@ import type { EntityReader } from "../store.js";
 import { mutationEffects, type MutationEffect } from "../mutations.js";
 import {
   CursorExpiredError,
+  FEED_SINCE_ID,
   MutationRejectedError,
   decodeSeqCursor,
   encodeSeqCursor,
   type EngineDraft,
   type EngineMessage,
   type EngineMutation,
+  type FeedSinceMeta,
   type Folder,
   type MessageStateDTO,
   type ScreenerSenderDTO,
@@ -348,6 +350,8 @@ export class FixturesAdapter implements EngineAdapter {
     this.emit("draft", draft.id, draft);
 
     this.emit("view_meta", "reads_waterline", fx.readsWaterline);
+    // The demo's first sync predates all of its mail, so a pile it never visited (Receipts) reads all new.
+    this.emit("view_meta", FEED_SINCE_ID, { at: "1970-01-01T00:00:00.000Z" } satisfies FeedSinceMeta);
     this.emit("view_meta", "reads_ai_chip", fx.readsAiChip);
     this.emit("view_meta", "account", fx.account);
     /**

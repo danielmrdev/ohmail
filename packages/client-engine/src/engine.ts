@@ -68,6 +68,7 @@ import type { SearchTier } from "@trafficflow/core/search-rank";
 import {
   CursorExpiredError,
   SnapshotCursorRefusedError,
+  FEED_SINCE_ID,
   FOLDER_OF_VIEW,
   MAILBOX_TYPE,
   MutationRejectedError,
@@ -100,6 +101,7 @@ import {
   UNSCREENED_TYPE,
   SCREENER_WAITING_TYPE,
   SCREENER_WAITING_PAGE_ID,
+  type FeedSinceMeta,
 } from "./types.js";
 
 /**
@@ -3871,6 +3873,11 @@ export class OhmailEngine {
       // A drain that took more than one page was a CATCH-UP, not a poll — see
       // {@link OhmailEngine.prefetchRecentBodies}.
       this.caughtUpInOnePage = pagesThisDrain <= 1;
+      // THIS DEVICE'S FIRST COMPLETED SYNC, once: the reading streams' anchor before any visit. The
+      // last page has landed; written before the settle's pass, so an idle next drain derives nothing.
+      if (this.store.get("view_meta", FEED_SINCE_ID) === undefined) {
+        await this.store.putLocal("view_meta", FEED_SINCE_ID, { at: this.now().toISOString() } satisfies FeedSinceMeta);
+      }
 
       // AND THE PASS AT THE SETTLE, ungraced, at the point the mirror is caught up and therefore
       // at its most complete — the last page's own rows are judged here and nowhere earlier. A

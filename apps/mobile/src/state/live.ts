@@ -1408,7 +1408,8 @@ export function liveReads(pres: EntityReader, v: WorldView): WorldReads {
   const items = all.map((m) => toListRow(pres, m, v));
   return {
     items,
-    waterlineAboveId: p.seen[0]?.id ?? null,
+    // A line only where a visit committed one: before any, `seen` is the mail that predates this device.
+    waterlineAboveId: p.waterline ? p.seen[0]?.id ?? null : null,
     // The engine rows' own flag, not the mapped rows': `toMail` presents a pinned row unread.
     unreadIds: all.filter((m) => m.unread).map((m) => m.id),
     // The SELECTOR's count, not a second one computed here. This used to be
@@ -1445,7 +1446,7 @@ export function liveReceipts(pres: EntityReader, v: WorldView): WorldReceipts {
   const part = feedPartition(pres, "receipts");
   return {
     groups,
-    waterlineAboveId: part.seen[0]?.id ?? null,
+    waterlineAboveId: part.waterline ? part.seen[0]?.id ?? null : null,
     newCount: part.newCount,
     total: all.length,
   };

@@ -723,7 +723,8 @@ export function ReadsView({
           onMarkAllRead ? (
             <MarkAllRead
               unreadCount={unreadCount}
-              freshCount={freshCount}
+              /* Rows above a COMMITTED line only: with none, every row is fresh and none is new. */
+              freshCount={partition.waterline != null ? freshCount : 0}
               onMarkAllRead={markAllRead}
             />
           ) : null

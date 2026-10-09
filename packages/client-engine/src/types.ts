@@ -1024,6 +1024,16 @@ export function waterlineIdOf(view: FeedView): string {
 }
 
 /**
+ * `view_meta` id of THIS DEVICE's first completed sync, written once by the engine's drain. It is
+ * both reading streams' anchor before any visit: mail dated at or before it was already in the
+ * mailbox when this device first caught up, so it is never "new since you were here" (`feedPartition`).
+ */
+export const FEED_SINCE_ID = "feed_since";
+export interface FeedSinceMeta {
+  at: ISODateTime;
+}
+
+/**
  * `view_meta` ids "reads_waterline" / "receipts_waterline" — a stream's
  * seen-up-to-here marker, one row per {@link FeedView}. `newestSeenId` is
  * the newest message on screen when the reader last left, and the line
@@ -1036,6 +1046,8 @@ export function waterlineIdOf(view: FeedView): string {
 export interface WaterlineMeta {
   newestSeenId: string;
   at?: ISODateTime;
+  /** That message's place in the pile's order (`storeInstantOf`): the line stays put when it leaves. */
+  anchorAt?: ISODateTime;
   label?: string;
   meta?: string;
 }

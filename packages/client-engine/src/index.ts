@@ -243,6 +243,8 @@ export {
   type UnsubscribeResult,
   type WaterlineMeta,
   type FeedView,
+  type FeedSinceMeta,
+  FEED_SINCE_ID,
   waterlineIdOf,
 } from "./types.js";
 

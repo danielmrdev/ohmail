@@ -17,6 +17,8 @@ import {
   FOLDER_OF_VIEW,
   VIEW_OF_FOLDER,
   waterlineIdOf,
+  FEED_SINCE_ID,
+  type FeedSinceMeta,
   type EmailAddress,
   type EngineDraft,
   type EngineMessage,
@@ -1131,43 +1133,52 @@ export function threadSubject(reader: EntityReader, threadId: string): string | 
 // ── The streams: the waterline partition ───────────────────────────────────
 
 export interface FeedPartition {
+  /** The line this device draws, or null: no visit committed one, or its place is unknown. */
   waterline: WaterlineMeta | null;
-  /** Arrived since the last visit — everything strictly ABOVE the waterline anchor. */
+  /** Since the last visit, strictly ABOVE the line; with no line, dated after this device's first sync. */
   fresh: EngineMessage[];
-  /** At and below the anchor — the anchor was on screen when the reader last left. */
+  /** At and below the line; with no line, already in the mailbox when this device first caught up. */
   seen: EngineMessage[];
   /**
-   * The stream's badge — one number, one derivation, every surface: `fresh` that is STILL
-   * UNREAD. Not `fresh.length`: the anchor is per-device client state, and two devices with
-   * different lines reported "Reads 13" beside a silent desktop over a pile the server held
-   * zero unread in. The mailbox is the master: the badge is the intersection — above this
-   * device's line AND unread on the server — and the LINE itself stays put (R10-5: a committed
-   * waterline outranks `\Seen`). Not "every unread row in the pile" either — that was the
-   * phone's answer, and old unread mail below the line was on screen when you left; the count
-   * respects it.
+   * The stream's badge, one derivation for every surface: above this device's line AND unread on
+   * the server (R10-5: a committed line outranks `\Seen`; two devices with different lines must
+   * agree the moment the mailbox does). With no line, `fresh` is cut at this device's first sync.
    */
   newCount: number;
 }
 
 /**
- * One partition for both reading streams, around the view's own waterline row (`waterlineIdOf` — the
- * same mapping the `feed_mark_seen` effect writes through). The cut is EXCLUSIVE: `newestSeenId` was
- * on screen at the last leave, so it belongs below the line; a leave at the top yields `fresh: []`.
- * Without a usable anchor, `\Seen` from the mailbox is the line: both absences (no first commit yet;
- * a deleted anchor row) used to degrade to everything-fresh, presenting years of read mail as new.
- * The fallback junction is the newest already-read message; a pile with no read mail stays
- * everything-fresh. The cut is positional, so `[...fresh, ...seen]` is always display order —
- * receipts arithmetic counts on it.
+ * One partition for both reading streams, around the view's own waterline row (`waterlineIdOf`, the
+ * row `feed_mark_seen` writes). The cut is EXCLUSIVE: `newestSeenId` was on screen at the last leave,
+ * so it sits below the line. The line is the VISIT's, never a read flag's: a read letter moved in on
+ * top of a pile used to become the line and zero the badge over unread mail. A line whose letter left
+ * stands where the visit recorded it (`anchorAt`). With no line to place, the anchor is this device's
+ * first completed sync (`FEED_SINCE_ID`) in the pile's own order, and no line is drawn.
  */
 export function feedPartition(reader: EntityReader, view: FeedView): FeedPartition {
   const all = messagesIn(reader, FOLDER_OF_VIEW[view]);
-  const waterline = reader.get<WaterlineMeta>("view_meta", waterlineIdOf(view)) ?? null;
-  const anchor = waterline ? all.findIndex((m) => m.id === waterline.newestSeenId) : -1;
-  const idx = anchor >= 0 ? anchor : all.findIndex((m) => !m.unread);
-  const cut = idx < 0
-    ? { fresh: all, seen: [] as EngineMessage[] }
-    : { fresh: all.slice(0, idx), seen: all.slice(idx) };
-  return { waterline, ...cut, newCount: cut.fresh.filter((m) => m.unread).length };
+  const row = reader.get<WaterlineMeta>("view_meta", waterlineIdOf(view)) ?? null;
+  const idx = row ? lineIndexOf(all, row) : -1;
+  const cut = idx >= 0 ? idx : sinceIndexOf(all, reader.get<FeedSinceMeta>("view_meta", FEED_SINCE_ID));
+  const fresh = cut < 0 ? all : all.slice(0, cut);
+  const seen = cut < 0 ? [] : all.slice(cut);
+  return { waterline: idx < 0 ? null : row, fresh, seen, newCount: fresh.filter((m) => m.unread).length };
+}
+
+/** The first row dated at or before this device's first sync; -1 before one completed or when none is. */
+function sinceIndexOf(all: readonly EngineMessage[], since: FeedSinceMeta | undefined): number {
+  const t = since ? Date.parse(since.at) : Number.NaN;
+  return Number.isFinite(t) ? all.findIndex((m) => tsOf(m) <= t) : -1;
+}
+
+/** Where the line falls in `all` (byDateDesc): its letter, else the first row ordered after its recorded place. */
+function lineIndexOf(all: readonly EngineMessage[], row: WaterlineMeta): number {
+  const at = all.findIndex((m) => m.id === row.newestSeenId);
+  if (at >= 0) return at;
+  const t = row.anchorAt ? Date.parse(row.anchorAt) : Number.NaN;
+  if (!Number.isFinite(t)) return -1;
+  const after = all.findIndex((m) => tsOf(m) < t || (tsOf(m) === t && m.id < row.newestSeenId));
+  return after < 0 ? all.length : after;
 }
 
 export function readsPartition(reader: EntityReader): FeedPartition {
