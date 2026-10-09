@@ -1148,6 +1148,12 @@ export async function startWorkerWithLock(
      * detach, and dropping it is correct — a detached mailbox has no lane, and the next attach
      * re-establishes IDLE.
      */
+    /** Every mailbox of `accountId` this process serves is owed a visit — work a tail pass wrote. */
+    function wakeAccount(accountId: string): void {
+      for (const rt of runtimes.values()) if (rt.accountId === accountId) noteWake(rt.mailboxId);
+      kickCycle();
+    }
+
     function noteWake(mailboxId: string): void {
       const rt = runtimes.get(mailboxId);
       if (!rt) return;
@@ -2195,9 +2201,22 @@ export async function startWorkerWithLock(
        the ledger's record of what the breaching cycle wrote. */
     const setAsideBreaches = new WeakSet<object>();
 
+    /**
+     * CLOSED CONNECTIONS A RUNNING PASS DETACHES BETWEEN TWO TURNS. The queue entry below waits for
+     * the whole cycle, and a pass held open by one slow lane kept eight dead connections attached for
+     * 6.7 min on 2026-10-09 (their wakes failing `NoConnection`). `detachClosedBetweenTurns` serves
+     * them at the dispatcher's top, where the roster yield already detaches; the queued entry then
+     * finds its runtime in {@link detachedClosed} and does nothing — never the re-attached one.
+     */
+    const closedOwed = new Map<string, MailboxRuntime>();
+    const detachedClosed = new WeakSet<MailboxRuntime>();
+    const CLOSED_DETACH_REASON = "the provider connection closed — the next roster pass re-attaches it on a fresh one";
+
     function handleConnectionError(mailboxId: string, accountId: string, err: unknown): void {
       if (stopped) return;
       const ended = err instanceof ImapConnectionClosedError;
+      const atError = runtimes.get(mailboxId);
+      if (ended && atError) { closedOwed.set(mailboxId, atError); nudgeCycle(); }
       log.error("mailbox_connection_error", {
         mailboxId, accountId, err,
         reason: ended
@@ -2214,7 +2233,9 @@ export async function startWorkerWithLock(
         // second `error` followed the first. Nothing to do, and nothing to double-count.
         if (!rt || stopped) return;
         if (ended) {
-          await detach(rt, "the provider connection closed — the next roster pass re-attaches it on a fresh one");
+          if (atError && detachedClosed.has(atError)) return;
+          if (closedOwed.get(mailboxId) === rt) closedOwed.delete(mailboxId);
+          await detach(rt, CLOSED_DETACH_REASON);
           return;
         }
         /* After the cycle on this queue: a breach whose message the cycle set aside is progress,
@@ -3452,7 +3473,7 @@ export async function startWorkerWithLock(
        * (`wokenAt`, the only thing that earns a second turn, spent on admission); already served this
        * pass (a not-yet-served mailbox is in `pending` and keeps first-syncer ordering); not currently
        * in a lane (a mid-visit mailbox observes its own wake next pass, and re-admitting it here would
-       * break per-mailbox serialization); and under {@link CYCLE_WAKE_REVISITS}, past which the mailbox KEEPS its wake and leads the next pass — the pre-lane behaviour, so the worst case is what shipped.
+       * break per-mailbox serialization); and under {@link CYCLE_WAKE_REVISITS}, past which the mailbox keeps its wake and leads the next pass UNLESS another lane holds this one open (`heldOpenByAnother`).
        */
       function admitWoken(): void {
         for (const rt of runtimes.values()) {
@@ -3461,12 +3482,42 @@ export async function startWorkerWithLock(
           if (laneBusy.has(rt.mailboxId)) continue;
           if (pending.includes(rt)) continue;
           const spent = revisits.get(rt.mailboxId) ?? 0;
-          if (spent >= CYCLE_WAKE_REVISITS) continue;
+          const overCap = spent >= CYCLE_WAKE_REVISITS;
+          if (overCap && !heldOpenByAnother()) continue;
           revisits.set(rt.mailboxId, spent + 1);
           revisitAllowed.add(rt.mailboxId);
+          if (overCap) overCapAdmitted.add(rt.mailboxId);
           pending.unshift(rt);
         }
       }
+      /**
+       * PAST THE CAP, A TURN THAT CANNOT LENGTHEN THE PASS. A burst spends the four revisits in
+       * seconds, and the fifth wake waited for the pass to end — its slowest lane, 149 s and 159 s
+       * in production (2026-10-09). A pass is held open by a lane on a BOUNDED turn (an own turn or
+       * an in-cap revisit), so a turn taken then costs the pass nothing — unless an unserved mailbox
+       * that could take the lane is waiting for it. Over-cap lanes never count as the holder: two
+       * woken mailboxes could otherwise keep each other's pass open for ever.
+       */
+      function heldOpenByAnother(): boolean {
+        if (pending.some((p) => !servedIds.has(p.mailboxId) && admissible(p))) return false;
+        for (const id of inFlight.keys()) if (!overCapLanes.has(id)) return true;
+        return false;
+      }
+      /** {@link closedOwed}, served here: a runtime a lane is inside waits for that lane to return. */
+      async function detachClosedBetweenTurns(): Promise<void> {
+        for (const [id, rt] of [...closedOwed]) {
+          if (laneBusy.has(id)) continue;
+          closedOwed.delete(id);
+          if (runtimes.get(id) !== rt) continue;
+          detachedClosed.add(rt);
+          await detach(rt, CLOSED_DETACH_REASON);
+          requestRoster();
+        }
+      }
+      /** Admitted past the cap, lane not yet started — consumed at lane start. */
+      const overCapAdmitted = new Set<string>();
+      /** Mailbox ids whose IN-FLIGHT lane was admitted past the cap. */
+      const overCapLanes = new Set<string>();
       /**
        * Re-apply the PLANNING order to what is left of `pending`, so a wake that lands MID-PASS for a
        * mailbox that has NOT had its turn moves it forward instead of leaving it at its snapshot
@@ -4214,6 +4265,7 @@ export async function startWorkerWithLock(
         // pass is a database read — attempting it once per draining lane would add `roster_pass_failed`
         // lines to the moment an operator least wants noise, and could not succeed. It stays owed and
         // runs after this cycle, where the queued entry `requestRoster` made would have run it.
+        await detachClosedBetweenTurns();
         if (!stopPass) await yieldToRoster();
         if (stopped) break;
         // …and whatever that pass just adopted that has never synced goes to the front of what
@@ -4264,17 +4316,27 @@ export async function startWorkerWithLock(
           const heavy = rt.owesBacklog;
           busyAccounts.add(rt.accountId);
           laneBusy.add(rt.mailboxId);
+          const overCap = overCapAdmitted.delete(rt.mailboxId);
+          if (overCap) overCapLanes.add(rt.mailboxId);
           if (heavy) heavyInFlight++;
           // The bookkeeping is in a `finally` INSIDE the async body, so it has already run by the
           // time this promise settles — which is what lets the `Promise.race` below trust the
           // maps it re-reads on the next turn.
           const lane = (async () => {
+            const visitStarted = Date.now();
             try {
               await visitMailbox(rt, wokenVisit);
             } finally {
+              // Every turn's wall clock, so the lane that holds a pass open has a name: the
+              // 2026-10-09 burst waited on a 271 s pass and no line said whose turn it was.
+              log.info("mailbox_visit", {
+                mailboxId: rt.mailboxId, accountId: rt.accountId, visitMs: Date.now() - visitStarted,
+                woken: wokenVisit, overCap, heavy,
+              });
               inFlight.delete(rt.mailboxId);
               busyAccounts.delete(rt.accountId);
               laneBusy.delete(rt.mailboxId);
+              overCapLanes.delete(rt.mailboxId);
               if (heavy) heavyInFlight--;
             }
           })();
@@ -4736,6 +4798,9 @@ export async function startWorkerWithLock(
             if (moved > 0 || completed > 0) {
               log.info("rule_retro_pass", { accountId, moved, completed, capped });
             }
+            // The moves are desired state the account's mailboxes push on their next TURN; woken,
+            // that turn is the next free lane, not the next pass (the tail yields to a wake).
+            if (moved > 0) wakeAccount(accountId);
           } catch (err) {
             log.error("rule_retro_failed", {
               accountId, err,

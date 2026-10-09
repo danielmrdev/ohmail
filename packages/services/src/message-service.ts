@@ -1062,9 +1062,11 @@ export class MessageService {
     let pending: PendingRequest | undefined;
 
     /* WHICH MAILBOX NOW OWES A MOVE — captured inside the transaction and rung AFTER it commits.
-       `null` when this request wrote no desired folder: an `unread`-only patch owes the organizer
-       nothing new, and ringing for it would wake the worker for work that does not exist. */
+       `null` when this request wrote no desired folder. */
     let filed: string | null = null;
+    /* …OR A `\Seen` PUSH. A read intent is work too: without a ring it waited for the mailbox's
+       next turn, up to a whole pass (a web read reached the server 3 min later, 2026-10-09). */
+    let seenOwed: string | null = null;
     /* ONE LOCK ORDER WITH THE MOVE AND THE APPROVAL: fenced at the top, the message's rows, then the
        change-log counter. Both halves' changes are recorded after the rows, so a patch never holds
        the counter while it waits for a `folder_state` row another writer holds. */
@@ -1113,6 +1115,7 @@ export class MessageService {
         // was the original bug: the flag never reached the mailbox, so it survived nothing.
         await upsertDesiredSeen(bridgeTx(tx), id, !msg.unread, !body.unread, at, decisionInstant(floor, at));
         read = true;
+        seenOwed = msg.mailboxId;
       }
 
       if (folder !== undefined) {
@@ -1196,7 +1199,8 @@ export class MessageService {
     /* THE DOORBELL, AFTER THE COMMIT. See {@link MessageService.ringFiledMailbox}: inside the
        transaction this deadlocked against every other writer of the mailbox row — measured on
        real Postgres as `40P01`, with a 500 to one of two concurrent decisions. */
-    if (filed !== null) await this.ringFiledMailbox(ctx, filed);
+    const owed = filed ?? seenOwed;
+    if (owed !== null) await this.ringFiledMailbox(ctx, owed);
 
     const dto = await materializeMessage(ctx.db, ctx.accountId, id);
     if (!dto) throw new ServiceError("internal", 500, "message vanished after write");
@@ -1214,8 +1218,8 @@ export class MessageService {
    * request with 404, since skipping would let a probe learn from the response length which ids
    * exist elsewhere; one change row PER MESSAGE (the delta feed is per-entity), written with the
    * update and the read intent in three statements for the whole request, in the order sent;
-   * `flag_state` desired-state only, NO IMAP — `reconcileFlags` applies `\Seen` next cycle.
-   */
+   * `flag_state` desired-state only, NO IMAP — `reconcileFlags` applies `\Seen` at the mailbox's
+   * next turn, brought forward by the filing doorbell rung once per mailbox after the commit. */
   async markSeen(ctx: ServiceContext, body: MarkSeenBody): Promise<MarkSeenResult> {
     if (typeof body.unread !== "boolean") {
       throw new ServiceError("validation_failed", 400, "unread must be a boolean");
@@ -1236,6 +1240,9 @@ export class MessageService {
     }
     const unread = body.unread;
     const glance = this.validVia(body.via);
+    /* The mailboxes whose `\Seen` intents this request wrote, rung ONCE each after the commit — a
+       whole selection in one mailbox is one ring, and the doorbell's own 5 s floor absorbs a run. */
+    const seenOwed = new Set<string>();
     if (body.openRead !== undefined && typeof body.openRead !== "boolean") {
       throw new ServiceError("validation_failed", 400, "openRead must be a boolean");
     }
@@ -1252,6 +1259,7 @@ export class MessageService {
     const seq = await asTx(ctx).transaction(async (tx) => {
       const owned = await tx.select({
         id: messages.id, unread: messages.unread, threadId: messages.threadId, triage: messageStates.state,
+        mailboxId: messages.mailboxId,
       })
         .from(messages)
         .leftJoin(messageStates, eq(messageStates.messageId, messages.id))
@@ -1267,6 +1275,7 @@ export class MessageService {
          batch with no id left is the stale press itself, refused before any write. */
       const stale = !aged ? new Set<string>() : await readDecidedAfter(tx, ids, floor!);
       const live = ids.filter((id) => !stale.has(id));
+      for (const r of owned) if (!stale.has(r.id)) seenOwed.add(r.mailboxId);
       if (live.length === 0) {
         const current = await materializeMessagesInOrder(asDb(tx), ctx.accountId, ids, { deleted: "include" });
         throw new ServiceError("stale_press", 409, "a newer read decision about these messages stands", { current }, false);
@@ -1325,6 +1334,8 @@ export class MessageService {
       }
       return last;
     });
+
+    for (const mailboxId of seenOwed) await this.ringFiledMailbox(ctx, mailboxId);
 
     // The batch: this route accepts up to 200 ids, and the singular form made that 200 x 6
     // statements awaited one after another. `deleted: "include"` is the receipt reader's rule —

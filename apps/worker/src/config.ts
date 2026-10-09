@@ -61,8 +61,8 @@ export const CYCLE_FAST_LANES = 1;
  * pass it already had a turn in, usually immediately because {@link CYCLE_FAST_LANES} holds a lane
  * back. BOUNDED: `servedIds` keeps a live queue FINITE and this is a hole in it, so a re-admission
  * spends the wake and this floors it too (a cycle that never ends is a roster pass that never runs).
- * FOUR is deliberately small — past it the mailbox keeps its wake and leads the next pass.
- */
+ * FOUR is small — past it the wake leads the next pass, unless a lane on a bounded turn holds this
+ * pass open anyway (`heldOpenByAnother`): then the extra turn costs the pass nothing. */
 export const CYCLE_WAKE_REVISITS = 4;
 /**
  * THE CYCLE TAIL'S TURN. The per-account passes run after the rotation as their own queue entry and

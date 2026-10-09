@@ -245,6 +245,10 @@ export const ALLOWED_FIELDS: readonly string[] = [
   // chose, the tail's turn count, and how long a doorbell waited for its visit. Integers from a
   // clock and closed section names, naming no mailbox content.
   "rotationMs", "tailMs", "tailWallMs", "turns", "sections", "section", "ms", "wakeLatencyMs",
+  // ONE MAILBOX'S TURN (`mailbox_visit`), added WITH its call site: the lane's wall clock and
+  // three booleans: woken, admitted past the revisit cap, owing a backlog — so the lane that
+  // holds a pass open is named.
+  "visitMs", "woken", "overCap", "heavy",
   // A WRITE THE CLOUD DOOR FORWARDED (`cloud_write_forwarded`, `cloud_write_refused`), added WITH
   // the call site: the matched route PATTERN (`:id` placeholders, never an id) and a sixteen-hex
   // prefix of the Idempotency-Key's sha256, which matches the account's record and replays nothing.
