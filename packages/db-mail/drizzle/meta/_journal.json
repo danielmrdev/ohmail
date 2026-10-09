@@ -1051,6 +1051,13 @@
       "when": 1791602600053,
       "tag": "0149_messages_sender_check_by",
       "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1791602600054,
+      "tag": "0150_list_addresses",
+      "breakpoints": true
     }
   ]
 }

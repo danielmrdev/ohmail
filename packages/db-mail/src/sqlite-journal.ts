@@ -453,5 +453,12 @@ export const SQLITE_JOURNAL: readonly SqliteJournalEntry[] = [
     "statements": [
       "ALTER TABLE \"messages\" ADD COLUMN \"sender_check_by\" text CONSTRAINT \"messages_sender_check_by_closed\" CHECK (\"sender_check_by\" in ('ingest', 'backfill'));"
     ]
+  },
+  {
+    "name": "0150_list_addresses.sql",
+    "statements": [
+      "CREATE TABLE IF NOT EXISTS \"list_addresses\" (\n  \"account_id\" text NOT NULL,\n  \"address\" text NOT NULL,\n  \"first_seen_at\" integer DEFAULT (CAST(unixepoch('subsec') * 1000 AS INTEGER)) NOT NULL,\n  \"last_seen_at\" integer DEFAULT (CAST(unixepoch('subsec') * 1000 AS INTEGER)) NOT NULL,\n  \"consented_brands\" text DEFAULT '[]' NOT NULL,\n  CONSTRAINT \"list_addresses_account_id_address_pk\" PRIMARY KEY (\"account_id\", \"address\")\n);",
+      "ALTER TABLE \"account_settings\" ADD COLUMN \"list_addresses_scanned_at\" integer;"
+    ]
   }
 ] as const;
