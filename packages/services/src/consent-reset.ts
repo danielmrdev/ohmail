@@ -2,8 +2,8 @@ import { and, eq, sql, type SQL } from "drizzle-orm";
 import { dialect } from "@trafficflow/db/dialect";
 import {
   assertAccountOrganizes,
-  accountSettings, contacts, folderState, learningSignals, lockAccountRuleKeys, messages, recordChanges,
-  recordRuleDelta, routingDecisions, rules, type Tx,
+  accountSettings, contacts, folderState, forgetListConsents, learningSignals, lockAccountRuleKeys, messages,
+  recordChanges, recordRuleDelta, routingDecisions, rules, type Tx,
 } from "@trafficflow/db";
 import { LEGACY_NEWS_FOLDER } from "@trafficflow/core/mail";
 import { bridgeTx, type ServiceContext } from "./context.js";
@@ -124,6 +124,10 @@ export async function resetScreeningState(ctx: ServiceContext): Promise<ResetRes
        and a decision that stamps no settings row (the drain's, the held-mail release's) holds a rule
        row and then waits on the change-log counter this reset takes next — they deadlocked. */
     await lockAccountRuleKeys(bridgeTx(tx), ctx.accountId);
+    /* THE BRANDS A PRESS CONSENTED UNDER A LIST ADDRESS GO WITH THE PRESSES (mail 0150); the rows
+       stay, because which addresses a list posts as is the mailbox's fact, not a decision. Here,
+       before the first delta: ingest and a press take this table before the change-log counter. */
+    await forgetListConsents(bridgeTx(tx), ctx.accountId);
     const doomed = await tx.select({ id: rules.id }).from(rules).where(eq(rules.accountId, ctx.accountId));
 
     // The change-log rows are written BEFORE the delete so a crash between them leaves a

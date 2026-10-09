@@ -422,8 +422,11 @@ export interface EngineMessage extends EngineMessageExtras {
    * is not one `brand` sends from. `null` — checked, nothing found; absent — never checked, which
    * renders as nothing. The client reads it and decides nothing from a dictionary of its own.
    * `by` is which writer gave it (mail 0149), read by the held-claim term; absent from an older server.
+   * `list` — the address is one a mailing list posts as (mail 0150); absent reads as not.
    */
-  senderCheck?: { reason: "impersonation"; brand: string; domainShared: boolean; by?: "ingest" | "backfill" } | null;
+  senderCheck?: {
+    reason: "impersonation"; brand: string; domainShared: boolean; by?: "ingest" | "backfill"; list?: boolean;
+  } | null;
 }
 
 /**
@@ -888,8 +891,9 @@ export interface ScreenerSenderDTO {
    * address `brand` does not send from (`MessageDTO.senderCheck`), aggregated over the very bag
    * this row lists, the newest marked message naming the brand. `domain` is the address's own, for
    * the shared-provider sentence. Rendered outside the AI advice, whether or not any was bought.
+   * `list`: anyone on a mailing list can write as this address (mail 0150) — its own sentence.
    */
-  checked?: { reason: "impersonation"; brand: string; domainShared: boolean; domain: string };
+  checked?: { reason: "impersonation"; brand: string; domainShared: boolean; domain: string; list?: true };
   /**
    * An enabled allow rule names this sender's domain, and the domain is a shared provider's: the
    * rule admits nobody, so the sender waits as a stranger the rule seemed to cover. Said on the row.

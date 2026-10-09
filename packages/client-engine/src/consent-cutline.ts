@@ -445,9 +445,12 @@ function sendersWithAHeldClaim(
 /**
  * A PERSON CONSENTED TO THIS ADDRESS, as far as the mirror can say: core's `personConsentRule` over
  * the sender's rules in the message's own index. The gate's other half, a person's contact, is not on
- * the mirror; the store's queue page answers for it, since `senderHasHeldClaimSql` skips it there.
+ * the mirror; the store's queue page answers for it, since `senderHasHeldClaimSql` skips it there. A
+ * claim from a LIST ADDRESS (`senderCheck.list`, mail 0150) is never skipped: only a brand a press
+ * consented there would be, and a claim the gate still holds under one carries a brand no press gave.
  */
 function personConsented(index: ConsentIndex, m: EngineMessage, key: string): boolean {
+  if (m.senderCheck?.list === true) return false;
   const named = scoped(index, m.mailboxId).allBySender.get(key) ?? [];
   return named.some((r) => personConsentRule({ ...r, effect: effectForDestination(r.destination) }, key));
 }

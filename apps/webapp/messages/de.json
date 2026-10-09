@@ -667,7 +667,8 @@
     "senderCheck": {
       "impersonation": "Diese Nachricht gibt sich als {brand} aus, aber {domain} ist keine Adresse von {brand}.",
       "impersonationShared": "Diese Nachricht gibt sich als {brand} aus, aber eine {domain}-Adresse kann sich jeder anlegen.",
-      "chip": "Nicht {brand}"
+      "chip": "Nicht {brand}",
+      "list": "Über eine Mailingliste verschickt — alle auf der Liste können unter dieser Adresse schreiben."
     },
     "title": "Screener",
     "metaWaiting": "{count, plural, =0 {alles klar} one {1 Erstabsender wartet} other {# Erstabsender warten}}",

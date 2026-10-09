@@ -203,11 +203,14 @@ export function screenerAdmits(input: ScreenerAdmission): boolean {
  * The account's contacts as the gate reads them (`drizzle-repo.ts#knownSenders`), lower-cased:
  * every address it knows, and the subset an AUTOMATIC writer taught (`contacts.source =
  * 'inferred'` — a pass's admission, a reply-arm correspondent). A NULL source reads as a
- * person's, the permissive default for every row written before the column existed.
+ * person's, the permissive default for every row written before the column existed. `lists`:
+ * every address a stored message's `List-Post` named (mail 0150), with the brands a person's press
+ * consented under it — anyone on a list writes as its address, so nothing else consents there.
  */
 export interface KnownSenders {
   addresses: ReadonlySet<string>;
   inferred: ReadonlySet<string>;
+  lists: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 export interface EvaluateRulesInput {
@@ -456,18 +459,19 @@ function isKnownAuthor(author: string | null, knownSenders: ReadonlySet<string>)
 }
 
 /**
- * CONSENT GIVEN BY A PERSON ABOUT THIS ADDRESS — the only thing the identity fact yields to: an
- * enabled allow `sender` rule a person wrote (`manual`, `migrated`, the Sent seed) naming the
- * author, or a contact a person's act wrote. A `promoted` rule (the act on suggestions, learning),
- * a domain or header rule and an inferred contact are inference; a person's Screener press consents
- * through the person contact it writes. The account's own mail never asks: {@link evaluateRules}
- * keeps it out of the hold, and an own `From` that fails authentication is screened by `auth`. The
- * rule half is `personConsentRule` (`rule-order.ts`), which the client's held-claim term asks too.
+ * CONSENT GIVEN BY A PERSON ABOUT THIS ADDRESS — the one thing the identity fact yields to: an enabled
+ * allow `sender` rule a person wrote naming the author (`personConsentRule`, which the client's held-claim
+ * term asks too), or a contact a person's act wrote, a press's included. A `promoted` rule, a domain or
+ * header rule and an inferred contact are inference. Own mail never asks; a forged own `From` is screened
+ * by `auth`. A LIST ADDRESS ({@link KnownSenders.lists}) is asked first and answers alone: anyone on the
+ * list writes as it, so only a brand a person's press consented there is consent, never a rule or contact.
  */
 function addressLevelConsent(
-  author: string | null, rules: readonly Rule[], known: KnownSenders,
+  author: string | null, rules: readonly Rule[], known: KnownSenders, brand: string | null,
 ): boolean {
   if (author === null) return false;
+  const consented = known.lists.get(author);
+  if (consented !== undefined) return brand !== null && consented.has(brand);
   if (rules.some((r) => personConsentRule(r, author))) return true;
   return known.addresses.has(author) && !known.inferred.has(author);
 }
@@ -1059,17 +1063,24 @@ const DAEMON_LOCAL_PARTS = /^(mailer-daemon|postmaster)$/i;
 const MESSAGE_ID_TOKEN = /<[^<>@\s]+@[^<>@\s]+>/g;
 
 /**
+ * IS THIS A DELIVERY REPORT: an RFC 3462 delivery-status report, or mail from a `mailer-daemon@` or
+ * `postmaster@` local part. The one spelling of the shape: the bounce arm is a report's door, and
+ * the correspondent readers refuse it, because a report is what a machine writes about mail, never
+ * an answer somebody wrote to it. `contentType` is the header's values joined.
+ */
+export function isDeliveryReportShape(fromAddress: string, contentType: string): boolean {
+  return (DELIVERY_REPORT_CONTENT_TYPE.test(contentType) && DELIVERY_STATUS_REPORT_TYPE.test(contentType))
+    || DAEMON_LOCAL_PARTS.test(fromAddress.split("@")[0] ?? "");
+}
+
+/**
  * Is this message DSN-SHAPED, and what does it claim? `null` when it is not a delivery report.
  *
  * Pure and read-only — see the docblock above for why the OWN-SEND half is the caller's job and
  * why this function returning a verdict rather than evidence would be the bug.
  */
 export function dsnVerdict(msg: NormalizedMessage, raw?: Uint8Array): DsnEvidence | null {
-  const contentType = (msg.headers["content-type"] ?? []).join(" ");
-  const shaped =
-    (DELIVERY_REPORT_CONTENT_TYPE.test(contentType) && DELIVERY_STATUS_REPORT_TYPE.test(contentType)) ||
-    DAEMON_LOCAL_PARTS.test(msg.from.address.split("@")[0] ?? "");
-  if (!shaped) return null;
+  if (!isDeliveryReportShape(msg.from.address, (msg.headers["content-type"] ?? []).join(" "))) return null;
 
   // STRUCTURED FIRST. A DSN that sets `In-Reply-To` to the original's Message-ID has told us
   // outright; the scans below are the fallback for the many that do not.
@@ -1193,7 +1204,7 @@ export function evaluateRules(input: EvaluateRulesInput): RuleDecision {
      import hold read it as they read any hold. Denials stand above it. It never holds the account's
      own mail, which keeps its place with the fact riding; an own `From` failing authentication is
      screened by `auth` as before. */
-  const hold = identity !== null && !ownMail && !addressLevelConsent(author, rules, knownSenders);
+  const hold = identity !== null && !ownMail && !addressLevelConsent(author, rules, knownSenders, identity.brand);
   const rides = identity !== null ? { identity } : {};
 
   const winner = winningRule(rules, msg, author);

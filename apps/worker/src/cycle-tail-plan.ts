@@ -10,6 +10,8 @@ export const TAIL_SECTION_PLAN = [
   { name: "workflow", passes: ["workflow_time_scan", "workflow_drain"] },
   { name: "gate_release", passes: ["gate_release"] },
   { name: "sender_check_backfill", passes: ["sender_check_backfill"] },
+  // Before the correspondent retro, which asks these rows before it releases a claim (mail 0150).
+  { name: "list_address_backfill", passes: ["list_address_backfill"] },
   { name: "rule_retro", passes: ["rule_retro"] },
   { name: "ohbox_tidy", passes: ["ohbox_tidy"] },
   { name: "thread_join_heal", passes: ["thread_join_heal"] },

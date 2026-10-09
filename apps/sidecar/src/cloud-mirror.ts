@@ -11,7 +11,7 @@ import { recordChange, recordChanges, recordRuleDelta, accountSettings, CAPABILI
 } from "@trafficflow/db";
 import {
   accountSyncState, approvals, attachments, awayReplies, drafts, flagState, folderOps, folderState,
-  mailboxCredentials, mailboxFolders, mailboxProfileMirror,
+  listAddresses, mailboxCredentials, mailboxFolders, mailboxProfileMirror,
   mailboxes, messageBodies, messageFailures, messageInstances, messageSearch, messageStates, messages,
   messageTags,
   organizerRequests, outboundSends, routingDecisions, rules, tags, threadNotes, threads,
@@ -1363,6 +1363,17 @@ async function insertThreadStub(
 }
 
 /**
+ * An address a list posts as (mail 0150), behind the account fence: the table hangs off no
+ * mailbox, so the ACCOUNT's own stamp is asked, as the account arms ask it. An erased account
+ * records nothing and its message arm goes on.
+ */
+async function recordListAddress(tx: Tx, dia: Dialect, world: LocalWorld, address: string): Promise<void> {
+  if (await readAccountErasedAt(tx, dia, world.accountId) != null) return;
+  await tx.insert(listAddresses).values({ accountId: world.accountId, address })
+    .onConflictDoNothing({ target: [listAddresses.accountId, listAddresses.address] });
+}
+
+/**
  * The replay's ACCOUNT-OWNED arms, behind the erasure fence.
  *
  * `accounts` survives Art. 17 erasure, so a row keyed to the account alone has no structural
@@ -1763,6 +1774,11 @@ async function applyUpsert(
         ...display,
         ...rowArrival,
       }).onConflictDoUpdate({ target: messages.id, set: { ...display, ...rowArrival } });
+      /* THE LIST FACT Cloud computed (mail 0150): a claim from an address a list posts as. The
+         local door re-derives it from this table, so the address is recorded here; nothing on this
+         store removes one, so a later page cannot unsay it. Bounded as the server's own door is. */
+      const listed = m.senderCheck?.list === true ? (m.from?.address ?? "").trim().toLowerCase() : "";
+      if (listed.includes("@") && listed.length <= 254) await recordListAddress(tx, dia, world, listed);
       // `folder_state.desired_folder` is what `message-service.ts` projects as the message's folder.
       await tx.insert(folderState).values({
         messageId: m.id,

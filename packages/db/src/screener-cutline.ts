@@ -262,6 +262,7 @@ export function senderHasHeldClaimSql(
     folder: sql`hf.desired_folder`, deletedAt: sql`hm.deleted_at`, senderCheck: sql`hm.sender_check`,
     by: sql`hm.sender_check_by`, date: sql`hm.date`, arrivedAt: sql`hm.arrived_at`,
     recordedAt: sql`hm.created_at`, mailboxId: sql`hm.mailbox_id`, sender: senderExpr, auth: sql`hm.auth_verdict`,
+    brand: sql`hm.sender_check_brand`,
   }, cutoff, screening);
   return sql`exists (
     select 1 from messages hm
@@ -278,25 +279,25 @@ export function senderHasHeldClaimSql(
  * `exists` and the count's aggregate alike, so the two cannot ask different questions.
  */
 export function heldClaimWaitsSql(
-  d: Dialect, accountId: string, r: Parameters<typeof heldClaimInsideSql>[1] & { sender: SQL; auth: SQL },
+  d: Dialect, accountId: string, r: Parameters<typeof heldClaimInsideSql>[1] & { sender: SQL; auth: SQL; brand: SQL },
   cutoff: Date, screening: readonly string[],
 ): SQL {
   return sql`(${heldClaimInsideSql(d, r, cutoff)} and not ${personSkipSql(d, accountId, r, screening)})`;
 }
 
 /**
- * THE PERSON SKIP, ONE SPELLING: a person consented to the address ({@link senderHasPersonConsentSql})
- * and the row's STORED authentication verdict is not one the gate screens on, so the gate would not
- * hold this row now. `screening` is core's `SCREENING_AUTH_VERDICTS`, handed in by the caller: this
- * package does not import core and spells no verdict of its own. The queue, the count and the release
- * offer read it; the client's twin is `consent-cutline.ts#personSkip`.
+ * THE PERSON SKIP, ONE SPELLING: a person consented to the address for this row's claim
+ * ({@link senderHasPersonConsentSql}) and the row's STORED authentication verdict is not one the gate
+ * screens on, so the gate would not hold this row now. `screening` is core's `SCREENING_AUTH_VERDICTS`,
+ * handed in by the caller: this package does not import core and spells no verdict of its own. The
+ * queue, the count and the release offer read it; the client's twin is `consent-cutline.ts#personSkip`.
  */
 export function personSkipSql(
-  d: Dialect, accountId: string, row: { sender: SQL; auth: SQL }, screening: readonly string[],
+  d: Dialect, accountId: string, row: { sender: SQL; auth: SQL; brand: SQL }, screening: readonly string[],
 ): SQL {
   const screens = screening.length === 0 ? sql`false`
     : sql`coalesce(${row.auth}, '') in (${sql.join(screening.map((v) => sql`${v}`), sql`, `)})`;
-  return sql`(${senderHasPersonConsentSql(d, accountId, row.sender)} and not (${screens}))`;
+  return sql`(${senderHasPersonConsentSql(d, accountId, row.sender, row.brand)} and not (${screens}))`;
 }
 
 /**
@@ -306,15 +307,24 @@ export function personSkipSql(
 export const CUTLINE_PERSON_WRITTEN_PROVENANCE: readonly string[] = ["manual", "migrated", "seeded-from-sent"];
 
 /**
- * A PERSON CONSENTED TO THIS ADDRESS — the gate's `addressLevelConsent` (`rules.ts`) in SQL: an
- * enabled allow `sender` rule a person wrote naming it, or a contact whose source is not `'inferred'`
- * (NULL predates the column and is a person's; a person's row outvotes an inferred twin). A domain
- * rule, a promoted rule and an inferred contact are inference. `senderExpr` is lower-cased.
+ * A PERSON CONSENTED TO THIS ADDRESS FOR THIS CLAIM — the gate's `addressLevelConsent` (`rules.ts`)
+ * in SQL. A LIST ADDRESS (mail 0150) answers alone, as at the gate: only a brand a person's press
+ * consented there, `brandExpr` among its `consented_brands`. Otherwise an enabled allow `sender` rule
+ * a person wrote naming it, or a contact whose source is not `'inferred'` (NULL predates the column; a
+ * person's row outvotes an inferred twin). A domain rule, a promoted rule and an inferred contact are
+ * inference. `senderExpr` is lower-cased.
  */
-export function senderHasPersonConsentSql(d: Dialect, accountId: string, senderExpr: SQL): SQL {
+export function senderHasPersonConsentSql(d: Dialect, accountId: string, senderExpr: SQL, brandExpr: SQL): SQL {
   const allow = sql`(${sql.join(CUTLINE_ALLOW_DESTINATIONS.map((f) => sql`${f}`), sql`, `)})`;
   const person = sql`(${sql.join(CUTLINE_PERSON_WRITTEN_PROVENANCE.map((p) => sql`${p}`), sql`, `)})`;
-  return sql`(exists (
+  const brand = d.jsonArrayElements(sql`lpb.consented_brands`, "lpe");
+  return sql`(case when exists (
+      select 1 from list_addresses lpa
+       where lpa.account_id = ${d.castUuid(accountId)} and lpa.address = ${senderExpr}
+    ) then exists (
+      select 1 from list_addresses lpb, ${brand.from}
+       where lpb.account_id = ${d.castUuid(accountId)} and lpb.address = ${senderExpr} and ${brand.text} = ${brandExpr}
+    ) else (exists (
       select 1 from rules rpc
        where rpc.account_id = ${d.castUuid(accountId)}
          and rpc.enabled
@@ -327,7 +337,7 @@ export function senderHasPersonConsentSql(d: Dialect, accountId: string, senderE
        where cpc.account_id = ${d.castUuid(accountId)}
          and lower(cpc.address) = ${senderExpr}
          and (cpc.source is null or cpc.source <> 'inferred')
-    ))`;
+    )) end)`;
 }
 
 /**

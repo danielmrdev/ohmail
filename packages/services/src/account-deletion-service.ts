@@ -23,6 +23,7 @@ import {
   idempotencyKeys,
   kbEntries,
   learningSignals,
+  listAddresses,
   mailboxCredentials,
   mailboxProfileMirror,
   folderOps,
@@ -337,6 +338,8 @@ export async function deleteAccount(
     await drop("messages", tx.delete(messages).where(eq(messages.accountId, accountId)));
     await drop("threads", tx.delete(threads).where(eq(threads.accountId, accountId)));
     await drop("contacts", tx.delete(contacts).where(eq(contacts.accountId, accountId)));
+    // The addresses the account's mail named as lists, and the brands it consented there (mail 0150).
+    await drop("list_addresses", tx.delete(listAddresses).where(eq(listAddresses.accountId, accountId)));
     // The stored-body byte counter (mail 0062). AFTER `message_bodies`, whose bytes it counts:
     // a number derived from mail somebody erased is itself residue, and the catalog sweep
     // enumerates this table by its `account_id` column, so forgetting this line is a red test.

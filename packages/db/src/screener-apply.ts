@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { accountSettings, contacts, folderState, messages, rules as rulesTbl } from "./schema-mail.js";
 import { recordChanges, type ChangeInput, type LedgerTx, type Tx } from "./change-log.js";
 import { upgradeContactsToPerson } from "./contact-source.js";
+import { consentListBrands, lockListAddress } from "./list-addresses.js";
 import { dialect } from "./dialect/index.js";
 import { AccountErasedError, readAccountErasedAt } from "./erasure-fence.js";
 import { readOrganizerRole } from "./organizer-role.js";
@@ -192,6 +193,8 @@ export interface AppliedScreenerRow {
   senderCheck: string | null;
   /** `messages.auth_verdict`: a row its provider failed is never moved by the held-release press. */
   authVerdict: string | null;
+  /** `messages.sender_check_brand`: the company a claim names; a person's press on a list address consents it. */
+  senderCheckBrand: string | null;
 }
 
 const HELD_COLUMNS = {
@@ -199,13 +202,14 @@ const HELD_COLUMNS = {
   fromAddress: messages.fromAddress, subject: messages.subject, snippet: messages.snippet,
   date: messages.date, nativeLocator: messages.nativeLocator, observedFolder: folderState.observedFolder,
   updatedAt: messages.updatedAt, unread: messages.unread, senderCheck: messages.senderCheck,
-  authVerdict: messages.authVerdict,
+  authVerdict: messages.authVerdict, senderCheckBrand: messages.senderCheckBrand,
 } as const;
 
 function toAppliedScreenerRow(r: {
   messageId: string; mailboxId: string; threadId: string | null; fromAddress: string; subject: string;
   snippet: string; date: Date | null; nativeLocator: unknown; observedFolder: string;
   updatedAt: Date; unread: boolean; senderCheck: string | null; authVerdict: string | null;
+  senderCheckBrand: string | null;
 }): AppliedScreenerRow {
   return {
     messageId: r.messageId, mailboxId: r.mailboxId, threadId: r.threadId ?? null, fromAddress: r.fromAddress,
@@ -217,7 +221,7 @@ function toAppliedScreenerRow(r: {
     // site can at least fail predictably on; `undefined` is not a value that column ever holds and
     // has no business surviving this row's own construction. Same defensive shape as `threadId`.
     nativeLocator: r.nativeLocator ?? null, updatedAt: r.updatedAt, unread: r.unread,
-    senderCheck: r.senderCheck ?? null, authVerdict: r.authVerdict ?? null,
+    senderCheck: r.senderCheck ?? null, authVerdict: r.authVerdict ?? null, senderCheckBrand: r.senderCheckBrand ?? null,
   };
 }
 
@@ -566,6 +570,12 @@ export async function applyScreenerDecision(
      follows it, as on "Not junk, always allow", so the two never wait on each other crosswise. */
   await lockAccountRuleKeys(tx, accountId);
 
+  /* A YES ON A LIST ADDRESS consents brands there (mail 0150): its row is LOCKED now, after the rule-key
+     lock and before the first delta, the order every writer of the table keeps. What it consents is
+     decided below from what the press MOVES, and only a person's press on the address moves a claim. */
+  const pressed = address.toLowerCase();
+  const consents = decision === "yes" && await lockListAddress(tx, accountId, pressed);
+
   /* THE ACT NEVER ADMITS A MARKED SENDER (mail 0148), asked of the bag before the first rules,
      contacts or move statement: a pass's yes over held mail whose name claims a brand its address
      does not own leaves the sender waiting and writes nothing of the decision. A row the check
@@ -668,15 +678,17 @@ export async function applyScreenerDecision(
   if (unchecked.length > 0 && input.checkUnchecked) {
     await input.checkUnchecked(tx, accountId, unchecked);
     for (let i = 0; i < unchecked.length; i += HELD_CHECK_READ_BATCH) {
-      const read = await tx.select({ id: messages.id, senderCheck: messages.senderCheck }).from(messages)
-        .where(inArray(messages.id, unchecked.slice(i, i + HELD_CHECK_READ_BATCH)));
-      const checked = new Map(read.map((r) => [r.id, r.senderCheck ?? null]));
-      for (const r of heldMail) if (checked.has(r.messageId)) r.senderCheck = checked.get(r.messageId) ?? null;
+      const read = await tx.select({ id: messages.id, senderCheck: messages.senderCheck, brand: messages.senderCheckBrand })
+        .from(messages).where(inArray(messages.id, unchecked.slice(i, i + HELD_CHECK_READ_BATCH)));
+      const checked = new Map(read.map((r) => [r.id, r]));
+      for (const r of heldMail) {
+        const c = checked.get(r.messageId);
+        if (c) { r.senderCheck = c.senderCheck ?? null; r.senderCheckBrand = c.brand ?? null; }
+      }
     }
   }
 
   // A claim, or a row nobody checked, moves only on a press made on its own address.
-  const pressed = address.toLowerCase();
   const movable = (r: AppliedScreenerRow): boolean => {
     if (marked === "none" && r.authVerdict === "fail") return false;
     if (passAdmits) return r.senderCheck === "none";
@@ -686,6 +698,15 @@ export async function applyScreenerDecision(
   const moved = await rerouteHeldBag(tx, accountId, heldMail.filter(movable), appliedFolder, now);
   if (moved.lastSeq !== null) lastSeq = moved.lastSeq;
   const { rerouted, heldElsewhere } = moved;
+
+  /* …THE BRANDS OF THE CLAIMS THIS PRESS MOVED, and only those: the bag was fixed before any write (a
+     caller's `within` is what its offer counted), so a claim the person was never shown is neither
+     moved nor consented, and its brand cannot admit the next forgery. Another brand still waits; a
+     claim that failed authentication consents nothing. */
+  if (consents) {
+    const brands = rerouted.filter((r) => r.authVerdict !== "fail").map((r) => r.senderCheckBrand ?? "");
+    if (brands.some((b) => b !== "")) await consentListBrands(tx, accountId, pressed, brands);
+  }
 
   await recordLearningSignal(tx, accountId, {
     triggeringActionId,

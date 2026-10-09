@@ -1481,9 +1481,10 @@ export interface ScreenerRow {
   /**
    * THE IDENTITY FACT, the mirror selector's aggregate over the very bag this row lists
    * (`ScreenerSenderDTO.checked`): a held message names `brand` from an address `brand` does not
-   * send from. Rendered as its own line, before and apart from the AI advice.
+   * send from. Rendered as its own line, before and apart from the AI advice. `list`: a mailing
+   * list posts as this address (mail 0150), said on its own line beneath.
    */
-  checked?: { brand: string; domainShared: boolean; domain: string };
+  checked?: { brand: string; domainShared: boolean; domain: string; list?: true };
   /** An allow rule for everyone at this sender's shared provider names them and admits nobody. */
   inertRule?: { domain: string };
   /** Every held message, oldest first — all of it, always, never a collapsed count. */
@@ -1558,7 +1559,12 @@ function rowOf(dto: ScreenerSenderDTO, scope: Scope | undefined): ScreenerRow {
     dull: dto.dull === true,
     scope: scope ?? dto.scope,
     ai,
-    ...(dto.checked ? { checked: { brand: dto.checked.brand, domainShared: dto.checked.domainShared, domain: dto.checked.domain } } : {}),
+    ...(dto.checked ? {
+      checked: {
+        brand: dto.checked.brand, domainShared: dto.checked.domainShared, domain: dto.checked.domain,
+        ...(dto.checked.list === true ? { list: true as const } : {}),
+      },
+    } : {}),
     ...(dto.inertRule ? { inertRule: { domain: dto.inertRule.domain } } : {}),
     held,
     screenedOn: dto.screenedOn ?? "",

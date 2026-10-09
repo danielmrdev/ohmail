@@ -935,6 +935,15 @@ export const contacts = sqliteTable("contacts", {
   ixIdAccount: uniqueIndex("contacts_id_account_uq").on(t.id, t.accountId),
   uq: unique().on(t.accountId, t.address) }));
 
+/** The addresses a mailing list posts as (mail 0150) — see `schema-mail.ts`. Brands as JSON text. */
+export const listAddresses = sqliteTable("list_addresses", {
+  accountId: text("account_id").notNull(),
+  address: text("address").notNull(),
+  firstSeenAt: integer("first_seen_at", { mode: "timestamp_ms" }).default(NOW_MS).notNull(),
+  lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }).default(NOW_MS).notNull(),
+  consentedBrands: text("consented_brands", { mode: "json" }).notNull().default(sql`'[]'`),   // string[]
+}, (t) => ({ pk: primaryKey({ columns: [t.accountId, t.address] }) }));
+
 export const auditLog = sqliteTable("audit_log", {
   id: text("id").default(UUID_V4).primaryKey(),
   accountId: text("account_id").notNull(),
@@ -2285,6 +2294,8 @@ export const accountSettings = sqliteTable("account_settings", {
   searchIndexBuiltAt: integer("search_index_built_at", { mode: "timestamp_ms" }),
   /** The act on suggestions' own consent. See the server twin. LAST. */
   screenerAutoActAt: integer("screener_auto_act_at", { mode: "timestamp_ms" }),
+  /** The list-address backfill's stamp (mail 0150). See the server twin. LAST. */
+  listAddressesScannedAt: integer("list_addresses_scanned_at", { mode: "timestamp_ms" }),
 });
 
 /**

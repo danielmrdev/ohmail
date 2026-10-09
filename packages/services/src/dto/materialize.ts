@@ -8,7 +8,7 @@ import { isSharedProviderDomain } from "@trafficflow/core/rule-order";
 import { reasonDetail, suggestionAdvice } from "../screener-advice.js";
 import {
   accountSettings, autoReplyByUsWhere, awayReplies, mailboxes, mailboxProfileMirror, isOrganizerKind,
-  invitationWithoutEventWhere, itipReplyHeaderWhere,
+  invitationWithoutEventWhere, itipReplyHeaderWhere, listAddresses,
   messages, folderState, messageStates, threads, routingDecisions, approvals, rules, drafts,
   tags, messageTags,
   SCREENER_SUGGESTION_PROVENANCE, isScreenerActRefusal, rulesTheActWrote,
@@ -217,10 +217,11 @@ export function sortAtOf(date: Date | null | undefined, arrivedAt: Date | null |
 
 /**
  * `messages.sender_check` on the wire: `'impersonation'` → the fact, `'none'` → `null`, NULL (never
- * checked) → nothing. Whether the address is at a shared provider is read here, off the one list.
+ * checked) → nothing. Whether the address is at a shared provider is read here, off the one list;
+ * whether a list posts as it (`list`, mail 0150) is the batch's answer, the address's own fact.
  */
 function senderCheckOf(
-  value: string | null, brand: string | null, fromAddress: string, by: string | null | undefined,
+  value: string | null, brand: string | null, fromAddress: string, by: string | null | undefined, list: boolean,
 ): { senderCheck?: SenderCheckDTO | null } {
   if (value === "none") return { senderCheck: null };
   if (value !== "impersonation") return {};
@@ -230,6 +231,7 @@ function senderCheckOf(
       domainShared: isSharedProviderDomain(senderDomainOf(fromAddress)),
       // Who wrote it (mail 0149); a NULL column is absent, the reading an older server gives.
       ...(by === "ingest" || by === "backfill" ? { by } : {}),
+      ...(list ? { list: true as const } : {}),
     },
   };
 }
@@ -271,6 +273,12 @@ export function messageRowToDTO(
    * in the batch below. An EIGHTH PARAMETER for the seventh's reason. Omitted ⇒ key ABSENT.
    */
   itipReplyHeader?: boolean,
+  /**
+   * TRUE ⇒ a claim from an address a list posts as (mail 0150), decided by the `list_addresses`
+   * read in the batch below, for an impersonation row only. A NINTH PARAMETER for the fifth's
+   * reason. Omitted ⇒ false: the fact carries no `list`.
+   */
+  listAddress?: boolean,
 ): MessageDTO {
   const loc = (m.nativeLocator as { folder?: string } | null) ?? null;
   const folder = (fs?.desiredFolder ?? loc?.folder ?? "INBOX") as Folder;
@@ -340,7 +348,7 @@ export function messageRowToDTO(
     // On the row, so every projection carries it; a word from the other vocabulary reads `null`.
     authVerdict: asAuthVerdict(m.authVerdict),
     // The identity fact, spread-in: a NULL column (never checked) leaves the key ABSENT.
-    ...senderCheckOf(m.senderCheck, m.senderCheckBrand, m.fromAddress, m.senderCheckBy),
+    ...senderCheckOf(m.senderCheck, m.senderCheckBrand, m.fromAddress, m.senderCheckBy, listAddress === true),
     // Spread-in rather than a plain `autoReplyByUs:` so an un-asked caller yields a DTO with the
     // key ABSENT, not present-and-undefined. The two are the same in TypeScript and different
     // over JSON, and "this server does not know" must look exactly like "this server predates
@@ -436,12 +444,17 @@ async function materializeRows(
     })} then 1 else 0 end`.as("m_auto_reply"),
     invitation: sql`${invitationWithoutEventWhere(d, { id: sql`${messages.id}`, accountId: sql`${messages.accountId}` })}`.as("m_invitation"),
     itipReply: sql`${itipReplyHeaderWhere(d, { id: sql`${messages.id}`, accountId: sql`${messages.accountId}` })}`.as("m_itip_reply"),
+    // A claim from a list address (mail 0150): one primary-key probe, asked of impersonation rows only.
+    listAddress: sql<unknown>`case when ${messages.senderCheck} = 'impersonation' and exists (
+      select 1 from ${listAddresses} la
+       where la.account_id = ${messages.accountId} and la.address = lower(${messages.fromAddress})
+    ) then 1 else 0 end`.as("m_list_address"),
     ...keyFields,
   };
   type Row = {
     m: typeof messages.$inferSelect; fs: typeof folderState.$inferSelect;
     st: typeof messageStates.$inferSelect; tagId: string | null; awaySentAt: Date | null;
-    autoReply: unknown; invitation: unknown; itipReply: unknown;
+    autoReply: unknown; invitation: unknown; itipReply: unknown; listAddress: unknown;
   } & Record<string, unknown>;
   // Dynamic: the page join is present only for a joined page. Every join is 1:1 but the tags.
   // scoped-by: the `.where` below carries `eq(messages.accountId, accountId)`; every join keys on this row
@@ -486,6 +499,7 @@ async function materializeRows(
         iso(r.awaySentAt),
         isYes(r.invitation),
         isYes(r.itipReply),
+        isYes(r.listAddress),
       ),
       keys: (source?.keys ?? []).map((_, i) => r[`k${i}`]),
     });

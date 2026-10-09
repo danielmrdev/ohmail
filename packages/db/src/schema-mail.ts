@@ -1068,6 +1068,22 @@ export const contacts = pgTable("contacts", {
   ixIdAccount: uniqueIndex("contacts_id_account_uq").on(t.id, t.accountId),
   uq: unique().on(t.accountId, t.address) }));
 
+/**
+ * THE ADDRESSES A MAILING LIST POSTS AS (mail 0150): every `mailto:` the `List-Post` of a stored
+ * inbound message names (`@trafficflow/core#listPostAddresses`), unless that message failed
+ * authentication. Anyone on a list writes as its address, so no contact or rule is consent for a
+ * company claim under it; `consented_brands` holds the brands a person's own press admitted there.
+ * Written by ingest and the one-time backfill; deleted only with the account. A consent reset
+ * empties the brands and keeps the row.
+ */
+export const listAddresses = pgTable("list_addresses", {
+  accountId: uuid("account_id").notNull(),
+  address: text("address").notNull(),
+  firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).defaultNow().notNull(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
+  consentedBrands: jsonb("consented_brands").notNull().default(sql`'[]'::jsonb`),   // string[]
+}, (t) => ({ pk: primaryKey({ columns: [t.accountId, t.address] }) }));
+
 export const auditLog = pgTable("audit_log", {
   id: uuid("id").defaultRandom().primaryKey(),
   accountId: uuid("account_id").notNull(),
@@ -2597,6 +2613,12 @@ export const accountSettings = pgTable("account_settings", {
    * the row lock per sender together with `accounts.ai_enabled`. LAST: `ADD COLUMN` appends.
    */
   screenerAutoActAt: timestamp("screener_auto_act_at", { withTimezone: true }),
+  /**
+   * When the list-address backfill (mail 0150) read every stored message's `List-Post`, stamped
+   * after its last row. NULL, an absent row and a failed read all mean "not scanned"; mail stored
+   * afterwards is ingest's to record. LAST: `ADD COLUMN` appends and the twins are compared in order.
+   */
+  listAddressesScannedAt: timestamp("list_addresses_scanned_at", { withTimezone: true }),
 });
 
 /**

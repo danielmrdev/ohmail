@@ -96,6 +96,7 @@ import { makeAwayReplySweep } from "./away-reply-sweep.js";
 import { ruleRetroPass } from "./rule-retro.js";
 import { gateReleasePass } from "./gate-release.js";
 import { senderCheckRetirement } from "./sender-check-backfill.js";
+import { listAddressBackfillPass } from "./list-address-backfill.js";
 import { apiFaultPrunePass } from "./api-fault-prune.js";
 import { retentionPrunePass, signInRetentionPass } from "./retention-prune.js";
 import { ohboxTidyPass } from "./ohbox-tidy.js";
@@ -4687,6 +4688,27 @@ export async function startWorkerWithLock(
               accountId, err,
               reason: "these rows keep no identity fact yet; the Screener page computes it for a held " +
                 "representative meanwhile, and the next tail tries the same page again",
+            });
+          }
+        },
+      },
+      list_address_backfill: {
+        // The addresses a mailing list posts as, read once from every stored message (mail 0150).
+        // BEFORE the correspondent retro further down, which asks these rows before it releases a
+        // claim. One indexed read of `account_settings` per stamped account. Contained: a failure
+        // leaves the stamp unwritten and the next tail reads again; ingest records new mail meanwhile.
+        // The pass talks only to our database, so its throw is named as the database's and an
+        // outage met here is announced for the shard, never swallowed as one account's failure.
+        run: async (accountId) => {
+          try {
+            await asDatabaseFault("cycle.listAddressBackfillPass",
+              () => listAddressBackfillPass(db as unknown as Tx, { accountId, log }));
+          } catch (err) {
+            noteIfSharedDatabaseFault(err);
+            log.error("list_address_backfill_failed", {
+              accountId, err,
+              reason: "the account is not stamped, so the next tail reads its stored mail again; " +
+                "what was recorded stays, and new mail records its own list addresses at ingest",
             });
           }
         },

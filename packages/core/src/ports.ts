@@ -487,7 +487,10 @@ export interface RepoPort {
    */
   setFolderConflict(messageId: string, s: FolderStateRow): Promise<void>;
   listRules(accountId: string): Promise<Rule[]>;
-  /** `contacts`, lower-cased, with the subset an automatic writer taught — see {@link KnownSenders}. */
+  /**
+   * `contacts`, lower-cased, with the subset an automatic writer taught, and the account's list
+   * addresses with their consented brands — see {@link KnownSenders}.
+   */
   knownSenders(accountId: string): Promise<KnownSenders>;
   /** The account's own mailbox addresses, lower-cased — `@trafficflow/db#readOwnAddresses`. */
   ownAddresses(accountId: string): Promise<Set<string>>;
@@ -501,12 +504,19 @@ export interface RepoPort {
     accountId: string, sender: string, references: readonly string[],
   ): Promise<CorrespondentEvidence | null>;
   /**
-   * The first of `ids`, in their order, that is one of the account's own Sent copies written after
-   * its consent point (`correspondent.ts#ownSentCopies`), or null. The bounce arm's evidence: a
-   * delivery report quoting it is a report about the account's own writing. Any other row of the
-   * account carries an id its author chose — a stranger's held message among them.
+   * The first of `ids`, in their order, that is one of the account's own PRIVATE Sent copies written
+   * after its consent point (`correspondent.ts#ownSentCopies`), or null. The bounce arm's evidence:
+   * a delivery report quoting it is a report about the account's own writing. A copy written to a
+   * list address is public — every member holds its id — and any other row carries an id its
+   * author chose, a stranger's held message among them.
    */
   citesOwnWriting(accountId: string, ids: readonly string[]): Promise<string | null>;
+  /**
+   * Record the addresses a stored inbound message's `List-Post` names (mail 0150): a new address
+   * becomes a list address, a known one is seen again. Never a contact, never a consent. Returns
+   * how many addresses the statement carried.
+   */
+  recordListAddresses(accountId: string, addresses: readonly string[]): Promise<number>;
   /**
    * Upsert known correspondents. Returns how many rows were genuinely NEW, which is what makes
    * "a second connect does not re-import" observable rather than merely asserted. `source` is

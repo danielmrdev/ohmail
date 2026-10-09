@@ -1511,6 +1511,7 @@ export const DE: Deck = {
   senderCheckImpersonationShared: (brand: string, domain: string): string =>
     `Diese Nachricht gibt sich als ${brand} aus, aber eine ${domain}-Adresse kann sich jeder anlegen.`,
   senderCheckChip: (brand: string): string => `Nicht ${brand}`,
+  senderCheckList: "Über eine Mailingliste verschickt — alle auf der Liste können unter dieser Adresse schreiben.",
   screeningScopeShared: (domain: string): string =>
     `${domain} ist ein geteilter Anbieter. Entscheide hier pro Adresse.`,
   rulesSharedProviderInert: (domain: string): string =>

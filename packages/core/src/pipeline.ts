@@ -8,14 +8,14 @@ import {
 import { classifySensitivity, type SensitivityResult } from "./sensitive.js";
 import {
   NO_TRUSTED_AUTHSERV_IDS, DEFAULT_OHBOX_POLICY, authVerdictFromHeaders, autoReplySuppression,
-  dsnVerdict, effectForDestination, evaluateRules, gateAuthor, screenerAdmits, type AuthVerdict,
+  dsnVerdict, effectForDestination, evaluateRules, gateAuthor, isDeliveryReportShape, screenerAdmits, type AuthVerdict,
   type KnownSenders, type OhboxPolicy, type Rule,
 } from "./rules.js";
 import { claimedIdentity, registrableDomain, type IdentityFact } from "./sender-check.js";
 import { authScreens } from "./sender-headers.js";
 import { isProviderBrand, providerBrand } from "./authserv-ids.js";
 import { isSharedProviderDomain } from "./rule-order.js";
-import { ADDRESS_SHAPE } from "./list-address.js";
+import { ADDRESS_SHAPE, listPostAddresses } from "./list-address.js";
 import { classifyDedup, type DedupOutcome } from "./dedup.js";
 // The leaf predicate, not `adapters/imap.js`: this module is the model layer and naming the
 // adapter here would pull `imapflow` into the desktop engine. `gone.ts` carries the rule this
@@ -348,6 +348,12 @@ export interface NewPlan {
    */
   senderCheck: IdentityFact | null;
   /**
+   * The list addresses this message's `List-Post` names ({@link listAddressesOf}), recorded by the
+   * commit. REQUIRED for {@link senderCheck}'s reason: computed once above the reader and passive
+   * returns, so no arm that stores an inbound message can drop it. The Sent copy states `[]`.
+   */
+  listAddresses: readonly string[];
+  /**
    * This placement was made by somebody other than this organizer — the customer's own hand, or
    * the previous organizer an import hold has not yet asked about. It decides ONE thing at
    * commit, the third of the three structural gates: the `folder_state` row is written
@@ -493,6 +499,12 @@ export interface ReceivedCopyPlan {
   storedLocator: NativeLocator;
   seen: boolean;
   state: FolderStateRow;
+  /**
+   * The list addresses the INBOX copy names: a list relaying the person's own letter unchanged
+   * echoes it here. The row keeps the Sent copy's headers, so the backfill never reads these and
+   * the commit records them.
+   */
+  listAddresses: readonly string[];
 }
 
 /**
@@ -628,14 +640,15 @@ export type ImportHold =
  * over its view, never a second matcher. It keeps mail it lets PAST the gate, and mail its own
  * decision files to the folder it already sits in (the previous organizer's screen-outs). A gate
  * verdict, or a denial of mail sitting elsewhere, keeps nothing: holding it would let a stranger in.
+ * The document carries no list addresses, so this store's own are asked (`lists`).
  */
 function documentKeeps(
   hold: ImportHold, msg: NormalizedMessage, auth: AuthVerdict, ohboxPolicy: OhboxPolicy, arrival: string,
-  ownAddresses: ReadonlySet<string>, identity: IdentityFact | null,
+  ownAddresses: ReadonlySet<string>, identity: IdentityFact | null, lists: KnownSenders["lists"],
 ): boolean {
   if (hold.kind === "unreadable") return true;
   const verdict = evaluateRules({
-    msg, rules: hold.rules, knownSenders: hold.knownSenders, auth, ohboxPolicy, ownAddresses, identity,
+    msg, rules: hold.rules, knownSenders: { ...hold.knownSenders, lists }, auth, ohboxPolicy, ownAddresses, identity,
   });
   if (verdict.source === "screener") return false;
   if (verdict.destination !== null && canonicalDestination(verdict.destination) === canonicalDestination(arrival)) return true;
@@ -792,7 +805,8 @@ function readerAdoption(arrivalFolder: string): { adoption?: "peer" } {
  * gate fall-through ({@link evaluateRules}' `screened` with no rule) about a single usable author
  * who did not fail authentication and carries no company claim, and whose mail names at least one
  * message id. `named` says whether a cited copy was written TO that author; either way this message
- * is admitted, and only a named author is taught.
+ * is admitted, and only a named author is taught. A delivery report is no answer: the bounce arm is
+ * its door, and it asks for a private copy.
  */
 async function correspondentAtGate(
   repo: RepoPort, accountId: string, msg: NormalizedMessage,
@@ -803,6 +817,7 @@ async function correspondentAtGate(
   // make "PostFinance" at gmail.com PostFinance, and nothing is taught.
   if (decision.source !== "screener" || decision.matchedRuleId !== null || authScreens(auth)
     || decision.identity !== undefined) return null;
+  if (isDeliveryReportShape(msg.from.address, (msg.headers["content-type"] ?? []).join(" "))) return null;
   const author = gateAuthor(msg)?.toLowerCase() ?? null;
   if (author === null || known.addresses.has(author)) return null;
   const refs = threadKeyOf(msg.canonical.messageIdHeader, msg.headers).candidates;
@@ -853,6 +868,16 @@ function sentCopyRecipients(
   return [...new Set([...msg.to.map((a) => a.address), ...msg.cc.map((a) => a.address), ...bcc]
     .map((a) => a.trim().toLowerCase())
     .filter((a) => ADDRESS_SHAPE.test(a)))];
+}
+
+/**
+ * THE LIST ADDRESSES A STORED INBOUND MESSAGE NAMES (mail 0150): its `List-Post`, unless the
+ * provider's own report says the message is not its author's, and never one of the account's own
+ * addresses (a header anybody writes would make the person's own copies public). Read on every arm
+ * alike, held and denied mail included: being a list address only takes consent away.
+ */
+function listAddressesOf(msg: NormalizedMessage, auth: AuthVerdict, own: ReadonlySet<string> | undefined): readonly string[] {
+  return authScreens(auth) ? [] : listPostAddresses(msg.headers).filter((a) => own?.has(a) !== true);
 }
 
 /**
@@ -990,6 +1015,8 @@ async function planFromRaw(change: Change, deps: PlanDeps): Promise<ChangePlan> 
           // report no matter what that report says.
           authVerdict,
           senderCheck: null,
+          // Outbound: a list address is what a list says it posts as, never what the person wrote to.
+          listAddresses: [],
           ...(learn.length > 0 ? { learnCorrespondents: learn } : {}),
         },
       };
@@ -1002,6 +1029,8 @@ async function planFromRaw(change: Change, deps: PlanDeps): Promise<ChangePlan> 
     const senderCheck = claimedIdentity({
       fromName: normalized.from.name, fromAddress: normalized.from.address, subject: normalized.subject,
     }) ?? null;
+    // And the list addresses it names, in the same place for the same reason (mail 0150).
+    const listAddresses = listAddressesOf(normalized, authVerdict, deps.ownAddresses);
 
     // Mail the customer FILED THEMSELVES leaves the pipeline here too. `Change.passive` means the
     // adapter read this out of a folder the customer made; the reasoning is the `ownAuthored`
@@ -1037,6 +1066,7 @@ async function planFromRaw(change: Change, deps: PlanDeps): Promise<ChangePlan> 
           seen: change.seen ?? false,
           authVerdict,
           senderCheck,
+          listAddresses,
           passive: true,
           ...readerAdoption(arrivalLocator.folder),
         },
@@ -1057,6 +1087,7 @@ async function planFromRaw(change: Change, deps: PlanDeps): Promise<ChangePlan> 
           seen: change.seen ?? false,
           authVerdict,
           senderCheck,
+          listAddresses,
           passive: true,
         },
       };
@@ -1082,6 +1113,7 @@ async function planFromRaw(change: Change, deps: PlanDeps): Promise<ChangePlan> 
         knownSenders: {
           addresses: new Set([...known.addresses, correspondent.author]),
           inferred: known.inferred,
+          lists: known.lists,
         },
         auth: authVerdict, ohboxPolicy, ownAddresses, identity: senderCheck,
       });
@@ -1177,7 +1209,9 @@ async function planFromRaw(change: Change, deps: PlanDeps): Promise<ChangePlan> 
     const heldForImport = deps.importHold !== undefined
       && decision.source === "screener"
       && !authScreens(authVerdict)
-      && documentKeeps(deps.importHold, normalized, authVerdict, ohboxPolicy, change.locator.folder, ownAddresses, senderCheck);
+      && documentKeeps(
+        deps.importHold, normalized, authVerdict, ohboxPolicy, change.locator.folder, ownAddresses, senderCheck, known.lists,
+      );
 
     /* AHEAD OF `sensitive`, which is the one ordering choice here worth stating. A sensitivity
        reading is a heuristic over text; this is a lookup that says what the failed message WAS.
@@ -1279,6 +1313,7 @@ async function planFromRaw(change: Change, deps: PlanDeps): Promise<ChangePlan> 
         // property of the code and not of two call sites staying in step.
         authVerdict,
         senderCheck: ownOrganisationReport ? null : senderCheck,
+        listAddresses,
         // A placement adopted under the import hold — mail the travelling document admits — is the
         // standing state of the user's mailbox, not this organizer's decision: `passive` commits
         // `'external'`, out of every retro pass's reach once the import lands. Only where the hold
@@ -1326,12 +1361,13 @@ async function planFromRaw(change: Change, deps: PlanDeps): Promise<ChangePlan> 
   // The INBOX copy of a letter the row holds as its Sent copy — before the reconciler, like the
   // copy below: the server already holds it where it goes, so nothing is left to move.
   if (outcome.kind === "received_copy") {
+    const auth = authVerdictFromHeaders(normalized.headers, normalized.from.address, trustedAuthservIds);
     return {
       outcome: "received_copy",
       receivedCopy: {
         messageId: existingMsg.id, arrivalLocator: change.locator, storedLocator: existingMsg.nativeLocator,
         // `?? false` for the new-message reason: unknown degrades to unread, the recoverable side.
-        seen: change.seen ?? false, state,
+        seen: change.seen ?? false, state, listAddresses: listAddressesOf(normalized, auth, deps.ownAddresses),
       },
       ...(upgrade ? { upgrade } : {}),
     };
@@ -1487,6 +1523,8 @@ export async function commitChange(plan: ChangePlan, deps: CommitDeps): Promise<
   if (plan.outcome === "received_copy") {
     const c = plan.receivedCopy!;
     const inbox = c.arrivalLocator.folder;
+    // First, like the `new` arm's: this table before every row lock and the change-log counter.
+    if (c.listAddresses.length > 0) await repo.recordListAddresses(accountId, c.listAddresses);
     await repo.updateLocator(c.messageId, c.arrivalLocator, c.storedLocator);
     await repo.recordInstance(c.messageId, c.storedLocator);
     const placed = { desiredFolder: inbox, observedFolder: inbox, lastSetBy: c.state.lastSetBy };
@@ -1678,6 +1716,10 @@ export async function commitChange(plan: ChangePlan, deps: CommitDeps): Promise<
       await repo.markAwayReplyUndeliverable(accountId, p.awayBounceOf, new Date())
         .catch(() => 0);
     }
+
+    /* THE LIST ADDRESSES THIS MESSAGE NAMES (mail 0150), before `contacts` and the change-log
+       counter: a person's press takes this table before both, so the two never wait crosswise. */
+    if (p.listAddresses.length > 0) await repo.recordListAddresses(accountId, p.listAddresses);
 
     /* WRITING TO SOMEBODY MAKES THEM KNOWN, in the same transaction as the row that proves it:
        the recipients of a Sent copy past the consent point, or the correspondent the gate just

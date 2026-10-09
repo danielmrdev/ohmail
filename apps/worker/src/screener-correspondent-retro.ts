@@ -1,29 +1,28 @@
 import { and, asc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import {
-  auditAction, auditLog, contacts, fencedAccountWrite, folderState, learningSignals, lockAccountRuleKeys, messages,
-  notFailedAuthSql, recordChange, recordRuleDelta, ruleMatchKeySql, rules as rulesTbl, SCREENER_FOLDER,
-  admitsDestination, SCREENER_ACT_TRIGGER_PREFIX, type LedgerTx, type Tx, upgradeContactsToPerson,
+  auditAction, auditLog, contacts, fencedAccountWrite, folderState, learningSignals, lockAccountRuleKeys, messageBodies,
+  messages, notFailedAuthSql, readListAddresses, recordChange, recordRuleDelta, ruleMatchKeySql, rules as rulesTbl,
+  SCREENER_FOLDER, admitsDestination, SCREENER_ACT_TRIGGER_PREFIX, type LedgerTx, type Tx, upgradeContactsToPerson,
 } from "@trafficflow/db";
 import { dialect } from "@trafficflow/db/dialect";
 import {
-  correspondentsAmong, messagesCitingOwnWriting, recipientsOfOwnWriting, sendersAnsweringOwnWriting,
+  correspondentsAmong, messagesCitingOwnWriting, notAClaimSql, recipientsOfOwnWriting, sendersAnsweringOwnWriting,
   type CorrespondentEvidence,
 } from "@trafficflow/core/adapters/drizzle-repo";
-import { silentLogger, type Logger } from "@trafficflow/core/mail";
+import { isDeliveryReportShape, silentLogger, type Logger } from "@trafficflow/core/mail";
 import { ruleMatchKey } from "@trafficflow/core/rule-order";
 import { upsertDesired } from "./rule-pass.js";
 import { writeSenderChecks } from "./sender-check-backfill.js";
 
-/* THE SCREENER'S CORRESPONDENT RETRO — what the gate now knows at ingest, applied once to what it
- * decided before it knew. Three acts, all for somebody this account wrote to after its consent
- * point (`packages/core/src/correspondent.ts`): teach `contacts` the recipients of Sent copies
- * ingested before the ingest taught them; release their mail the gate still holds to the Ohbox
- * (desired state the reconciler converges, an audit row with its inverse per message); and switch
- * off a spam or screen-out rule the Screener's own auto-act promoted over them, never one the
- * person made. Somebody the account wrote to, found by their citation of that mail, is admitted as
- * any recipient is, a held claim (mail 0148) with the fact riding. A citer the copy does not name is
- * a correspondent for the messages that cite it only: those go, never a claim, and nothing is
- * taught. A row that FAILED authentication is never moved, nor anything in Junk. Counts only. */
+/* THE SCREENER'S CORRESPONDENT RETRO — what the gate knows at ingest, applied once to what it held
+ * before it knew, for somebody this account wrote to after its consent point (`correspondent.ts`):
+ * teach `contacts` the recipients of Sent copies ingested before the ingest taught them; release
+ * their held mail to the Ohbox (desired state, an audit row with its inverse per message); switch
+ * off a spam or screen-out rule the auto-act promoted over them, never one the person made. A held
+ * claim (mail 0148) goes with the fact riding, unless the address is one a list posts as (mail
+ * 0150), whose claims stay. A citer the copy does not name is a correspondent for the messages
+ * that cite it only: never a claim nor a delivery report, and nothing is taught. A row that FAILED
+ * authentication is never moved, nor anything in Junk. Counts only. */
 
 /** Senders one run may examine in each of its two walks. */
 const CORRESPONDENT_RETRO_SENDERS = 50;
@@ -92,8 +91,10 @@ export async function screenerCorrespondentRetroPass(
     const found = await correspondentsAmong(db, { accountId, senders: held, references: "held" });
     // An answer held under a newer mail of theirs citing nothing: every held message is asked.
     const answering = await sendersAnsweringOwnWriting(db, accountId, held.filter((a) => !found.has(a)));
+    // One read for the run: which of these senders a list posts as (mail 0150).
+    const lists = await readListAddresses(db, accountId, held);
     for (const [address, evidence] of [...found, ...answering]) {
-      result.released += await release(db, accountId, address, evidence, now);
+      result.released += await release(db, accountId, address, evidence, lists.has(address), now);
     }
   }
 
@@ -149,29 +150,36 @@ function heldWhere(accountId: string): SQL[] {
  * A named correspondent is taught as a contact even when the gate no longer holds their mail.
  */
 async function release(
-  db: Tx, accountId: string, address: string, evidence: CorrespondentEvidence, now: Date,
+  db: Tx, accountId: string, address: string, evidence: CorrespondentEvidence, isList: boolean, now: Date,
 ): Promise<number> {
   return fencedAccountWrite(db, { accountId }, async (tx) => {
     await lockAccountRuleKeys(tx, accountId);
     /* A copy written TO them is the person writing, whichever arm found it (`via` says how): a
        person's contact, and their held mail released, a claim included with the fact riding — the
-       gate holds a claim at ingest, and this releases it within the hour. An answer from an address
+       gate holds a claim at ingest, and this releases it within the hour. A list address's claims
+       stay: the rows are checked first and only what is no claim goes. An answer from an address
        the copy does not name is released message by message: only what itself cites an own copy,
-       never a claim (unchecked rows are checked first), and nothing is taught. */
+       never a claim (unchecked rows are checked first) nor a report, and nothing is taught. */
     let cleared: ReadonlySet<string> | null = null;
     if (evidence.named) {
       await tx.insert(contacts).values({ accountId, address, source: "person" })
         .onConflictDoNothing({ target: [contacts.accountId, contacts.address] });
       await upgradeContactsToPerson(tx, accountId, [address]);
+      if (isList) await checkHeldOf(tx, accountId, address);
     } else {
+      const ct = dialect(tx).jsonGet(messageBodies.headers, "content-type");
       const held = await tx.select({
         id: messages.id, fromName: messages.fromName, fromAddress: messages.fromAddress,
         subject: messages.subject, senderCheck: messages.senderCheck,
+        // Aliased: the device store returns rows positionally and refuses two same-named columns.
+        contentType: sql<unknown>`${ct}`.as("cr_content_type"),
       }).from(folderState)
         .innerJoin(messages, eq(messages.id, folderState.messageId))
+        .leftJoin(messageBodies, eq(messageBodies.messageId, messages.id))
         .where(and(...heldWhere(accountId), eq(sql`lower(${messages.fromAddress})`, address)));
       const citing = await messagesCitingOwnWriting(tx, accountId, held.map((r) => r.id));
-      const candidates = held.filter((r) => citing.has(r.id));
+      const candidates = held.filter((r) => citing.has(r.id)
+        && !isDeliveryReportShape(r.fromAddress, headerText(r.contentType)));
       const marked = new Set((await writeSenderChecks(tx, accountId, candidates.filter((r) => r.senderCheck === null)
         .map((r) => ({ id: r.id, fromName: r.fromName, fromAddress: r.fromAddress, subject: r.subject }))))
         .map((r) => r.id));
@@ -183,7 +191,8 @@ async function release(
       messageId: messages.id, mailboxId: messages.mailboxId, observedFolder: folderState.observedFolder,
     }).from(folderState)
       .innerJoin(messages, eq(messages.id, folderState.messageId))
-      .where(and(...heldWhere(accountId), eq(sql`lower(${messages.fromAddress})`, address))));
+      .where(and(...heldWhere(accountId), eq(sql`lower(${messages.fromAddress})`, address),
+        ...(isList ? [notAClaimSql(messages)] : []))));
     const rows = cleared === null ? locked : locked.filter((r) => cleared.has(r.messageId));
     if (rows.length === 0) return 0;
     for (const r of rows) {
@@ -203,6 +212,25 @@ async function release(
     }
     return rows.length;
   });
+}
+
+/** A list author's held rows the check never reached get the fact first, so a claim among them stays. */
+async function checkHeldOf(tx: Tx, accountId: string, address: string): Promise<void> {
+  const unchecked = await tx.select({
+    id: messages.id, fromName: messages.fromName, fromAddress: messages.fromAddress, subject: messages.subject,
+  }).from(folderState)
+    .innerJoin(messages, eq(messages.id, folderState.messageId))
+    .where(and(...heldWhere(accountId), eq(sql`lower(${messages.fromAddress})`, address), isNull(messages.senderCheck)));
+  if (unchecked.length > 0) await writeSenderChecks(tx, accountId, unchecked);
+}
+
+/** A stored header's values joined, as the shape test reads them — JSON text on the device store. */
+function headerText(value: unknown): string {
+  let v = value;
+  if (typeof v === "string") {
+    try { v = JSON.parse(v); } catch { return v as string; }
+  }
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").join(" ") : "";
 }
 
 /**

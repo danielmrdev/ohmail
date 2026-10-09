@@ -2607,6 +2607,10 @@ function WaitingPreview({
                   ? t("senderCheck.impersonationShared", { brand: sender.checked.brand, domain: sender.checked.domain })
                   : t("senderCheck.impersonation", { brand: sender.checked.brand, domain: sender.checked.domain })}
               </span>
+              {/* A LIST ADDRESS (mail 0150): why one press does not open it to every company name. */}
+              {sender.checked.list ? (
+                <span className="scn-why-checked" data-reason="list">{t("senderCheck.list")}</span>
+              ) : null}
             </span>
           </div>
         ) : null}

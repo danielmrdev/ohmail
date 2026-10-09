@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lte, notInArray, or, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
-import { accountSettings, accountStorage, changeLog, fenceErasedMailbox, MailboxErasedError, messages, messageInstances, messageFailures, folderOps, junkRescues, folderState, flagState, mailboxes, mailboxCredentials, mailboxFolders, threads, rules as rulesTbl, contacts as contactsTbl, auditLog, messageBodies, attachments as attachmentsTbl, routingDecisions, approvals, recordRouteOverride, routeIsLearned, demoteRoute, routeOverrideActionId, senderPatternFromAddress, awayReplies, awaySenderState, recordChange as recordChangeTx, recordChanges as recordChangesTx, type MailboxMustBeLive, bodyBytesOf, reserveBodyBytes, reserveBodyBytesEvicting, releaseBodyBytes, type ChangeInput, type LedgerTx, type Tx, type EntityType, auditAction, ACCOUNT_THREAD_STRUCTURE_LOCK_CLASS, dueNow as sharedDueNow, type FilingRefusalClass, readOwnAddresses, releaseOwnMailAtGate, ruleNamesSenderSql, upgradeContactsToPerson } from "@trafficflow/db";
+import { accountSettings, accountStorage, changeLog, fenceErasedMailbox, MailboxErasedError, messages, messageInstances, messageFailures, folderOps, junkRescues, folderState, flagState, mailboxes, mailboxCredentials, mailboxFolders, threads, rules as rulesTbl, contacts as contactsTbl, auditLog, messageBodies, attachments as attachmentsTbl, routingDecisions, approvals, recordRouteOverride, routeIsLearned, demoteRoute, routeOverrideActionId, senderPatternFromAddress, awayReplies, awaySenderState, recordChange as recordChangeTx, recordChanges as recordChangesTx, type MailboxMustBeLive, bodyBytesOf, reserveBodyBytes, reserveBodyBytesEvicting, releaseBodyBytes, type ChangeInput, type LedgerTx, type Tx, type EntityType, auditAction, ACCOUNT_THREAD_STRUCTURE_LOCK_CLASS, dueNow as sharedDueNow, type FilingRefusalClass, readOwnAddresses, releaseOwnMailAtGate, ruleNamesSenderSql, upgradeContactsToPerson, listAddresses as listAddressesTbl, LIST_ADDRESS_CHUNK, listBrandsOf, readListAddresses } from "@trafficflow/db";
 import type {
   RepoPort, RoutingPort, ExternalOverrideInput, ExternalOverrideOutcome,
   StoredMessage, InsertedMessage, InsertMessageInput, FolderStateRow, FlagStateRow,
@@ -22,6 +22,7 @@ import {
 import { foldMessageIdDomain } from "../identity.js";
 import { MAX_THREAD_PARTICIPANTS } from "../threading.js";
 import { MAX_STORED_ADDRESS_CHARS, storedAddress, storedMessageId, storedSubject } from "../stored-values.js";
+import { ADDRESS_SHAPE } from "../list-address.js";
 // THE ONE DOOR for a UIDVALIDITY comparison — `epoch.ts`. A bare `===` between two generations
 // reads two unknowns as agreement, which is the fail-open this module must not re-invent; the
 // census over three source roots refuses one.
@@ -45,7 +46,7 @@ import { providerAuthservIds } from "../authserv-ids.js";
 import { correspondentsAmong, inSentFolderSql, ownSentCopies, type CorrespondentEvidence } from "../correspondent.js";
 // The one correspondent predicate, on the leaf the worker passes and the services already import.
 export {
-  correspondentsAmong, messagesCitingOwnWriting, recipientsOfOwnWriting, sendersAnsweringOwnWriting,
+  correspondentsAmong, messagesCitingOwnWriting, notAClaimSql, recipientsOfOwnWriting, sendersAnsweringOwnWriting,
   CORRESPONDENT_SCAN_ROWS, type CorrespondentEvidence,
 } from "../correspondent.js";
 // The identity fact's one write for unchecked rows, on the same leaf: the worker's passes and a press.
@@ -1965,9 +1966,21 @@ export class DrizzleRepo implements WorkerRepo, RoutingPort {
     });
   }
 
+  /**
+   * ONE STATEMENT for both tables: the gate asks this for every message it plans, and a second read
+   * of `list_addresses` was a second round trip on every ingest (the round-trip ratchet). `kind`
+   * tells the halves apart; the brands come back as JSON text on the device store.
+   */
   async knownSenders(accountId: string): Promise<KnownSenders> {
-    const rows = await this.db.select({ address: contactsTbl.address, source: contactsTbl.source })
-      .from(contactsTbl).where(eq(contactsTbl.accountId, accountId));
+    const all = await this.db.select({
+      kind: sql<string>`'contact'`.as("ks_kind"), address: contactsTbl.address, source: contactsTbl.source,
+      brands: sql<unknown>`null`.as("ks_brands"),
+    }).from(contactsTbl).where(eq(contactsTbl.accountId, accountId))
+      .unionAll(this.db.select({
+        kind: sql<string>`'list'`.as("ks_kind"), address: listAddressesTbl.address,
+        source: sql<string | null>`null`.as("ks_source"), brands: sql<unknown>`${listAddressesTbl.consentedBrands}`.as("ks_brands"),
+      }).from(listAddressesTbl).where(eq(listAddressesTbl.accountId, accountId)));
+    const rows = all.filter((r) => r.kind === "contact");
     const addresses = new Set<string>();
     const inferred = new Set<string>();
     for (const r of rows) {
@@ -1978,7 +1991,9 @@ export class DrizzleRepo implements WorkerRepo, RoutingPort {
     }
     // Two rows folding to one address: a person's row wins, so `inferred` never outvotes it.
     for (const r of rows) if (r.source !== "inferred") inferred.delete(r.address.toLowerCase());
-    return { addresses, inferred };
+    const lists = new Map<string, Set<string>>();
+    for (const r of all) if (r.kind === "list") lists.set(r.address, new Set(listBrandsOf(r.brands)));
+    return { addresses, inferred, lists };
   }
 
   /** {@link RepoPort.ownAddresses} — the set `senderIsOwnSql` tests, read whole. */
@@ -2002,10 +2017,45 @@ export class DrizzleRepo implements WorkerRepo, RoutingPort {
     return found.get(key) ?? null;
   }
 
-  /** {@link RepoPort.citesOwnWriting} — the bounce arm's evidence, over the reply arm's own read. */
+  /**
+   * {@link RepoPort.citesOwnWriting} — the bounce arm's evidence, over the reply arm's own read. A
+   * copy written to a list address is public, so it is no evidence: its recipients are read against
+   * the account's list addresses, once.
+   */
   async citesOwnWriting(accountId: string, ids: readonly string[]): Promise<string | null> {
     const copies = await ownSentCopies(this.db as unknown as Tx, accountId, ids);
-    return ids.find((id) => copies.has(id)) ?? null;
+    if (copies.size === 0) return null;
+    const recipients = [...new Set([...copies.values()].flatMap((c) => [...c.recipients]))];
+    const lists = await readListAddresses(this.db as unknown as Tx, accountId, recipients);
+    return ids.find((id) => {
+      const copy = copies.get(id);
+      return copy !== undefined && ![...copy.recipients].some((a) => lists.has(a));
+    }) ?? null;
+  }
+
+  /**
+   * {@link RepoPort.recordListAddresses}. Sorted, so two ingests naming the same addresses take
+   * their row locks in one order, and an address no transport delivers to is not stored, nor one of
+   * the account's own (read only when there is something to write). Before the change-log append in
+   * every caller: the press and the reset take this table after the rule-key lock and before their
+   * first delta, the same order.
+   */
+  async recordListAddresses(accountId: string, addresses: readonly string[]): Promise<number> {
+    let unique = [...new Set(addresses.map((a) => a.trim().toLowerCase())
+      .filter((a) => ADDRESS_SHAPE.test(a) && a.length <= MAX_STORED_ADDRESS_CHARS))].sort();
+    if (unique.length > 0) {
+      const own = await readOwnAddresses(this.db as unknown as Tx, accountId);
+      unique = unique.filter((a) => !own.has(a));
+    }
+    for (let at = 0; at < unique.length; at += LIST_ADDRESS_CHUNK) {
+      await this.db.insert(listAddressesTbl)
+        .values(unique.slice(at, at + LIST_ADDRESS_CHUNK).map((address) => ({ accountId, address })))
+        .onConflictDoUpdate({
+          target: [listAddressesTbl.accountId, listAddressesTbl.address],
+          set: { lastSeenAt: sql`excluded.last_seen_at` },
+        });
+    }
+    return unique.length;
   }
 
   /**

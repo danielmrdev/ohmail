@@ -2299,6 +2299,8 @@ const TABLE = {
   senderCheckImpersonationShared: (brand: string, domain: string): string =>
     `This message claims to be from ${brand}, but anyone can register a ${domain} address.`,
   senderCheckChip: (brand: string): string => `Not ${brand}`,
+  /** The address is one a mailing list posts as (mail 0150): why one press opens it to one name. */
+  senderCheckList: "Sent through a mailing list — anyone on it can write as this address.",
   /** A shared provider's domain is never a scope: the sentence in the place of the choice. */
   screeningScopeShared: (domain: string): string =>
     `${domain} is a shared provider. Decisions here are per address.`,

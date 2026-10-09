@@ -185,7 +185,7 @@ export async function cutlineCounts(
                folder: sql`fs.desired_folder`, deletedAt: sql`m.deleted_at`, senderCheck: sql`m.sender_check`,
                by: sql`m.sender_check_by`, date: sql`m.date`, arrivedAt: sql`m.arrived_at`,
                recordedAt: sql`m.created_at`, mailboxId: sql`m.mailbox_id`,
-               sender: sql`lower(m.from_address)`, auth: sql`m.auth_verdict`,
+               sender: sql`lower(m.from_address)`, auth: sql`m.auth_verdict`, brand: sql`m.sender_check_brand`,
              }, cutoff, SCREENING_AUTH_VERDICTS))}
                as held_claim
         from messages m

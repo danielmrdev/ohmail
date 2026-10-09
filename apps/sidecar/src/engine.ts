@@ -202,6 +202,7 @@ import { threadJoinHealPass, type ThreadJoinHealCursor } from "@trafficflow/work
 /* THE IDENTITY BACKFILL (mail 0148), the worker's pass for the name repair's reason: this store is
    the authority nothing else will ever check, and one fact function decides every row. */
 import { senderCheckBackfillPass } from "@trafficflow/worker/sender-check-backfill";
+import { listAddressBackfillPass } from "@trafficflow/worker/list-address-backfill";
 import { inboundQuietPass } from "@trafficflow/worker/inbound-quiet";
 // The HISTORICAL-NAME REPAIR, from the same package and for the fourth instance of the same
 // argument. The values it writes have to be the ones ingest would have written from the same
@@ -2735,6 +2736,27 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
           err,
           reason: "some older held or Ohbox messages carry no identity sentence yet; nothing is marked " +
             "and no position is kept, so the next drain asks the store again",
+        });
+      }
+    };
+    /** The list-address backfill stamped this store, or found it stamped, in THIS launch. */
+    let listAddressesDone = false;
+    /**
+     * THE ADDRESSES A MAILING LIST POSTS AS (mail 0150), read once from every stored message — the
+     * worker's own pass, on this store, before the correspondent retro asks the rows. It records list
+     * addresses and a stamp, never a contact or a move. Contained like the identity backfill.
+     */
+    const backfillListAddresses = async (): Promise<void> => {
+      if (listAddressesDone || stopping) return;
+      try {
+        const r = await listAddressBackfillPass(db as unknown as Tx, { accountId: world.accountId });
+        listAddressesDone = true;
+        if (r.ran) log("list_address_backfill", { scanned: r.values, written: r.addresses });
+      } catch (err) {
+        log("list_address_backfill_failed", {
+          err,
+          reason: "the store is not stamped, so the next drain reads its stored mail again; what was " +
+            "recorded stays, and new mail records its own list addresses as it arrives",
         });
       }
     };
@@ -6208,6 +6230,10 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
              copies, release their held mail to the Ohbox, retire an auto-act spam rule over one.
              Behind the organizer gate (it writes the mailbox's desired state and rules), time-gated
              like the join heal, and CONTAINED: held mail stays held and the next gated drain asks. */
+          /* THE LIST ADDRESSES FIRST (mail 0150): the retro below asks them before it releases a
+             claim, so on the first drain after an update they are read before it runs. */
+          tail.phase("list-address-backfill");
+          await upkeep(() => onceForTheAccount(backfillListAddresses));
           tail.phase("correspondent-retro");
           const correspondentRetroDue = async (): Promise<void> => {
             if (!passDue(lastCorrespondentRetroAt, CORRESPONDENT_RETRO_EVERY_MS)) return;

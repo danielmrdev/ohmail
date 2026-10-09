@@ -118,11 +118,17 @@ export function SenderDetail({
               <View style={{ marginTop: 2 }}>
                 <Icon name="shield" size={13} color={t.c.accentInk} />
               </View>
-              <Txt variant="note" tone="ink" style={{ flex: 1 }} testID="sender-check">
-                {row.checked.domainShared
-                  ? Copy.senderCheckImpersonationShared(row.checked.brand, row.checked.domain)
-                  : Copy.senderCheckImpersonation(row.checked.brand, row.checked.domain)}
-              </Txt>
+              <View style={{ flex: 1, gap: 4 }}>
+                <Txt variant="note" tone="ink" testID="sender-check">
+                  {row.checked.domainShared
+                    ? Copy.senderCheckImpersonationShared(row.checked.brand, row.checked.domain)
+                    : Copy.senderCheckImpersonation(row.checked.brand, row.checked.domain)}
+                </Txt>
+                {/* A list address (mail 0150): why one press does not open it to every name. */}
+                {row.checked.list ? (
+                  <Txt variant="note" tone="ink" testID="sender-check-list">{Copy.senderCheckList}</Txt>
+                ) : null}
+              </View>
             </View>
           ) : null}
           {row.inertRule ? (

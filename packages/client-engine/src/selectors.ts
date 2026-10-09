@@ -1519,6 +1519,7 @@ function checkedOf(newestFirst: readonly EngineMessage[]): { checked?: ScreenerS
       checked: {
         reason: "impersonation", brand: c.brand, domainShared: c.domainShared === true,
         domain: at < 0 ? "" : m.from.address.slice(at + 1).toLowerCase(),
+        ...(c.list === true ? { list: true as const } : {}),
       },
     };
   }

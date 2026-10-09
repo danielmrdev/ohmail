@@ -272,6 +272,8 @@ export const KNOWN_SET_NEUTRAL: ReadonlySet<string> = new Set([
   "getMailboxSpecialFolders", "listAiAutoAppliedQuarantine", "listJunkFiledHusks",
   // writes to tables this projection does not read
   "markKickstarted", "upsertContacts", "upsertMailboxFolder", "upsertMailboxFolders", "recordMessageFailure",
+  // `list_addresses` (mail 0150) — a table this projection does not join.
+  "recordListAddresses",
   /* `mailbox_folders`, two columns, mail 0115 — where a budgeted pass stopped. The same table
      `upsertMailboxFolder` writes and the same reason: this projection does not join it. */
   "setMailboxBudgetStop",

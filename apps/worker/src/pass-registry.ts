@@ -195,6 +195,15 @@ export const WORKER_PASSES: readonly WorkerPass[] = [
     fence: "leader lock; the account erasure fence per page; writes the fact and a delta, never a move",
   },
   {
+    name: "list_address_backfill",
+    module: `${W}/list-address-backfill.ts`, entry: "listAddressBackfillPass",
+    triggers: ["cycle-tail", "sidecar-drain"],
+    cadence: "every cycle tail, per account, until account_settings.list_addresses_scanned_at is stamped (mail 0150), then one indexed read; on a standalone install once per launch, before the correspondent retro",
+    budget: "one DISTINCT read of the account's stored List-Post values, then LIST_ADDRESS_CHUNK addresses per write",
+    owns: "every address a stored message's List-Post names is a list address, once, so no contact or rule consents a claim under it",
+    fence: "leader lock; the account erasure fence per chunk and for the stamp; writes list_addresses and the stamp, never a contact or a move",
+  },
+  {
     name: "ohbox_tidy",
     module: `${W}/ohbox-tidy.ts`, entry: "ohboxTidyPass",
     triggers: ["cycle-tail"],

@@ -136,7 +136,9 @@ function heldAtGate(d: ReturnType<typeof dialect>, accountId: string) {
     // unless the person skip takes it (`personSkipSql`): a person consented to the address and the
     // gate would not hold the row now, its stored authentication verdict included.
     sql`(${messages.senderCheck} is null or ${messages.senderCheck} <> 'impersonation'
-      or ${personSkipSql(d, accountId, { sender: sql`lower(${messages.fromAddress})`, auth: sql`${messages.authVerdict}` }, SCREENING_AUTH_VERDICTS)})`,
+      or ${personSkipSql(d, accountId, {
+        sender: sql`lower(${messages.fromAddress})`, auth: sql`${messages.authVerdict}`, brand: sql`${messages.senderCheckBrand}`,
+      }, SCREENING_AUTH_VERDICTS)})`,
     sql`exists (
       select 1 from ${mailboxes} mb
        where mb.id = ${messages.mailboxId}

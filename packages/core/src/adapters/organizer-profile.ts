@@ -370,7 +370,8 @@ export function profileGateView(doc: OrganizerProfilePayload): ProfileGateView {
       subjectContains: a.subjectContains, bodyContains: a.bodyContains,
     });
   });
-  return { knownSenders: { addresses, inferred }, rules };
+  // The document states no list addresses; the routing hold asks the store's own (`documentKeeps`).
+  return { knownSenders: { addresses, inferred, lists: new Map() }, rules };
 }
 
 /**

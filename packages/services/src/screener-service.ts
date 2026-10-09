@@ -15,7 +15,7 @@ import {
   // `@trafficflow/db` for why the transactional core and the eligibility read live there.
   resolveCutline, senderIsActiveSql, senderIsDecidedSql, senderIsOwnSql, heldSortKey, type ResolvedCutline,
   senderHasHeldClaimSql, heldRowById, applyScreenerDecision, AccountErasedError, readAccountErasedAt, domainOf, ruleNamesSenderSql,
-  readRequestEligibility, decisionCanBeApplied,
+  readRequestEligibility, decisionCanBeApplied, readListAddresses,
   listOutstandingForAccount,
   OrganizedElsewhereError, MailboxNotFoundError, ringFilingDoorbell,
   type AppliedScreenerRow, type RequestEligibility, type OrganizedBy,
@@ -994,11 +994,11 @@ export class ScreenerReadService {
     // `senderSignalsByMessage`. Free (no query, no model) and applied to advice that is already
     // on record, so a suggestion bought before this shipped says why it was wrong here too.
     const checked = senderSignalsByMessage(pageRows);
-    await markCorrespondents(ctx, pageRows, checked);
+    const lists = await markCorrespondents(ctx, pageRows, checked);
     const items = pageRows.map((r) => {
       const signals = checked.get(r.messageId);
       // The sender's fact FIRST: it marks the signals the displayed advice is capped by below.
-      const fact = checkedOfSender(r, signals);
+      const fact = checkedOfSender(r, signals, lists.has(r.fromAddress.trim().toLowerCase()));
       return toItem(r, withSenderCheck(stored.get(r.fromAddress.toLowerCase()) ?? null, signals, posture), fact);
     });
 
@@ -2494,24 +2494,32 @@ function senderSignalsByMessage(rows: readonly ScreenerRow[]): Map<string, Sende
  * WHO OF THESE THIS ACCOUNT WROTE TO — `correspondent.ts`, one read for the set, onto the signals
  * the check already produced. The fact is the mailbox's, never the sender's, and it decides the
  * reason unless the message failed authentication: then it is not evidence about this message.
+ * Answers which of the senders a list posts as (mail 0150), read in the same pass.
  */
 async function markCorrespondents(
   ctx: ServiceContext, rows: readonly ScreenerRow[], checked: Map<string, SenderSignals>,
-): Promise<void> {
-  if (rows.length === 0) return;
+): Promise<ReadonlySet<string>> {
+  if (rows.length === 0) return new Set();
+  const senders = [...new Set(rows.map((r) => r.fromAddress.trim().toLowerCase()))];
   const found = await correspondentsAmong(asTx(ctx), {
-    accountId: ctx.accountId, senders: rows.map((r) => r.fromAddress), references: "held",
+    accountId: ctx.accountId, senders, references: "held",
   });
+  const lists = new Set((await readListAddresses(asTx(ctx), ctx.accountId, senders)).keys());
   for (const r of rows) {
-    const evidence = found.get(r.fromAddress.trim().toLowerCase());
+    const sender = r.fromAddress.trim().toLowerCase();
+    const evidence = found.get(sender);
     const signals = checked.get(r.messageId);
     if (!evidence || !signals) continue;
     // An answer from an address the copy does not name, under a company's name, is no correspondent:
     // the gate's term, read off this row's own name too, which the backfill may not have stored yet.
-    if (!evidence.named && signals.impersonation) continue;
+    // Nor is a list address with a claim anywhere in its held mail, named or not: anyone on the list
+    // writes as it, and the row's fact is the bag's (`markedBrand`), not only this message's.
+    if (signals.impersonation && !evidence.named) continue;
+    if (lists.has(sender) && (signals.impersonation || r.markedBrand != null)) continue;
     signals.correspondent = { sentAt: evidence.sentAt.toISOString() };
     if (signals.auth !== "fail") signals.reasonCode = "correspondent";
   }
+  return lists;
 }
 
 /**
@@ -2589,9 +2597,9 @@ function parseConfirmedCeiling(body: ScreenerSuggestBody): number | null {
  * THE SENDER'S IDENTITY FACT ON THE ROW (`ScreenerItem.checked`): the newest marked held message's
  * brand, else the representative's own fact as the page computed it — so a NULL column never reads
  * as "nothing found". When it marks the sender, the signals carry it too, so the displayed advice
- * is capped whichever message it was bought on.
+ * is capped whichever message it was bought on. `list`: the address is one a list posts as.
  */
-function checkedOfSender(r: ScreenerRow, signals: SenderSignals | undefined): ScreenerItem["checked"] {
+function checkedOfSender(r: ScreenerRow, signals: SenderSignals | undefined, isList: boolean): ScreenerItem["checked"] {
   const brand = r.markedBrand ?? signals?.impersonation?.brand ?? null;
   if (brand === null) return undefined;
   if (signals && !signals.impersonation) {
@@ -2602,6 +2610,7 @@ function checkedOfSender(r: ScreenerRow, signals: SenderSignals | undefined): Sc
   return {
     reason: "impersonation", brand,
     domainShared: isSharedProviderDomain(senderDomainOf(r.fromAddress)),
+    ...(isList ? { list: true as const } : {}),
   };
 }
 

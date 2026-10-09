@@ -237,6 +237,11 @@ export interface SenderCheckDTO {
    * the column. The client's held-claim term reads it as the server's does.
    */
   by?: "ingest" | "backfill";
+  /**
+   * The address is one a mailing list posts as (mail 0150): anyone on the list can write as it.
+   * Present only as `true`; absent is "not a list address" and "an older server" alike.
+   */
+  list?: true;
 }
 
 /**

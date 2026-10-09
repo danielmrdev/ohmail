@@ -667,7 +667,8 @@
     "senderCheck": {
       "impersonation": "This message claims to be from {brand}, but {domain} isn't one of {brand}'s addresses.",
       "impersonationShared": "This message claims to be from {brand}, but anyone can register a {domain} address.",
-      "chip": "Not {brand}"
+      "chip": "Not {brand}",
+      "list": "Sent through a mailing list — anyone on it can write as this address."
     },
     "title": "Screener",
     "metaWaiting": "{count, plural, =0 {all clear} one {1 first-time sender waiting} other {# first-time senders waiting}}",
