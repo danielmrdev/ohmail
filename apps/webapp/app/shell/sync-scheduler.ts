@@ -24,7 +24,7 @@ import { subscribeSessionRevival } from "./session-truth";
  * stream — the stream is the wake, the poll drops to a safety cadence
  * ({@link WAKE_SAFETY_POLL_MS}); HIDDEN — no stream, one drain a minute
  * ({@link HIDDEN_POLL_MS}); stream REFUSED or failing — the 8 s poll,
- * terminal refusals falling back permanently. The cadence is a FLOOR only
+ * a refusal asked again once a minute. The cadence is a FLOOR only
  * ever pulled earlier (`armFloor`). Push is a hint, never a data path:
  * with SSE dead this is byte-identical to poll-only (`test/sync-wake.test.ts`).
  */
@@ -1090,9 +1090,9 @@ interface OnlineSource {
  * hidden" can be believed. The events read are the protocol's own: `open` (headers arrived — drain once to cover
  * whatever committed while disconnected; it relaxes nothing, a buffering proxy sends headers and holds every frame),
  * `ready` and `ping` (frames that prove the stream delivers), `sync` (the server's content-free wake frame: drain
- * now), and `error`, whose meaning splits on `readyState` — {@link WAKE_STREAM_CLOSED} is a terminal refusal
- * (`EventSource` stops reconnecting on any non-200, and so does this module, permanently for the session), anything
- * else is a transient the browser is already retrying natively.
+ * now), and `error`, whose meaning splits on `readyState` — {@link WAKE_STREAM_CLOSED} is a refusal
+ * (`EventSource` stops reconnecting on any non-200; this module asks again at most once per
+ * {@link WAKE_STREAM_REASK_MS}), anything else is a transient the browser is already retrying natively.
  */
 export interface WakeStreamLike {
   readonly readyState: number;
@@ -1111,6 +1111,13 @@ export const WAKE_STREAM_OPEN = 1;
  * buffering proxy or a half-open TCP keeps a stream open with nothing arriving.
  */
 export const WAKE_STREAM_SILENCE_MS = 30_000;
+
+/**
+ * A REFUSED stream is asked for again after this long, from the next settled drain: the per-account
+ * cap refuses while dead connections hold slots, and those free within the server's bounds. The
+ * wall's own minute (the terminal probe's floor), so a flag-off host costs one refusal a minute.
+ */
+export const WAKE_STREAM_REASK_MS = BACKOFF_CAP_MS;
 
 export interface SyncSchedulerOptions {
   /** Called on every settled tick and on the first one, with the value the UI renders. */
@@ -1142,7 +1149,7 @@ export interface SyncSchedulerOptions {
    * (`engine-config.ts` decides). Absent or `null` ⇒ this scheduler is poll-only, which is
    * the desktop build (its API is the local sidecar, which serves no `/events`), the demo
    * (never scheduled at all), and every environment with no `EventSource`. Called on start
-   * and again on each return to visibility; never again after a terminal refusal.
+   * and again on each return to visibility; after a refusal, at most once per {@link WAKE_STREAM_REASK_MS}.
    */
   wake?: (() => WakeStreamLike) | null;
   /** The hidden cadence; {@link HIDDEN_POLL_MS} unless a test shrinks it. */
@@ -1411,13 +1418,16 @@ export function startSyncScheduler(
    * the re-dial silent too, and each dial is a drain and a server invocation.
    */
   let watchdogRedials = 0;
-  /**
-   * The stream was refused TERMINALLY (`readyState` CLOSED after `error`: any non-200 — the
-   * flag off, capacity, an auth refusal; `EventSource` exposes no status so they are one case
-   * here). Permanent for the session: zero reconnect attempts, no storm, and nothing about
-   * auth is concluded from it — the poll path's coded envelopes decide that, and only they.
-   */
+  /** No stream can be built in this environment: poll-only for the session. */
   let streamDead = false;
+  /**
+   * When the stream was last REFUSED (`readyState` CLOSED after `error`: any non-200 — the flag
+   * off, capacity, an auth refusal; `EventSource` exposes no status so they are one case). Asked
+   * again from a settled drain once {@link WAKE_STREAM_REASK_MS} has passed, never sooner whatever
+   * wakes arrive; cleared by an `open`. Nothing about auth is concluded from it — the poll path's
+   * coded envelopes decide that, and only they.
+   */
+  let streamRefusedAt: number | null = null;
   /**
    * A wake arrived while a drain was in flight. Exactly ONE follow-up drain is armed when the
    * drain settles cleanly — a commit that landed after the in-flight drain's read would
@@ -1449,6 +1459,7 @@ export function startSyncScheduler(
 
   const connectStream = (): void => {
     if (!wakeFactory || streamDead || stopped || standingDown || stream !== null || !visible()) return;
+    if (streamRefusedAt !== null && Date.now() - streamRefusedAt < WAKE_STREAM_REASK_MS) return;
     /**
      * AND NOT WHILE THIS MIRROR'S IDENTITY DOES NOT HOLD: `/events` is a SESSION-authenticated stream and the server
      * emits the answering account's sequence on it. Opened without asking, a stale shell for A held a live
@@ -1499,6 +1510,7 @@ export function startSyncScheduler(
          * nothing in this window requested.
          */
         if (!identityHolds()) { closeStream(); return; }
+        streamRefusedAt = null;
         // Headers only: the poll relaxes on the first FRAME, and the watchdog waits for one.
         watch();
         // Drain once on every open, not only the first: a reconnect (the server cycles streams
@@ -1529,12 +1541,12 @@ export function startSyncScheduler(
           return;
         }
         if (s.readyState === WAKE_STREAM_CLOSED) {
-          // Non-200: EventSource will not reconnect, and neither will this module — permanent
-          // fallback to polling for the session. WHICH refusal it was is deliberately not asked
-          // (no status is exposed); an auth-dead session is detected by the poll path's coded
-          // envelopes, never inferred from a stream failure.
+          // Non-200: EventSource will not reconnect; this module asks again a minute on, from a
+          // settled drain. WHICH refusal it was is deliberately not asked (no status is exposed);
+          // an auth-dead session is detected by the poll path's coded envelopes, never inferred
+          // from a stream failure.
           closeStream();
-          streamDead = true;
+          streamRefusedAt = Date.now();
         }
         // WHATEVER THE FAILURE — coded refusal, transport death, a reconnect that cannot land,
         // a mid-stream abort — the floor comes back to the cadence for the CURRENT state: a
@@ -1750,6 +1762,8 @@ export function startSyncScheduler(
       failures = 0;
       bootstrapping = false;
       arm(steadyDelay());
+      // A refused stream is asked for again on this cadence; `connectStream` holds the minute.
+      if (streamRefusedAt !== null) connectStream();
       // THE EAGER BODY PASS, kicked from the one place that knows a drain just SETTLED cleanly.
       // Fire-and-forget: the settle must publish and re-arm without waiting on background
       // fetches, and the engine's pass never rejects (failures become per-id records). It lives
@@ -1963,7 +1977,7 @@ export function startSyncScheduler(
   gate?.onOpen(() => {
     // AND A CONNECT: a warm load starts before the confirm, so the opener below is refused by
     // identity and nothing asked again until a hide and show. It checks visibility, identity and
-    // a refused stream itself, so a flag-off server is still dialled once per session.
+    // a refused stream itself, so a flag-off server is still dialled at most once a minute.
     connectStream();
     wake();
   });

@@ -116,6 +116,8 @@ export const eventsRoutes: Route[] = [
       let lifetime: ReturnType<typeof setTimeout> | undefined;
       let wake: (() => void) | undefined;          // resolves the poll loop's sleep early
       let counted = false;
+      /** When the consumer last took every queued frame (the source's `pull`). */
+      let deliveredAt = Date.now();
       /** The hub unsubscribe, once subscribed. Idempotent by the hub's contract. */
       let unhook: (() => void) | null = null;
 
@@ -223,7 +225,14 @@ export const eventsRoutes: Route[] = [
           // heard nothing since `open` cannot tell a live stream from one a proxy is holding. A
           // client with no listener for a name ignores it.
           send("event: ready\ndata: {}\n\n");
-          heartbeat = setInterval(() => send("event: ping\ndata: {}\n\n"), cfg.heartbeatMs);
+          // THE SLOT GOES WITH THE DELIVERY: a live consumer takes every ping as it is sent, so
+          // nothing taken for two heartbeats (the client's own silence bound) is a consumer that has
+          // stopped, and its cap slot is freed now rather than at the lifetime. A runtime that keeps
+          // reading into a dead socket is not seen here; the lifetime bounds that one.
+          heartbeat = setInterval(() => {
+            if (Date.now() - deliveredAt >= 2 * cfg.heartbeatMs) { finish(); return; }
+            send("event: ping\ndata: {}\n\n");
+          }, cfg.heartbeatMs);
           lifetime = setTimeout(finish, cfg.lifetimeMs);
 
           // The serialized poll loop. Deliberately not awaited by `start` (the Response has to
@@ -252,6 +261,7 @@ export const eventsRoutes: Route[] = [
             }
           })();
         },
+        pull() { deliveredAt = Date.now(); },
         cancel() { closed = true; stop(); },
       });
 
