@@ -2206,10 +2206,9 @@ export async function startWorkerWithLock(
      * the whole cycle, and a pass held open by one slow lane kept eight dead connections attached for
      * 6.7 min on 2026-10-09 (their wakes failing `NoConnection`). `detachClosedBetweenTurns` serves
      * them at the dispatcher's top, where the roster yield already detaches; the queued entry then
-     * finds its runtime in {@link detachedClosed} and does nothing — never the re-attached one.
+     * finds a different runtime (or none) and does nothing — never the re-attached one.
      */
     const closedOwed = new Map<string, MailboxRuntime>();
-    const detachedClosed = new WeakSet<MailboxRuntime>();
     const CLOSED_DETACH_REASON = "the provider connection closed — the next roster pass re-attaches it on a fresh one";
 
     function handleConnectionError(mailboxId: string, accountId: string, err: unknown): void {
@@ -2232,8 +2231,10 @@ export async function startWorkerWithLock(
         // Already gone: the attach path's own catch owns it, a roster pass detached it, or a
         // second `error` followed the first. Nothing to do, and nothing to double-count.
         if (!rt || stopped) return;
+        // The error belongs to the runtime it was raised on: any detach since (between two turns,
+        // a roster pass, the reconnect list) and re-attach made a NEW one, which this must not close.
+        if (atError && rt !== atError) return;
         if (ended) {
-          if (atError && detachedClosed.has(atError)) return;
           if (closedOwed.get(mailboxId) === rt) closedOwed.delete(mailboxId);
           await detach(rt, CLOSED_DETACH_REASON);
           return;
@@ -3503,13 +3504,17 @@ export async function startWorkerWithLock(
         for (const id of inFlight.keys()) if (!overCapLanes.has(id)) return true;
         return false;
       }
-      /** {@link closedOwed}, served here: a runtime a lane is inside waits for that lane to return. */
+      /**
+       * {@link closedOwed}, served here: a runtime a lane is inside waits for that lane to return, and
+       * one this pass will QUARANTINE is left to the post-loop step (main's order) — detached and
+       * re-attached here, it would come back with zero failures and the quarantine would skip it.
+       */
       async function detachClosedBetweenTurns(): Promise<void> {
         for (const [id, rt] of [...closedOwed]) {
           if (laneBusy.has(id)) continue;
+          if (toQuarantine.some((q) => q.rt === rt)) continue;
           closedOwed.delete(id);
           if (runtimes.get(id) !== rt) continue;
-          detachedClosed.add(rt);
           await detach(rt, CLOSED_DETACH_REASON);
           requestRoster();
         }
