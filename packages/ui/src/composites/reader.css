@@ -58,6 +58,13 @@ body.reading .shell{opacity:.05;transform:scale(.994);pointer-events:none}
      app, on the app's own ground, themed with it. */
   .reader{padding:4vh 12px 10vh;background:var(--canvas)}
   .reader .msg{padding:30px 22px 26px}
+  /* THE BAR ENDS THE LETTER HERE AND NEVER STANDS ON IT. Pinned, it stopped short of the
+     overlay's bottom padding and sat over the letter's last lines, and the exhale above kept its
+     verbs at 35%, waiting for a pointer this width has none of — a touch has no hover and a
+     keyboard's focus stands on the sheet, not in the message. In flow, at full strength. */
+  .reader .msg-actions{position:static}
+  .reader .msg-actions .abar-row,
+  .reader .msg-actions .abar-panel{opacity:1}
   .reader .msg h2{font-size:24px}
   /* Fixed, so the exit is on screen at every scroll offset of a long thread; safe-area
      insets so it clears a notch. The float ground and lift keep it legible over whatever

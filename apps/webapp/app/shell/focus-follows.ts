@@ -64,9 +64,23 @@ function tryFocus(el: HTMLElement | null | undefined): boolean {
   return document.activeElement === el;
 }
 
-/** Into a surface: its first control, else the surface itself. */
+/** A control a person types or chooses in — it outranks a surface's declared entry. */
+const FIELD = 'input:not([type="button"]):not([type="submit"]), select, textarea, [contenteditable="true"]';
+
+/**
+ * Into a surface: its first control, else the surface itself. A surface may name the control ↵
+ * belongs to (`data-focus-entry`), and with no field before it focus lands there: a setup step
+ * whose body had no control landed on its first one, "Start over", while "Open ohmail" wore the
+ * ↵ badge, so ↵ started setup over.
+ */
 function enterInto(root: HTMLElement, atRoot = false): boolean {
-  if (!atRoot && tryFocus(tabbables(root)[0])) return true;
+  if (!atRoot) {
+    const stops = tabbables(root);
+    const entry = stops.findIndex((el) => el.hasAttribute("data-focus-entry"));
+    const field = stops.findIndex((el) => el.matches(FIELD));
+    if (entry >= 0 && (field < 0 || field > entry) && tryFocus(stops[entry])) return true;
+    if (tryFocus(stops[0])) return true;
+  }
   if (!root.hasAttribute("tabindex")) root.setAttribute("tabindex", "-1");
   return tryFocus(root);
 }

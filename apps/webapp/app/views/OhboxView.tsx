@@ -1233,6 +1233,14 @@ export function OhboxView({
    * asked at the moment the sheet closes: a rotated device is judged by where the reading ended.
    */
   const prevReaderId = useRef<string | null>(readerId);
+  /**
+   * THE CURSOR DOES NOT RIDE THE ROW INTO EARLIER. Leaving here files the held row under Earlier,
+   * and a cursor left on it read three ways once the window widened: the column showed the filed
+   * letter, focus stood on the row that took its place, and `j` walked on inside Earlier. So the
+   * cursor steps to the row `j` would have reached — where focus lands — and opens nothing.
+   * Assigned in render beside `order`, which is the walk it reads.
+   */
+  const walkAfterRef = useRef<(id: string) => string | null>(() => null);
   useEffect(() => {
     const was = prevReaderId.current;
     const closed = was !== null && readerId === null;
@@ -1245,7 +1253,9 @@ export function OhboxView({
     }
     if (typeof window === "undefined" || !window.matchMedia) return;
     if (!readColumnHidden()) return;
+    const stepTo = heldRead.current === was ? walkAfterRef.current(was) : null;
     leaveRead();
+    if (stepTo !== null) onSelectRef.current(stepTo);
   }, [readerId, leaveRead]);
 
   /**
@@ -1365,6 +1375,10 @@ export function OhboxView({
     return k < 0 ? -1 : navRows.length + k;
   };
   const at = orderIndexOf(selected?.id ?? null);
+  walkAfterRef.current = (id) => {
+    if (selected?.id !== id || at < 0) return null;
+    return order[at + 1] ?? order[at - 1] ?? null;
+  };
   /**
    * ONE WALK, FOUR KEYCAPS. ↓/↑ are `j`/`k` — same steps, same entry moves, same
    * `selectByUser` and therefore the same dwell guard: an arrow flick down the list arms

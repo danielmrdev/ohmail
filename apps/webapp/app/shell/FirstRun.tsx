@@ -1088,7 +1088,7 @@ export function FirstRun({
 
   /** The primary verb of a step whose Enter submits its form. */
   const next = (label: string, extra: { disabled?: boolean } = {}) => (
-    <Button variant="primary" type="submit" kbdHint="↵" disabled={busy || extra.disabled}>
+    <Button variant="primary" type="submit" kbdHint="↵" data-focus-entry disabled={busy || extra.disabled}>
       {label}
     </Button>
   );
@@ -1137,7 +1137,7 @@ export function FirstRun({
             <h1 id={`${ids}-title`}>{t("vanishedTitle")}</h1>
             <p className="sub">{t("vanishedLead")}</p>
             <SettingsActions>
-              <Button variant="primary" type="submit" kbdHint="↵">{t("vanishedLeave")}</Button>
+              <Button variant="primary" type="submit" kbdHint="↵" data-focus-entry>{t("vanishedLeave")}</Button>
             </SettingsActions>
           </>
         )) : null}
@@ -1155,7 +1155,7 @@ export function FirstRun({
               ))}
             </SettingsActions>
             <SettingsActions>
-              <Button variant="primary" type="submit" kbdHint="↵">{t("chooseLeave")}</Button>
+              <Button variant="primary" type="submit" kbdHint="↵" data-focus-entry>{t("chooseLeave")}</Button>
             </SettingsActions>
           </>
         )) : null}

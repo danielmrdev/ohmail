@@ -54,7 +54,7 @@ import type { ShellOpenState } from "./shell-open-state";
 import type { ShellVerbs } from "./shell-verbs";
 import { useStableCallback } from "./stable-callback";
 import { useSwitchEnd } from "./ui-vitals";
-import { currentZone, setRailSummon } from "./zone-nav";
+import { currentZone, leaveRailAfterGoTo, setRailSummon } from "./zone-nav";
 import { settingsPanes, type WiredPanes } from "../views/settings-panes";
 
 /**
@@ -339,16 +339,15 @@ export function useShellKeys({
   });
 
   /**
-   * The Zero drawer summon (zone-nav's module seam): under zero the sub-1024px rail is a
-   * docked icon ribbon (off canvas under 392px), and `h`/← toward it means "summon the full
-   * drawer" — §12's one meaning for `h`; the ribbon itself never auto-floats. Registered
-   * ONLY while zero is active, so classic's keyboard behavior does not move.
+   * The drawer summon (zone-nav's module seam): wherever the rail is a drawer — classic below
+   * 1024px, zero's ribbon tiers — `h`/← toward it means "summon the full drawer", the key twin
+   * of ≡; the ribbon itself never auto-floats. Classic used to be left out, so at 390 ← sat in
+   * the `?` sheet as "Focus the menu" and did nothing at all.
    */
   useEffect(() => {
-    if (theme.layout !== "zero") return;
     setRailSummon(() => setRailOpen(true));
     return () => setRailSummon(null);
-  }, [theme.layout]);
+  }, []);
 
   /**
    * The layout-cycle reconcile (review, rounds 1–3). The narrow-only surfaces — the reader sheet, the Screener's full
@@ -473,12 +472,15 @@ export function useShellKeys({
       (x) => onMessageAction("resurface", x),
     ));
 
+  /* A go-to by key: the place, then focus handed from the rail to the list (`leaveRailAfterGoTo`). */
+  const byKey = (to: () => void) => (): void => { to(); leaveRailAfterGoTo(); };
+
   /* ── the global key map. Views declare their own; see `keymap.tsx` for precedence. ── */
   const globalKeys: KeyBinding[] = [
-    { chord: "g o", group: "navigate", label: t("shortcuts.goOhbox"), run: () => go("ohbox") },
-    { chord: "g r", group: "navigate", label: t("shortcuts.goReads"), run: () => go("reads") },
-    { chord: "g e", group: "navigate", label: t("shortcuts.goReceipts"), run: () => go("receipts") },
-    { chord: "g s", group: "navigate", label: t("shortcuts.goScreener"), run: () => go("screener") },
+    { chord: "g o", group: "navigate", label: t("shortcuts.goOhbox"), run: byKey(() => go("ohbox")) },
+    { chord: "g r", group: "navigate", label: t("shortcuts.goReads"), run: byKey(() => go("reads")) },
+    { chord: "g e", group: "navigate", label: t("shortcuts.goReceipts"), run: byKey(() => go("receipts")) },
+    { chord: "g s", group: "navigate", label: t("shortcuts.goScreener"), run: byKey(() => go("screener")) },
     /* ── THE REST OF THE `g` LEADER (the ohmarchy keymap, Phase 1) ──────────────────────
        The prototype's grammar reaches every place through `g`; the shipping leader stopped
        at five. The three triage horizons take the pile's own initial (Later / Parked /
@@ -487,11 +489,11 @@ export function useShellKeys({
        rows are deliberately NOT here: `g c` said Receipts, but `g e` shipped first and c
        is Compose everywhere else in the app — the shipping key wins; and `g /` duplicated
        `/`, which is already global — a second spelling would be sheet noise, not grammar. */
-    { chord: "g l", group: "navigate", label: t("shortcuts.goLater"), run: () => goTriage("reply") },
-    { chord: "g p", group: "navigate", label: t("shortcuts.goParked"), run: () => goTriage("aside") },
-    { chord: "g b", group: "navigate", label: t("shortcuts.goResurface"), run: () => goTriage("resurface") },
-    { chord: "g d", group: "navigate", label: t("shortcuts.goDrafts"), run: () => go("drafts") },
-    { chord: "g h", group: "navigate", label: t("shortcuts.goHistory"), run: () => go("history") },
+    { chord: "g l", group: "navigate", label: t("shortcuts.goLater"), run: byKey(() => goTriage("reply")) },
+    { chord: "g p", group: "navigate", label: t("shortcuts.goParked"), run: byKey(() => goTriage("aside")) },
+    { chord: "g b", group: "navigate", label: t("shortcuts.goResurface"), run: byKey(() => goTriage("resurface")) },
+    { chord: "g d", group: "navigate", label: t("shortcuts.goDrafts"), run: byKey(() => go("drafts")) },
+    { chord: "g h", group: "navigate", label: t("shortcuts.goHistory"), run: byKey(() => go("history")) },
     /* `g t` — the destination-row rule: ONE message for the chord, the palette row and the `?`
        sheet, so the three lists of the same instruction cannot drift by a word. `disabled` where
        the client has no Trash transport (the demo), which keeps the sheet LISTING it — "a
@@ -503,9 +505,9 @@ export function useShellKeys({
       label: t("shortcuts.goTrash"),
       disabled: !engine.trashAvailable(),
       disabledReason: "trash_unavailable",
-      run: () => go("trash"),
+      run: byKey(() => go("trash")),
     },
-    { chord: "g ,", group: "navigate", label: t("shortcuts.goSettings"), run: () => go("settings") },
+    { chord: "g ,", group: "navigate", label: t("shortcuts.goSettings"), run: byKey(() => go("settings")) },
     { chord: "/", group: "navigate", label: t("shortcuts.search"), run: () => go("search") },
     {
       /* Pull new mail — the doorbell's own verb, from the keyboard. The SAME single-flight
@@ -1326,6 +1328,8 @@ export function useShellKeys({
         const pile = TRIAGE_PILE_OF_RAIL[item.id];
         if (pile) goTriage(pile);
         else go(item.id as "ohbox");
+        // A rail row pressed earlier keeps focus otherwise, and ↵ would press it.
+        leaveRailAfterGoTo();
       },
     })),
     "global",

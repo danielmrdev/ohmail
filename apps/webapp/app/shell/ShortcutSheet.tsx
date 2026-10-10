@@ -51,6 +51,12 @@ export function ShortcutSheet({ open, onClose }: { open: boolean; onClose: () =>
   const { bindings, mod } = useKeymap();
   const sheetRef = useRef<HTMLDivElement>(null);
   useFocusFollows(sheetRef, { active: open });
+  /* THE LISTENER OUTLIVES A RENDER. A key that does its job behind the sheet (`j` moving the
+     cursor) re-renders the shell before this listener is called — the browser commits between
+     two listeners — and a subscription keyed on `onClose`, a fresh closure every render, was
+     taken down and put back mid-dispatch, so the key never reached it. Keyed on `open` alone. */
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -66,11 +72,11 @@ export function ShortcutSheet({ open, onClose }: { open: boolean; onClose: () =>
     const onKey = (e: KeyboardEvent) => {
       // Tab moves inside the sheet (it is `aria-modal`); it is not a dismissal.
       if (MODIFIER_KEYS.has(e.key) || e.key === "Tab") return;
-      onClose();
+      closeRef.current();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
   const groups = groupedBindings(bindings);

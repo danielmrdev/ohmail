@@ -121,13 +121,11 @@ function railHidden(): boolean {
 }
 
 /**
- * THE ZERO LADDER'S DRAWER SUMMON — `h` keeps its one meaning (OHMARCHY-PLAN §12: "toward the rail", which at ribbon
- * widths means drawer-in). Under the Zero layout the rail below 1024px is a docked icon ribbon (or, under 392px, off
- * canvas entirely), and the FULL rail is a user-summoned drawer — so "step into the rail" where the full rail is not
- * standing means SUMMON it, not focus a translated button nobody can see. A module-level seam, not a layout read: the
- * shell REGISTERS the summon only while the Zero layout is active (`AppShell`'s effect — the one ledgered layout
- * branch), so under classic this is null and `enterRail` refuses exactly as it always has. Zone-nav itself never asks
- * the appearance, which keeps the census's zone model appearance-free.
+ * THE DRAWER SUMMON — `h` keeps its one meaning (OHMARCHY-PLAN §12: "toward the rail", which where the rail is a
+ * drawer means drawer-in). Below 1024px the full rail is a summoned drawer in both layouts (classic's ≡; zero's ribbon,
+ * off canvas under 392px), so "step into the rail" where the full rail is not standing means SUMMON it, not focus a
+ * translated button nobody can see. A module-level seam the shell registers (`shell-keys.tsx`); with none registered
+ * `enterRail` refuses. Zone-nav itself never asks the appearance, which keeps the census's zone model appearance-free.
  */
 let railSummon: (() => void) | null = null;
 export function setRailSummon(fn: (() => void) | null): void {
@@ -247,7 +245,7 @@ function focusRailWhenOpen(tries = 12): void {
 /** Step into the rail, landing on the row for the view the reader is already in. */
 function enterRail(): void {
   if (railHidden()) {
-    // Zero only (see setRailSummon): the drawer is the rail's reachable form here.
+    // The drawer is the rail's reachable form here (see setRailSummon).
     if (railSummon) {
       railSummon();
       focusRailWhenOpen();
@@ -257,6 +255,18 @@ function enterRail(): void {
   const active = document.querySelector<HTMLElement>(`${RAIL} .ritem.on`);
   if (tryFocus(active)) return;
   for (const el of railItems()) if (tryFocus(el)) return;
+}
+
+/**
+ * A GO-TO BY KEY HANDS FOCUS BACK TO THE LIST. A rail row pressed earlier kept focus after `1` or
+ * `g o` took the person elsewhere, so ↵ — the browser's activation of the focused button — opened
+ * that row's section instead of the letter under the list cursor. Released to the body, which is
+ * the list zone by derivation; focus anywhere but the rail is the person's own and stays.
+ */
+export function leaveRailAfterGoTo(): void {
+  if (typeof document === "undefined") return;
+  const el = document.activeElement;
+  if (el instanceof HTMLElement && el.closest(RAIL)) el.blur();
 }
 
 /** ↑/↓ inside the rail: the next row that accepts focus, so a closed group is no stop. */

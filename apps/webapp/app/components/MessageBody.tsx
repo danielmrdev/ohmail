@@ -2925,8 +2925,10 @@ a[data-ohmail-inert]{text-decoration:line-through;opacity:.75}
    blanket width:auto would not have been: that would collapse a full-width wrapper to its
    contents.
 
-   min-width on cells because a min-width is the other way to pin a table wider than its
-   container, and it beats max-width when the two disagree. table-layout:auto because a fixed
+   min-width on the layout boxes (a table, its cells, the divs and centers mail is built of)
+   because a min-width is the other way to pin a letter wider than its container, and it beats
+   max-width when the two disagree: an account letter's outer table, min-width:348px, stood
+   42px past a 322px phone column. table-layout:auto because a fixed
    table lays its columns out from the first row's declared widths and ignores the cap. And
    img{height:auto} because clamping a picture's WIDTH without releasing its height attribute
    is how a photograph arrives stretched.
@@ -2975,7 +2977,7 @@ a[data-ohmail-inert]{text-decoration:line-through;opacity:.75}
 :root[data-ohmail-reflow] body{font-size:${NATIVE_FONT_SIZE};line-height:${NATIVE_LINE_HEIGHT};
   overflow-wrap:anywhere}
 :root[data-ohmail-reflow] *{max-width:100% !important}
-:root[data-ohmail-reflow] td,:root[data-ohmail-reflow] th{min-width:0 !important}
+:root[data-ohmail-reflow] :is(table,td,th,div,center){min-width:0 !important}
 :root[data-ohmail-reflow] table{table-layout:auto !important}
 :root[data-ohmail-reflow] img{height:auto !important}
 :root[data-ohmail-reflow] table[data-ohmail-datatable] td,:root[data-ohmail-reflow] table[data-ohmail-datatable] th{overflow-wrap:break-word !important}
