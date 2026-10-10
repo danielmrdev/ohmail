@@ -8936,6 +8936,15 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
                   + "the screening baseline and the window were written together, and the lease "
                   + "is still the authority",
               });
+              /* THE CONSENT WAKES THE GATE. The stamp is spent by the next gated pass, which was the
+                 next poll plus the first-page grace (~17 s measured); this asks now. The pass queues
+                 behind a drain in flight, so the first sync still ends before any claim, and the
+                 gate keeps refusing a handed-back mailbox. Fire-and-forget: the answer stays
+                 immediate and the drain reports its own failures. */
+              if (result.outcome === "authorized") {
+                void runtimes.get(mailboxId)?.syncUntilQuiet(undefined, { force: true })
+                  .catch(() => { /* the drain reports its own failures; a press must not crash the host */ });
+              }
               return new Response(
                 JSON.stringify({ outcome: result.outcome, previousReason: result.previousReason }),
                 { status: 200, headers: { "content-type": "application/json" } },
