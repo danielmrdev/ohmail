@@ -161,7 +161,8 @@ export async function senderCheckReentered(
 
 /** The cycle tail's door to the pass: which accounts it walks, and one account's call. */
 export interface SenderCheckRetirement {
-  enter(db: Tx, accounts: readonly string[], log?: Logger): Promise<readonly string[]>;
+  /** `noteFault` hears the re-arm read's failure before it is swallowed (the worker's runner). */
+  enter(db: Tx, accounts: readonly string[], log?: Logger, noteFault?: (err: unknown) => void): Promise<readonly string[]>;
   run(db: Tx, accountId: string, log?: Logger): Promise<SenderCheckBackfillResult>;
 }
 
@@ -184,7 +185,7 @@ export function senderCheckRetirement(opts: {
   /** Account → the instant from which its scope is known empty. */
   const retired = new Map<string, number>();
   return {
-    async enter(db, accounts, log = silentLogger) {
+    async enter(db, accounts, log = silentLogger, noteFault) {
       const here = new Set(accounts);
       for (const a of [...retired.keys()]) if (!here.has(a)) retired.delete(a);
       const asleep = accounts.filter((a) => retired.has(a));
@@ -199,6 +200,7 @@ export function senderCheckRetirement(opts: {
             else retired.set(a, readAt);
           }
         } catch (err) {
+          noteFault?.(err);
           log.warn("sender_check_rearm_read_failed", {
             err,
             reason: "no retired account is re-armed this walk and each keeps its last reading, so " +

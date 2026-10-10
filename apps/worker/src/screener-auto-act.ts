@@ -65,6 +65,9 @@ export interface ScreenerAutoActDeps {
    * {@link screenerActConsentFrom}; the callers census holds that.
    */
   consent: ScreenerActConsent | null;
+  /** Hears a sender's failure before it is swallowed — the worker's runner, which announces a
+   *  database connection fault for the shard; the pass goes on to the next sender either way. */
+  noteFault?: (err: unknown) => void;
 }
 
 /** A given consent to act on suggestions. Asked again per sender, under the account's row lock. */
@@ -343,6 +346,7 @@ export async function screenerAutoActPass(
       }
       // The sender stays waiting with their Apply button. Named by class so an operator can tell a
       // demoted organizer from a removed mailbox from a store fault.
+      deps.noteFault?.(err);
       result.failed++;
       log.error("screener_auto_act_failed", {
         // `err` is a logger-owned slot and the class is derived there; a thrown STRING loses its
@@ -352,7 +356,7 @@ export async function screenerAutoActPass(
         reason: "this sender was not filed and stays in the Screener carrying the same suggestion, "
           + "so the person's own Apply still files them and the next cycle tries again",
       });
-      await recordActRefusal(db, accountId, plan.suggestionId, actRefusalOf(err), now(), log);
+      await recordActRefusal(db, accountId, plan.suggestionId, actRefusalOf(err), now(), log, deps.noteFault);
     }
   }
 
@@ -397,6 +401,7 @@ export function actRefusalOf(err: unknown): ScreenerActRefusal {
  */
 async function recordActRefusal(
   db: Tx, accountId: string, suggestionId: string, refusal: ScreenerActRefusal, at: Date, log: Logger,
+  noteFault?: (err: unknown) => void,
 ): Promise<void> {
   try {
     await fencedAccountWrite(db, { accountId }, async (tx) => {
@@ -414,6 +419,7 @@ async function recordActRefusal(
       }]);
     });
   } catch (err) {
+    noteFault?.(err);
     log.error("screener_auto_act_refusal_unrecorded", {
       accountId, err,
       reason: "the refused act could not be recorded on its suggestion, so the Screener says nothing "

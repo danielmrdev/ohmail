@@ -58,6 +58,9 @@ export interface ThreadJoinHealDeps {
    * the window between the facts read and the transaction — the race the locked-row reads
    * exist for. Production callers never pass it. */
   beforeMergeAttempt?: () => Promise<void> | void;
+  /** Hears a group's second failure before it is counted and passed — the worker's runner, which
+   *  announces a database connection fault for the shard; the walk goes on either way. */
+  noteFault?: (err: unknown) => void;
   /**
    * Resume AFTER this group. Without it a capped run's successor rescans from the top, and a
    * group whose verdict is "no" never leaves the candidate predicate — so a caller looping on
@@ -425,6 +428,7 @@ export async function threadJoinHealPass(deps: ThreadJoinHealDeps): Promise<Thre
         try {
           moved = await mergeOnce();
         } catch (err2) {
+          deps.noteFault?.(err2);
           result.failed += 1;
           log.error("thread_join_heal_group_failed", {
             accountId: group.account_id, threadId: target.id, err: err2,

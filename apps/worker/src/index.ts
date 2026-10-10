@@ -82,6 +82,7 @@ import { breachSetAside, DeadLetterLedger, isDatabaseFault, isSharedDatabaseFaul
 import { KnownSetCache } from "./known-set.js";
 import { checkedDial, dialHostGuardFromEnv } from "./dial-host-guard.js";
 import { markDatabaseFaults, asDatabaseFault } from "./db-fault.js";
+import { tailStageRunner } from "./tail-stage.js";
 import { runKickstart } from "./kickstart.js";
 import {
   runThreadBackfill, THREAD_BACKFILL_SLICE_MS, THREAD_BACKFILL_SLICE_PAGES,
@@ -1088,6 +1089,8 @@ export async function startWorkerWithLock(
     ): void {
       if (isSharedDatabaseFault(err)) noteDatabaseFault(err, mb);
     }
+    /** The cycle tail's one runner: announces a connection fault before the stage's own line. */
+    const { runTailStage, tailFaultNote } = tailStageRunner((err) => noteDatabaseFault(err));
 
     function clearDatabaseFault(): void {
       if (dbFaultSince === null) return;
@@ -4612,17 +4615,15 @@ export async function startWorkerWithLock(
          `accountsOf(await loadEnabledMailboxes(…))` and threw the rows away, which is the mailbox
          scope the bubble-up pass below now needs. One read, same shard predicate, same fallback. */
       let passMailboxes = dutyMailboxes;
-      try {
-        passMailboxes = await asDatabaseFault("cycle.loadServedAccounts",
-          () => loadEnabledMailboxes(db, selection, new Date(), parkedAccountsReader ?? undefined));
-      } catch (err) {
-        noteIfSharedDatabaseFault(err);
+      await runTailStage("cycle.loadServedAccounts", "database", async () => {
+        passMailboxes = await loadEnabledMailboxes(db, selection, new Date(), parkedAccountsReader ?? undefined);
+      }, (err) => {
         log.error("served_accounts_load_failed", {
           err, accounts: dutyAccounts.length,
           reason: "the shard-wide account list could not be read; this cycle's DB passes run " +
             "over the ATTACHED duty only, so an account past the mailbox cap is skipped once",
         });
-      }
+      });
       return passMailboxes;
     }
 
@@ -4643,16 +4644,15 @@ export async function startWorkerWithLock(
         enter: async (accounts) => {
           owedReadAt = new Date();
           let owedRows: Array<{ accountId: string; owedAt: Date }> = [];
-          try {
+          await runTailStage("cycle.owedSuggestAccounts", "database", async () => {
             owedRows = await owedSuggestAccounts(db as unknown as Tx);
-          } catch (err) {
-            noteIfSharedDatabaseFault(err);
+          }, (err) => {
             log.warn("screener_suggest_owed_read_failed", {
               err,
               reason: "the owed marks could not be read; every opted-in account is still served " +
                 "by the suggest section below this cycle — latency, not loss",
             });
-          }
+          });
           const servedHere = new Set(accounts);
           const owed: string[] = [];
           for (const r of owedRows) {
@@ -4665,10 +4665,12 @@ export async function startWorkerWithLock(
         },
         run: async (accountId) => {
           suggestOwedHints.delete(accountId);
-          try {
-            const applied = await screenerAutoApplyPass(
+          // MIXED: the suggest pass buys from the model and the entitlements program, so only the
+          // database-only calls around it carry the tag.
+          await runTailStage("cycle.screenerSuggestOwedServe", "mixed", async () => {
+            const applied = await asDatabaseFault("cycle.screenerAutoApplyPass", () => screenerAutoApplyPass(
               db as unknown as Tx, { accountId, log, walk: screenerAutoWalk, until: sliceUntil() }, new Date(),
-            );
+            ));
             if (applied.ran && applied.moved > 0) {
               log.info("screener_auto_apply_pass", { accountId, moved: applied.moved, capped: applied.capped });
             }
@@ -4689,23 +4691,26 @@ export async function startWorkerWithLock(
             }
             // Cleared after ANY non-throwing pass, opted-in or not: a stale mark for an account
             // that opted out would otherwise lead every cycle for ever.
-            await clearScreenerSuggestOwed(db as unknown as Tx, accountId, owedReadAt);
+            await asDatabaseFault("cycle.clearScreenerSuggestOwed",
+              () => clearScreenerSuggestOwed(db as unknown as Tx, accountId, owedReadAt));
             // AND ACT ON WHAT IS NOW STORED, on the act's own consent. Here rather than a cycle
             // later so advice bought this serve is acted on this serve.
-            const acted = await screenerAutoActPass(
-              db as unknown as Tx, { accountId, log, until: sliceUntil(), consent: screenerActConsentFrom(accountId) }, new Date(),
-            );
+            const acted = await asDatabaseFault("cycle.screenerAutoActPass", () => screenerAutoActPass(
+              db as unknown as Tx, {
+                accountId, log, until: sliceUntil(), consent: screenerActConsentFrom(accountId),
+                noteFault: tailFaultNote("cycle.screenerAutoActPass"),
+              }, new Date(),
+            ));
             if (acted.ran && (acted.filed > 0 || acted.failed > 0)) {
               log.info("screener_auto_act_pass", { accountId, applied: acted.filed, failed: acted.failed });
             }
-          } catch (err) {
-            noteIfSharedDatabaseFault(err);
+          }, (err) => {
             log.error("screener_suggest_owed_serve_failed", {
               accountId, err,
               reason: "the owed serve failed before its mark was cleared, so the next cycle " +
                 "retries it; nothing is marked twice and the suggest section below still runs",
             });
-          }
+          });
         },
       },
       bubble_up: {
@@ -4725,35 +4730,33 @@ export async function startWorkerWithLock(
           return true;
         },
         run: async (accountId, walk) => {
-          try {
-            // Scoped per account even though this process is the only writer of its shard: the
-            // pass's own header explains why (an unscoped pass under a shard-specific lock
-            // would let shard 0 mutate shard 1's rows), and per-account isolation keeps one
-            // account's failure from skipping the rest.
-            /* AND PER MAILBOX, from the roster rows this cycle read: Cloud holds the lease one
-               mailbox at a time, so an account whose second mailbox is organized by somebody's
-               desktop gets that mailbox's rows left alone. Read here rather than assumed — an
-               account this process reads entirely yields an empty set and flips nothing. */
-            const { flipped } = await asDatabaseFault("cycle.bubbleUpPass",
-              () => bubbleUpPass(db as unknown as Tx, new Date(), {
-                accountId, mailboxIds: organizedMailboxIdsOf(walk.mailboxes, accountId),
-              }));
+          // Scoped per account even though this process is the only writer of its shard: the
+          // pass's own header explains why (an unscoped pass under a shard-specific lock
+          // would let shard 0 mutate shard 1's rows), and per-account isolation keeps one
+          // account's failure from skipping the rest.
+          /* AND PER MAILBOX, from the roster rows this cycle read: Cloud holds the lease one
+             mailbox at a time, so an account whose second mailbox is organized by somebody's
+             desktop gets that mailbox's rows left alone. Read here rather than assumed — an
+             account this process reads entirely yields an empty set and flips nothing. */
+          await runTailStage("cycle.bubbleUpPass", "database", async () => {
+            const { flipped } = await bubbleUpPass(db as unknown as Tx, new Date(), {
+              accountId, mailboxIds: organizedMailboxIdsOf(walk.mailboxes, accountId),
+            });
             if (flipped > 0) log.info("bubble_up_flipped", { accountId, flipped });
-          } catch (err) {
-            noteIfSharedDatabaseFault(err);
+          }, (err) => {
             log.error("bubble_up_failed", {
               accountId, err,
               reason: "a snoozed message stayed hidden past its bubble_up_at; the next pass " +
                 "retries it, the predicate is the row's own state and nothing is marked",
             });
-          }
+          });
         },
       },
       workflow: {
         // Per-account DB passes, isolated per account so one account's workflow
         // error can never abort another account's drain — nor the sync cycle.
         run: async (accountId) => {
-          try {
+          await runTailStage("cycle.workflow", "mixed", async () => {
             const nowTick = new Date();
             await asDatabaseFault("cycle.workflowTimeScanPass",
               () => workflowTimeScanPass(db as unknown as Tx, { accountId }, nowTick));
@@ -4770,15 +4773,14 @@ export async function startWorkerWithLock(
               },
               nowTick,
             );
-          } catch (err) {
-            noteIfSharedDatabaseFault(err);
+          }, (err) => {
             log.error("workflow_drain_failed", { accountId, err });
-          }
+          });
         },
       },
       gate_release: {
         // Give back the mail stuck at the screening gate behind a decision the account already made.
-        // BEFORE the retro pass below and in its own try/catch and loop, for that loop's reason: one
+        // BEFORE the retro pass below and in its own runner call and loop, for that loop's reason: one
         // account's failure must not skip the rest. Running first is deliberate — it arms the release
         // licence on rules the retro pass then walks in the SAME cycle, so an affected account is
         // repaired in one pass of the tail instead of two. For every account already swept the call is
@@ -4787,7 +4789,7 @@ export async function startWorkerWithLock(
         // two passes below state without naming the forbidden package (`deps.test.ts` scans this
         // file's raw text).
         run: async (accountId) => {
-          try {
+          await runTailStage("cycle.gateReleasePass", "database", async () => {
             const r = await gateReleasePass(db as unknown as Tx, { accountId, log }, new Date());
             if (r.ran && (r.rulesArmed > 0 || r.contactRowsReleased > 0 || r.completed)) {
               log.info("gate_release_swept", {
@@ -4795,14 +4797,14 @@ export async function startWorkerWithLock(
                 contactRowsReleased: r.contactRowsReleased, completed: r.completed,
               });
             }
-          } catch (err) {
+          }, (err) => {
             log.error("gate_release_failed", {
               accountId, err,
               reason: "no account was marked swept, so the next cycle starts it again; a rule this " +
                 "pass already armed is in flight and drops out of its own selection, and a row it " +
                 "already released is desired into the Ohbox and no longer at the gate",
             });
-          }
+          });
         },
       },
       sender_check_backfill: {
@@ -4811,17 +4813,18 @@ export async function startWorkerWithLock(
         // both sets answer empty the account RETIRES in this process and costs nothing; one read on
         // entry re-arms an account a row re-entered (`senderCheckRetirement`). Contained: a failure
         // leaves the rows unchecked until the next tail.
-        enter: (accounts) => senderCheckTail.enter(db as unknown as Tx, accounts, log),
+        enter: (accounts) => senderCheckTail.enter(db as unknown as Tx, accounts, log,
+          tailFaultNote("cycle.senderCheckReentered")),
         run: async (accountId) => {
-          try {
+          await runTailStage("cycle.senderCheckBackfillPass", "database", async () => {
             await senderCheckTail.run(db as unknown as Tx, accountId, log);
-          } catch (err) {
+          }, (err) => {
             log.error("sender_check_backfill_failed", {
               accountId, err,
               reason: "these rows keep no identity fact yet; the Screener page computes it for a held " +
                 "representative meanwhile, and the next tail tries the same page again",
             });
-          }
+          });
         },
       },
       list_address_backfill: {
@@ -4832,21 +4835,18 @@ export async function startWorkerWithLock(
         // The pass talks only to our database, so its throw is named as the database's and an
         // outage met here is announced for the shard, never swallowed as one account's failure.
         run: async (accountId) => {
-          try {
-            await asDatabaseFault("cycle.listAddressBackfillPass",
-              () => listAddressBackfillPass(db as unknown as Tx, { accountId, log }));
-          } catch (err) {
-            noteIfSharedDatabaseFault(err);
-            log.error("list_address_backfill_failed", {
-              accountId, err,
-              reason: "the account is not stamped, so the next tail reads its stored mail again; " +
-                "what was recorded stays, and new mail records its own list addresses at ingest",
+          await runTailStage("cycle.listAddressBackfillPass", "database",
+            () => listAddressBackfillPass(db as unknown as Tx, { accountId, log }), (err) => {
+              log.error("list_address_backfill_failed", {
+                accountId, err,
+                reason: "the account is not stamped, so the next tail reads its stored mail again; " +
+                  "what was recorded stays, and new mail records its own list addresses at ingest",
+              });
             });
-          }
         },
       },
       rule_retro: {
-        // Apply a new rule to mail that is already filed. Its OWN try/catch and loop, not folded into the
+        // Apply a new rule to mail that is already filed. Its OWN runner call and loop, not folded into the
         // workflow block, for that block's reason: one account's failure must not skip the rest. It runs
         // HERE, on the worker, not the API host, because writing thousands of `folder_state` rows inside
         // `POST /rules` is what this slice stops — the sheet used to fire one `POST /messages/:id/move`
@@ -4857,30 +4857,29 @@ export async function startWorkerWithLock(
         // NOT time-gated, unlike `bubbleUpPass`: its per-cycle write budget bounds it, its owed probe is
         // one indexed query, and a user who clicked a destination is waiting for their mail to move.
         run: async (accountId) => {
-          try {
-            // The pass talks only to our database, so its throw is named as the database's.
-            const { moved, completed, capped } = await asDatabaseFault("cycle.ruleRetroPass", () => ruleRetroPass(
+          // The pass talks only to our database, so its throw is named as the database's.
+          await runTailStage("cycle.ruleRetroPass", "database", async () => {
+            const { moved, completed, capped } = await ruleRetroPass(
               db as unknown as Tx,
               // Per-MAILBOX trust, off the credential row's own IMAP host, because one
               // account's mailboxes can sit at different providers. The pass caches per mailbox.
               { accountId, log, trustedAuthservIdsFor: mailboxProviderAuthservIds },
               new Date(),
-            ));
+            );
             if (moved > 0 || completed > 0) {
               log.info("rule_retro_pass", { accountId, moved, completed, capped });
             }
             // The moves are desired state the account's mailboxes push on their next TURN; woken,
             // that turn is the next free lane, not the next pass (the tail yields to a wake).
             if (moved > 0) wakeAccount(accountId);
-          } catch (err) {
-            noteIfSharedDatabaseFault(err);
+          }, (err) => {
             log.error("rule_retro_failed", {
               accountId, err,
               reason: "no rule was marked applied and no cursor advanced past uncommitted work, " +
                 "so the next cycle resumes from `retro_cursor`; mail already moved is desired " +
                 "state the reconciler converges independently of this pass",
             });
-          }
+          });
         },
       },
       gap_catchup: {
@@ -4888,31 +4887,28 @@ export async function startWorkerWithLock(
         // organizes, COUNTED for the person and filed by their rules only on their press. After the
         // visit, so the observed folders are this tenure's. Desired state only.
         run: async (accountId) => {
-          try {
-            // Our database only, so its throw is named as the database's: a refused connection is a
-            // bare `ECONNREFUSED`, which reads as the shard's only when tagged.
-            const { offered, moved, completed } = await asDatabaseFault("cycle.gapCatchupPass", () => gapCatchupPass(
+          // Our database only, so its throw is named as the database's: a refused connection is a
+          // bare `ECONNREFUSED`, which reads as the shard's only when tagged.
+          await runTailStage("cycle.gapCatchupPass", "database", async () => {
+            const { offered, moved, completed } = await gapCatchupPass(
               db as unknown as Tx,
               { accountId, log, trustedAuthservIdsFor: mailboxProviderAuthservIds },
               new Date(),
-            ));
+            );
             if (offered + moved + completed > 0) {
               log.info("gap_catchup_pass", { accountId, offered, moved, completed });
             }
-          } catch (err) {
-            // The mailbox's verdict may be swallowed here, the shard's may not: a database cut that
-            // lands in this stage still reaches `/health` and the quarantine's exemption.
-            noteIfSharedDatabaseFault(err);
+          }, (err) => {
             log.error("gap_catchup_failed", {
               accountId, err,
               reason: "the letters that arrived while nothing organized this mailbox were not counted or "
                 + "filed this cycle; the window stays open and the next cycle resumes it",
             });
-          }
+          });
         },
       },
       ohbox_tidy: {
-        // File the already-misfiled automated mail out of the Ohbox. Its OWN try/catch and loop: one
+        // File the already-misfiled automated mail out of the Ohbox. Its OWN runner call and loop: one
         // account's failure must not skip the rest. It is the durable, one-time-per-opt-in half of the
         // `people_only` posture — the live engine demotes NEW mail, this re-routes the backlog placed
         // before the account opted in. Like the retro pass it lives here and needs nothing beyond the db
@@ -4922,7 +4918,7 @@ export async function startWorkerWithLock(
         // account the call is that read and no more. NOT time-gated: its per-cycle write budget bounds it,
         // and an owner who just opted in is waiting for their Ohbox to shrink.
         run: async (accountId) => {
-          try {
+          await runTailStage("cycle.ohboxTidyPass", "database", async () => {
             const { ran, moved, completed, capped } = await ohboxTidyPass(
               db as unknown as Tx,
               // Same per-mailbox trust as the retro pass above, same canonical resolver.
@@ -4932,14 +4928,14 @@ export async function startWorkerWithLock(
             if (ran && (moved > 0 || completed)) {
               log.info("ohbox_tidy_pass", { accountId, moved, completed, capped });
             }
-          } catch (err) {
+          }, (err) => {
             log.error("ohbox_tidy_failed", {
               accountId, err,
               reason: "no account was marked done and the cursor advanced only past committed pages, " +
                 "so the next cycle resumes from `ohbox_tidy_cursor`; mail already moved is desired " +
                 "state the reconciler converges independently of this pass",
             });
-          }
+          });
         },
       },
       thread_join_heal: {
@@ -4951,19 +4947,19 @@ export async function startWorkerWithLock(
         // inside a 14-day window), performing exactly the merge `POST /threads/merge` performs, change
         // rows included. TIME-GATED like `bubbleUpPass` and unlike the retro/tidy passes, because nobody
         // is waiting on it: it repairs presentation, its own budget bounds a run, and its pre-filter is a
-        // per-account GROUP BY that would buy nothing per-cycle. Its OWN try/catch and loop.
+        // per-account GROUP BY that would buy nothing per-cycle. Its OWN runner call and loop.
         gate: () => {
           if (Date.now() - lastThreadJoinHealAt < THREAD_JOIN_HEAL_EVERY_MS) return false;
           lastThreadJoinHealAt = Date.now();
           return true;
         },
         run: async (accountId) => {
-          try {
-            const r = await asDatabaseFault("cycle.threadJoinHealPass",
-              () => threadJoinHealPass({
-                db: db as unknown as Tx, apply: true, accountId, log,
-                cursor: threadJoinHealCursors.get(accountId),
-              }));
+          await runTailStage("cycle.threadJoinHealPass", "database", async () => {
+            const r = await threadJoinHealPass({
+              db: db as unknown as Tx, apply: true, accountId, log,
+              cursor: threadJoinHealCursors.get(accountId),
+              noteFault: tailFaultNote("cycle.threadJoinHealPass"),
+            });
             // Carry the resume point while the budget (not the candidate set) ended the walk
             // — UNCONDITIONALLY. Resetting on failure is the tempting wrong move: a group
             // that fails deterministically would pin every run to its own page and starve the
@@ -4981,15 +4977,14 @@ export async function startWorkerWithLock(
                 moved: r.messagesMoved, skipped: r.skipped, failed: r.failed, capped: r.capped,
               });
             }
-          } catch (err) {
-            noteIfSharedDatabaseFault(err);
+          }, (err) => {
             log.error("thread_join_heal_failed", {
               accountId, err,
               reason: "no group of this account committed partially — each is one transaction — " +
                 "and the candidate predicate is the rows' own state, so the next gated run " +
                 "re-reads reality and resumes",
             });
-          }
+          });
         },
       },
       inbound_quiet: {
@@ -4999,7 +4994,7 @@ export async function startWorkerWithLock(
         // and the incident). TIME-GATED like the heal above and for its reason: the pass judges
         // fortnight-wide windows, so nothing a user can perceive changes between two cycles, and
         // per-cycle it would be a fleet-wide grouped aggregate bought against no latency. Scoped
-        // per account under this shard's lock (bubble-up's argument), its OWN try/catch and loop
+        // per account under this shard's lock (bubble-up's argument), its OWN runner call and loop
         // so one account's failure must not skip the rest — and never a cycle abort: the notice
         // is observability, and mail continues to be filed either way.
         gate: () => {
@@ -5008,21 +5003,19 @@ export async function startWorkerWithLock(
           return true;
         },
         run: async (accountId) => {
-          try {
-            const r = await asDatabaseFault("cycle.inboundQuietPass",
-              () => inboundQuietPass(db as unknown as Tx, new Date(), { accountId }));
+          await runTailStage("cycle.inboundQuietPass", "database", async () => {
+            const r = await inboundQuietPass(db as unknown as Tx, new Date(), { accountId });
             if (r.tripped > 0 || r.cleared > 0) {
               log.info("inbound_quiet_pass", { accountId, tripped: r.tripped, cleared: r.cleared });
             }
-          } catch (err) {
-            noteIfSharedDatabaseFault(err);
+          }, (err) => {
             log.error("inbound_quiet_failed", {
               accountId, err,
               reason: "the quiet-mailbox judgment was skipped this pass; episodes already " +
                 "stamped stand, nothing is cleared or tripped, and the next gated run " +
                 "re-reads reality — syncing is untouched",
             });
-          }
+          });
         },
       },
       away_reply_flag_redeliver: {
@@ -5032,7 +5025,7 @@ export async function startWorkerWithLock(
         // this pass the client filters on a field those rows do not carry and the replies stay in
         // "Earlier" for ever, the fix invisible on exactly the mailboxes that reported the bug (found by
         // review as a HIGH). ONCE PER PROCESS, on the first cycle (see the gate's docblock for why no
-        // durable marker). Its OWN try/catch and loop, and it must never abort a cycle: it writes no
+        // durable marker). Its OWN runner call and loop, and it must never abort a cycle: it writes no
         // state of its own, moves nothing and touches no message row — a change_log row is a re-read
         // instruction — so the next gated run simply re-reads reality.
         shard: true,
@@ -5042,6 +5035,9 @@ export async function startWorkerWithLock(
           return true;
         },
         run: async (_accountId, walk) => {
+          /* A throw past `runOnce` reaches the slice net, which is on the runner; one account's
+             throw INSIDE it is the per-account catch's, handed to the hook. */
+          const awayReplyFault = tailFaultNote("cycle.awayReplySweep");
           // The GATE IS THE SWEEP'S, closed after its own loop and only on a clean full pass. It
           // used to be a boolean set here, before the accounts were walked, which retired the whole
           // fleet's sweep on one account's failure. Its per-account try/catch keeps that shape — one
@@ -5050,7 +5046,7 @@ export async function startWorkerWithLock(
             () => awayReplySweep.runOnce(db as unknown as Tx, [...walk.accounts], {
               log,
               onError: (accountId, err) => {
-                noteIfSharedDatabaseFault(err);
+                awayReplyFault(err);
                 log.error("away_reply_flag_redeliver_failed", {
                   accountId, err,
                   reason: "no change row for this account committed partially — each page is one " +
@@ -5073,7 +5069,7 @@ export async function startWorkerWithLock(
       storage_evict: {
         // ── TRIM THE ROLLING WINDOW: at the storage cap, the oldest stored bodies husk ──────
         //
-        // Its OWN try/catch and loop, like every pass here: one account's failure must not skip
+        // Its OWN runner call and loop, like every pass here: one account's failure must not skip
         // the rest. For every account under its high-water mark the pass is two indexed reads and
         // no more; over it, bounded rounds of bounded batches, resuming next cycle
         // (`storage-evict.ts` carries the hysteresis argument). Registered in this SERIAL
@@ -5081,20 +5077,21 @@ export async function startWorkerWithLock(
         // evictor counter-then-body-rows, and serial execution per account is what keeps the two
         // orderings from ever facing each other.
         run: async (accountId) => {
-          try {
+          // MIXED: the cap is the entitlements program's answer; the pass tags its own db calls.
+          await runTailStage("cycle.storageEvictPass", "mixed", async () => {
             const { ran, evicted, freedBytes, capped } = await storageEvictPass(
-              db as unknown as Tx, { accountId, log, storageCap: storageCapFor }, new Date(),
+              db as unknown as Tx, { accountId, log, storageCap: storageCapFor, dbCall: asDatabaseFault }, new Date(),
             );
             if (ran && evicted > 0) {
               log.info("storage_evict_pass", { accountId, evicted, freedBytes, capped });
             }
-          } catch (err) {
+          }, (err) => {
             log.error("storage_evict_failed", {
               accountId, err,
               reason: "each round is one transaction, so a failure loses nothing durable; the " +
                 "counter and the husks move together or not at all, and the next cycle re-probes",
             });
-          }
+          });
         },
       },
       screener_correspondent_retro: {
@@ -5102,26 +5099,24 @@ export async function startWorkerWithLock(
         //
         // Before the three Screener passes below, so a held correspondent is released rather than
         // bought a suggestion or acted on. Hourly per account: its evidence moves when somebody
-        // writes, and the ingest already admits their new mail at once. Its own try/catch.
+        // writes, and the ingest already admits their new mail at once. Its own runner call.
         run: async (accountId) => {
           if (Date.now() - (correspondentRetroAt.get(accountId) ?? 0) < CORRESPONDENT_RETRO_EVERY_MS) return;
           correspondentRetroAt.set(accountId, Date.now());
-          try {
-            await screenerCorrespondentRetroPass(db as unknown as Tx, { accountId, log });
-          } catch (err) {
-            noteIfSharedDatabaseFault(err);
-            log.error("screener_correspondent_retro_failed", {
-              accountId, err,
-              reason: "each sender is released in its own transaction and nothing is marked, so the "
-                + "next hour re-reads the same evidence; new mail from them is admitted at ingest meanwhile",
+          await runTailStage("cycle.screenerCorrespondentRetroPass", "database",
+            () => screenerCorrespondentRetroPass(db as unknown as Tx, { accountId, log }), (err) => {
+              log.error("screener_correspondent_retro_failed", {
+                accountId, err,
+                reason: "each sender is released in its own transaction and nothing is marked, so the "
+                  + "next hour re-reads the same evidence; new mail from them is admitted at ingest meanwhile",
+              });
             });
-          }
         },
       },
       screener_auto_apply: {
         // ── FILE THE OBVIOUS BULK OUT OF THE SCREENER, FOR OPTED-IN ACCOUNTS ────────────────
         //
-        // Its OWN try/catch and loop, for the reason the blocks above have one: one account's failure
+        // Its OWN runner call and loop, for the reason the blocks above have one: one account's failure
         // must not skip the rest. Unlike those two this is not owed-once backfill — it is a standing
         // OPT-IN, off by default, so for every account that has not turned it on the pass is a single
         // PK read and no more (the `screener_auto_apply_at IS NOT NULL` probe). It applies DETERMINISTIC
@@ -5129,25 +5124,25 @@ export async function startWorkerWithLock(
         // flagged mail at the gate, and writes reversible intents the reconciler converges — same as
         // the passes above, and like them it lives here on the worker needing nothing beyond db + core.
         run: async (accountId) => {
-          try {
+          await runTailStage("cycle.screenerAutoApplyPass", "database", async () => {
             const { ran, moved, capped } = await screenerAutoApplyPass(
               db as unknown as Tx, { accountId, log, walk: screenerAutoWalk, until: sliceUntil() }, new Date(),
             );
             if (ran && moved > 0) {
               log.info("screener_auto_apply_pass", { accountId, moved, capped });
             }
-          } catch (err) {
+          }, (err) => {
             log.error("screener_auto_apply_failed", {
               accountId, err,
               reason: "the account's walk mark was not advanced, so the next cycle re-reads every row " +
                 "this one did not decide; mail already moved is desired state the reconciler " +
                 "converges independently of this pass",
             });
-          }
+          });
         },
       },
       screener_auto_suggest: {
-        // Buy the model's advice about incoming held senders. Its OWN try/catch and loop. It runs AFTER
+        // Buy the model's advice about incoming held senders. Its OWN runner call and loop. It runs AFTER
         // the deterministic auto-apply above, load-bearing: that pass files the obvious bulk OUT of the
         // Screener with no model and no spend, so anything it takes this cycle is a sender this one never
         // pays to ask about (wrong way round and the account buys advice about newsletters about to be
@@ -5158,7 +5153,9 @@ export async function startWorkerWithLock(
         // reason ingest meters with (the `classify:screener:<message_id>` source is a real duplicate
         // check), but the `screener` ACTION — an exclusive claim and the screening-only setup grant first.
         run: async (accountId) => {
-          try {
+          // MIXED and untagged: the pass buys from the model and the entitlements program, and its
+          // database calls carry no tag yet (a gap row names it).
+          await runTailStage("cycle.screenerAutoSuggestPass", "mixed", async () => {
             // The Ohbox bar, so a suggestion bought here asks the same question a user-pressed one
             // does. Read through the same 30-second cache the sync loop fills for every served
             // account, so this is a hit rather than a read per account per cycle.
@@ -5177,7 +5174,7 @@ export async function startWorkerWithLock(
             if (ran && (bought > 0 || why)) {
               log.info("screener_auto_suggest_pass", { accountId, bought, chargedAttempts, stopped: why, capped });
             }
-          } catch (err) {
+          }, (err) => {
             log.error("screener_auto_suggest_failed", {
               accountId, err,
               reason: "nothing is marked and no cursor persists — a sender whose suggestion was " +
@@ -5185,7 +5182,7 @@ export async function startWorkerWithLock(
                 "unbought sender; a charge with no stored row is retried free (the ledger source " +
                 "is the message, so the retry answers `duplicate`)",
             });
-          }
+          });
         },
       },
       screener_auto_act: {
@@ -5196,23 +5193,26 @@ export async function startWorkerWithLock(
         // cycle. The consent is the act's own, never `screener_auto_apply_at`, the switch that
         // promises "no AI" and arms the deterministic pass above.
         run: async (accountId) => {
-          try {
+          await runTailStage("cycle.screenerAutoActPass", "database", async () => {
             const acted = await screenerAutoActPass(
-              db as unknown as Tx, { accountId, log, until: sliceUntil(), consent: screenerActConsentFrom(accountId) }, new Date(),
+              db as unknown as Tx, {
+                accountId, log, until: sliceUntil(), consent: screenerActConsentFrom(accountId),
+                noteFault: tailFaultNote("cycle.screenerAutoActPass"),
+              }, new Date(),
             );
             if (acted.ran && (acted.filed > 0 || acted.failed > 0)) {
               log.info("screener_auto_act_pass", {
                 accountId, applied: acted.filed, failed: acted.failed, capped: acted.capped,
               });
             }
-          } catch (err) {
+          }, (err) => {
             log.error("screener_auto_act_failed", {
               accountId, err,
               reason: "no sender was filed past the failure and nothing is marked — a filed sender " +
                 "leaves the Screener and stops being a candidate, so the next cycle resumes at the " +
                 "next waiting sender and every one of them still carries its own Apply",
             });
-          }
+          });
         },
       },
       search_index_backfill: {
@@ -5222,32 +5222,32 @@ export async function startWorkerWithLock(
         // an account whose only mailbox is disabled, or whose account is parked, never syncs and
         // was never indexed. Bounded per account (rounds × batch); a failure never fails the tail.
         enter: async () => {
-          try {
-            return await searchIndexOwedAccounts(db as unknown as Tx, {
+          let owed: string[] = [];
+          await runTailStage("cycle.searchIndexOwedAccounts", "database", async () => {
+            owed = await searchIndexOwedAccounts(db as unknown as Tx, {
               limit: SEARCH_INDEX_ACCOUNTS_PER_TAIL, shard: accountShardFilter(selection, accounts.id),
             });
-          } catch (err) {
-            noteIfSharedDatabaseFault(err);
+          }, (err) => {
             log.warn("search_index_owed_read_failed", {
               err, reason: "the accounts owed a search index could not be read; the next tail reads them again",
             });
-            return [];
-          }
+          });
+          return owed;
         },
         run: async (accountId) => {
-          try {
+          await runTailStage("cycle.searchIndexBackfillPass", "database", async () => {
             const indexed = await searchIndexBackfillPass({ db: db as unknown as Tx, accountId });
             if (indexed.ran && indexed.written > 0) {
               log.info("search_index_backfill_pass", {
                 accountId, written: indexed.written, rounds: indexed.rounds, marked: indexed.marked,
               });
             }
-          } catch (err) {
+          }, (err) => {
             log.error("search_index_backfill_failed", {
               accountId, err,
               reason: "no marker was written, so the next tail resumes at the first message without a search document; search still reads those through the older columns",
             });
-          }
+          });
         },
       },
       mailbox_erasure: {
@@ -5256,27 +5256,25 @@ export async function startWorkerWithLock(
         // "Remove and erase" stamps the mailbox and answers; this is the sweep it promised, every
         // cycle because somebody is watching "Erasing — N messages left" count down. Bounded in
         // steps and wall clock inside the pass, one indexed read over the owed stamps when there is
-        // nothing to do. Its OWN try/catch: every step is its own transaction, so a failure leaves
+        // nothing to do. Its OWN runner call: every step is its own transaction, so a failure leaves
         // what committed and the next cycle resumes from the stamp — never a cycle abort.
         shard: true,
         run: async () => {
-          try {
-            const erased = await asDatabaseFault("cycle.mailboxErasurePass",
-              () => mailboxErasurePass(db as unknown as Tx, { now: () => new Date(), shard: shardFilter(selection) }));
+          await runTailStage("cycle.mailboxErasurePass", "database", async () => {
+            const erased = await mailboxErasurePass(db as unknown as Tx, { now: () => new Date(), shard: shardFilter(selection) });
             if (erased.steps > 0) {
               log.info("mailbox_erasure_pass", {
                 mailboxes: erased.mailboxes, steps: erased.steps, finished: erased.finished,
                 messagesErased: erased.messagesErased,
               });
             }
-          } catch (err) {
-            noteIfSharedDatabaseFault(err);
+          }, (err) => {
             log.error("mailbox_erasure_failed", {
               err,
               reason: "the erasure steps that committed stand, each is one transaction, and the stamp " +
                 "is the resume point, so the next cycle continues from what is left",
             });
-          }
+          });
         },
       },
       global_maintenance: {
@@ -5291,28 +5289,22 @@ export async function startWorkerWithLock(
         shard: true,
         gate: maintenanceDue,
         run: async () => {
-          try {
+          await runTailStage("cycle.pruneIdempotencyKeys", "database", async () => {
             const pruned = await pruneIdempotencyKeys(db as unknown as Tx, new Date());
             if (pruned > 0) log.info("idempotency_pruned", { pruned });
-          } catch (err) {
-            log.error("idempotency_prune_failed", { err });
-          }
+          }, (err) => { log.error("idempotency_prune_failed", { err }); });
           // An erased account's token hashes (cloud 0043) answer nothing past their own expiry;
           // the erasure writes them and nothing else ever revisits them, so they go here.
-          try {
+          await runTailStage("cycle.pruneErasedBearers", "database", async () => {
             const pruned = await pruneErasedBearers(db as unknown as Tx, new Date());
             if (pruned > 0) log.info("erased_bearers_pruned", { pruned });
-          } catch (err) {
-            log.error("erased_bearers_prune_failed", { err });
-          }
+          }, (err) => { log.error("erased_bearers_prune_failed", { err }); });
           // Sign-in throttle rows past retention (48 h; a known client 90 d). The API writes them and
           // only an erasure deleted them, so every typed address and client hash stayed for ever.
-          try {
+          await runTailStage("cycle.pruneAuthThrottle", "database", async () => {
             const pruned = await pruneAuthThrottle(db as unknown as Tx, new Date());
             if (pruned > 0) log.info("auth_throttle_pruned", { pruned });
-          } catch (err) {
-            log.error("auth_throttle_prune_failed", { err });
-          }
+          }, (err) => { log.error("auth_throttle_prune_failed", { err }); });
           // ── WHAT WE OWE PEOPLE WHOSE SPEND BOUGHT NOTHING ─────────────────────────────────
           // The obligation rows cloud 0036 holds, turned back into credits. On the maintenance
           // cadence rather than per account: a debt belongs to an ACCOUNT, and the claim statement
@@ -5331,12 +5323,10 @@ export async function startWorkerWithLock(
           // deletes had already stopped refusing anything. That is deliberate — a standalone
           // install runs the same send path and has no maintenance pass at all, so an expiry that
           // depended on pruning would be unbounded on every desktop.
-          try {
+          await runTailStage("cycle.pruneSendFingerprints", "database", async () => {
             const fps = await pruneSendFingerprints(db as unknown as Tx, new Date());
             if (fps > 0) log.info("send_fingerprints_pruned", { pruned: fps });
-          } catch (err) {
-            log.error("send_fingerprint_prune_failed", { err });
-          }
+          }, (err) => { log.error("send_fingerprint_prune_failed", { err }); });
           // Expired staged attachment bytes: the object, then the row. A hosted send puts attachment
           // bytes in a private bucket and references them; the row carries a 24-hour `expires_at` and
           // this is the half that makes that a fact. Same slot as the prune above (the worker is the
@@ -5348,7 +5338,8 @@ export async function startWorkerWithLock(
           // row ceiling and wall-clock budget. `drained: false` is a WARNING even though nothing threw —
           // a clean-looking number over a growing bucket is exactly what went wrong before.
           if (stagingStorage) {
-            try {
+            // MIXED and untagged: object storage and our database inside one `packages/db` call.
+            await runTailStage("cycle.sweepExpiredStaging", "mixed", async () => {
               const sweep = await sweepExpiredStagingFor(db as unknown as Tx, stagingStorage, new Date());
               if (sweep.deleted > 0 || sweep.pages > 0) {
                 log.info("attachment_staging_swept", {
@@ -5369,13 +5360,13 @@ export async function startWorkerWithLock(
                       "what this deployment produces and wants raising",
                 });
               }
-            } catch (err) {
+            }, (err) => {
               log.error("attachment_staging_sweep_failed", {
                 err,
                 reason: "the rows stay and the next maintenance pass retries — objects are deleted " +
                   "before their rows, so nothing is orphaned by a failure here",
               });
-            }
+            });
             /* AND THE OBJECTS NO TICKET NAMES — the half the sweep above cannot reach.
              *
              * That one works from tickets, so the one thing it can never see is an object whose
@@ -5386,7 +5377,7 @@ export async function startWorkerWithLock(
              * slot, after the expiry sweep: an object the sweep just removed is not a candidate,
              * and one whose row the sweep just deleted is younger than the age bound anyway.
              * COUNTS ONLY in the log — an object path names an account and a ticket. */
-            try {
+            await runTailStage("cycle.reconcileStagingOrphans", "mixed", async () => {
               const rec = await reconcileStagingOrphansFor(
                 db as unknown as Tx, stagingStorage, new Date());
               if (rec.orphans > 0 || rec.unrecognised > 0 || !rec.complete) {
@@ -5403,7 +5394,7 @@ export async function startWorkerWithLock(
                     "writes. Counted and left alone: this bucket is supposed to hold nothing else",
                 });
               }
-            } catch (err) {
+            }, (err) => {
               if (err instanceof StagingListingUnsupportedError) {
                 log.warn("attachment_staging_reconcile_unsupported", {
                   reason: "this storage cannot list its bucket, so an object whose ticket is gone " +
@@ -5416,7 +5407,7 @@ export async function startWorkerWithLock(
                     "maintenance pass walks the bucket again from the start",
                 });
               }
-            }
+            });
           } else {
             log.info("attachment_staging_sweep_skipped", {
               reason: "no staging bucket is configured on this worker; if the API stages, its " +
@@ -5486,16 +5477,13 @@ export async function startWorkerWithLock(
             }
             await config.tailSliceHook?.(s.name, walk.index);
             const at = Date.now();
-            try {
-              await s.run(walk.list[walk.index]!, walk);
-            } catch (err) {
-              noteIfSharedDatabaseFault(err);
+            await runTailStage(`cycle.tail.${s.name}`, "mixed", () => s.run(walk.list![walk.index]!, walk), (err) => {
               log.error("cycle_tail_section_failed", {
                 section: s.name, err,
                 reason: "this slice's pass threw past its own handling; the walk goes on to the next " +
                   "slice, and the pass's own resume point is the next walk's",
               });
-            }
+            });
             clockIn(at);
           }
         }

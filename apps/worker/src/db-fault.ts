@@ -71,3 +71,44 @@ export function markDatabaseFaults<T extends object>(target: T, label: string): 
     },
   });
 }
+
+/** Errnos a dead or unreachable database throws; read only UNDER the tag, where the socket is ours. */
+const CONNECTION_ERRNOS: ReadonlySet<string> = new Set([
+  "ECONNREFUSED", "ECONNRESET", "EPIPE", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN", "EHOSTUNREACH",
+  "ENETUNREACH", "EPERM", "CONNECT_TIMEOUT",
+]);
+/** postgres.js's own words for a connection that closed, ended or never opened. */
+const DRIVER_CONNECTION_CODES: ReadonlySet<string> = new Set([
+  "CONNECTION_CLOSED", "CONNECTION_ENDED", "CONNECTION_DESTROYED", "CONNECTION_CONNECT_TIMEOUT",
+]);
+/** The server terminating or refusing sessions (57P01-03) and its connection slots full (53300). */
+const SERVER_CONNECTION_SQLSTATES: ReadonlySet<string> = new Set(["57P01", "57P02", "57P03", "53300"]);
+
+function codesOf(err: unknown): string[] {
+  const out: string[] = [];
+  const seen = new Set<unknown>();
+  let cur: unknown = err;
+  for (let depth = 0; depth < 5 && cur !== null && typeof cur === "object" && !seen.has(cur); depth++) {
+    seen.add(cur);
+    const c = (cur as { code?: unknown }).code;
+    if (typeof c === "string") out.push(c);
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return out;
+}
+
+const isConnectionCode = (code: string, tagged: boolean): boolean =>
+  DRIVER_CONNECTION_CODES.has(code) || SERVER_CONNECTION_SQLSTATES.has(code) || /^08[0-9A-Z]{3}$/.test(code)
+  || (tagged && CONNECTION_ERRNOS.has(code));
+
+/**
+ * Is this throw the SHARD'S DATABASE CONNECTION failing — the question a cycle-tail stage asks before
+ * it logs its own failure. Narrower than {@link isSharedDatabaseFault}: a statement timeout (57014), a
+ * lock timeout (55P03) or a serialization failure (40001) on one large account is that account's and
+ * must not read degraded on `/health`. A raw errno counts only under the origin tag; untagged it could
+ * be any remote the stage talks to.
+ */
+export function isShardConnectionFault(err: unknown): boolean {
+  const tagged = err instanceof DatabaseFaultError;
+  return codesOf(err).some((code) => isConnectionCode(code, tagged));
+}

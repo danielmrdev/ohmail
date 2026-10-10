@@ -29,17 +29,22 @@ export interface StorageEvictResult {
 
 export async function storageEvictPass(
   db: Tx,
-  opts: { accountId: string; log?: Logger; storageCap: (accountId: string) => Promise<StorageCap> },
+  opts: {
+    accountId: string; log?: Logger; storageCap: (accountId: string) => Promise<StorageCap>;
+    /** Names a database call as the database's; the cap above is a remote's and is never wrapped. */
+    dbCall?: <T>(op: string, fn: () => Promise<T>) => Promise<T>;
+  },
   now: Date,
 ): Promise<StorageEvictResult> {
   const { accountId } = opts;
+  const dbCall = opts.dbCall ?? (<T>(_op: string, fn: () => Promise<T>): Promise<T> => fn());
   // Resolved OUTSIDE any transaction: the answer may be a network hop to whoever operates
   // metering, and one taken inside a transaction holds its connection across that hop.
   const resolved = await opts.storageCap(accountId);
   const cap = resolved === UNMETERED_STORAGE_CAP ? null : resolved;
   if (cap === null || cap <= 0) return { ran: false, evicted: 0, freedBytes: 0, capped: false };
 
-  const used = await storageUsageOf(db, accountId);
+  const used = await dbCall("storageEvict.usage", () => storageUsageOf(db, accountId));
   if (used < cap * EVICT_HIGH_WATER_RATIO) {
     return { ran: false, evicted: 0, freedBytes: 0, capped: false };
   }
@@ -49,9 +54,9 @@ export async function storageEvictPass(
   let freedBytes = 0;
   let more = true;
   for (let round = 0; round < EVICT_ROUNDS_PER_CYCLE && more; round++) {
-    const result = await db.transaction(async (tx) =>
+    const result = await dbCall("storageEvict.round", () => db.transaction(async (tx) =>
       evictOldestBodies(tx as Tx, dialect(db), accountId,
-        { targetBytes: target, maxBodies: EVICT_BATCH_BODIES }));
+        { targetBytes: target, maxBodies: EVICT_BATCH_BODIES })));
     evicted += result.evicted;
     freedBytes += result.freedBytes;
     more = result.more;
