@@ -198,7 +198,10 @@ export async function ensureLocalWorld(db: LocalDb, input: EnsureLocalWorldInput
       accountId,
       userId,
       mailboxId: standing?.id ?? "",
-      standDownReason: standing ? standDownMemory(standing) : null,
+      /* AN INSTALL NOBODY ASKED HAS NO STAND-DOWN TO REMEMBER: its own look wrote the holder
+         columns, and reading them as a stand-down armed the phone's claim watch, whose press then
+         minted the consent. `standDownMemory` still names the holder for the claim-back sheet. */
+      standDownReason: standing && standing.organizeConsentedAt !== null ? standDownMemory(standing) : null,
       takeoverAuthorizedAt: standing?.takeoverAuthorizedAt ?? null,
       takeoverIntent: standing?.takeoverIntent === "takeover" ? "takeover" : "join",
     };
@@ -300,7 +303,8 @@ export async function loadLocalRoster(db: LocalDb, accountId: string): Promise<L
     id: r.id,
     address: r.address,
     displayName: r.displayName ?? null,
-    standDownReason: standDownMemory(r),
+    /* No consent, no stand-down memory — see `ensureLocalWorld` above for why. */
+    standDownReason: r.organizeConsentedAt === null ? null : standDownMemory(r),
     takeoverAuthorizedAt: r.takeoverAuthorizedAt ?? null,
     /* A value the column's closed set does not hold cannot be written by this program, and a
        store that somehow carries one is read as the verb that yields rather than the one that

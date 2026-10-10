@@ -264,14 +264,13 @@ export async function releaseMailbox(
 }
 
 /**
- * The consent — `POST /local/mailboxes/:id/organize`, and on this phone the door already took it. A
- * mailbox nobody consented to organizing is read and nothing else — no claim, no `ohmail/*`
- * tree — and on the standalone door that left the phone reading its own mailbox for ever. The
- * fourth door's limitations screen states what this phone will do, and Continue on it is the
- * same statement the web's "Organize here" button takes — pressed here rather than on the
- * screen, because a relaunch adopts the same session with no screen in front of it. The empty
- * body `{}` is the whole request: the password is the engine's, sealed under this install's
- * key ring, and `screening` is the account's own — nothing on this door asked anybody for it.
+ * The consent — `POST /local/mailboxes/:id/organize`. A mailbox nobody consented to organizing is
+ * read and nothing else (no claim, no `ohmail/*` tree), which on the standalone door left the phone
+ * reading its own mailbox for ever. Continue on the fourth door's limitations screen is the same
+ * statement the web's "Organize here" takes, pressed here because a relaunch adopts the session with
+ * no screen in front of it. The body is `{"consent":"person"}` alone: a finger pressed (the claim
+ * watch never sends it), so the door records the consent even while another install holds the
+ * mailbox. The password is the engine's and `screening` the account's; this door asks for neither.
  */
 export type OrganizeOutcome =
   /** The consent is recorded and one organizing is authorized. The engine claims on its next cycle. */
@@ -299,7 +298,10 @@ export async function organizeHere(
   try {
     res = await session.fetch(
       `${requestBase(session)}/local/mailboxes/${encodeURIComponent(mailboxId)}/organize`,
-      { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
+      {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ consent: "person" }),
+      },
     );
   } catch (err) {
     /* The transport, quoted. On this door that is a call into this process, so a throw here is the

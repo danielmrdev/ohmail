@@ -47,7 +47,9 @@ export function organizerStripOf(
     case "handedBack":
       return said(facts.late);
     case "free":
-      return facts.stoppedHere ? said(false) : null;
+      /* NOTHING ORGANIZES IT AND A CONSENT IS ON RECORD — a stop here, or a press the holder
+         refused: the mailbox waits for the person's press, which is offered. */
+      return facts.stoppedHere ? { ...said(false), ...(claim.starting ? {} : { label: Copy.phoneFreeOffer }) } : null;
     case "theirs":
     case "theirsUnnamed":
     case "blocked":

@@ -53,7 +53,7 @@ import {
 } from "./engine.js";
 import type { LocalDb, OpenLocalDb } from "./db.js";
 /* The live-holder read both consent doors ask, the phone's and the desktop's. */
-import { liveForeignHolder, type RowHolderAnswer } from "./organize-here.js";
+import { liveForeignHolder, recordConsentWithoutClaim, type RowHolderAnswer } from "./organize-here.js";
 /* A VALUE import now: {@link PhoneEngineDeps.logSink} builds the hardened logger HERE, in the
    artifact, rather than letting the app assemble log lines of its own. `log.ts` is this package's
    own funnel — the allowlist, the redaction and the value grammars come with it. */
@@ -228,6 +228,17 @@ export type ClaimHereOutcome =
 /** The two lease refusals a person can act on, which the door answers under their own codes. */
 const NAMED_META_BLOCKS: ReadonlySet<string> = new Set(["meta_folder_full", "meta_undeletable"]);
 
+/** A consent press's body, read once by the door: see `readOrganizePress`. */
+interface OrganizePress {
+  readonly raw: string;
+  readonly fields: Record<string, unknown> | null;
+  /** The body carries `consent: "person"` — a finger pressed, never the claim watch. */
+  readonly person: boolean;
+}
+
+/** Who is asking for this phone: a person's press (Start, Connect) or the claim watch. */
+export type ClaimHereBy = "press" | "watch";
+
 /**
  * WHAT THE PERSON'S STOP SETTLED — three answers, because a boolean collapsed two of them.
  *
@@ -345,9 +356,11 @@ export interface PhoneEngine {
    * transport in six named files and the app's organizer session is not one of them: the app
    * presses a verb, the engine's own door presses the route. Three answers, named by
    * {@link ClaimHereOutcome}; `held` is the point — a live foreign claim is refused AT THE DOOR,
-   * so no caller can take a mailbox another machine is organizing.
+   * so no caller can take a mailbox another machine is organizing. `by` is REQUIRED: a person's
+   * `press` carries their consent, the claim `watch` carries none and never claims a mailbox
+   * nobody consented to on this phone (it answers `refused`).
    */
-  claimHere(): Promise<ClaimHereOutcome>;
+  claimHere(opts: { by: ClaimHereBy }): Promise<ClaimHereOutcome>;
   /**
    * IS THE MAILBOX HELD BY A LIVE FOREIGN CLAIM, as the row the gate keeps says — `true` held,
    * `false` free, `null` the row cannot say. The door's own read, with no press and no mail server:
@@ -1073,7 +1086,9 @@ async function composePhoneEngine(
     return states;
   };
 
-  const refuseIfOrganizedElsewhere = async (req: Request): Promise<Response | null> => {
+  const refuseIfOrganizedElsewhere = async (
+    req: Request, press: OrganizePress | null,
+  ): Promise<Response | null> => {
     if (req.method !== "POST") return null;
     const matched = ORGANIZE_ROUTE.exec(new URL(req.url).pathname);
     if (matched === null) return null;
@@ -1190,8 +1205,28 @@ async function composePhoneEngine(
        wants to know which one saw the claim. Not one event with a `source` field — that would be a
        new name on the logger's own census, which is a decision about every line in the product —
        and not a ternary, which is an event name no grep can find. */
-    const refusedBecause = "another install is renewing its claim on this mailbox, so no consent "
-      + "was recorded here; this phone has no takeover verb and reads the mailbox instead";
+    /* A PERSON'S PRESS IS STILL A PERSON'S CONSENT, refused or not: recorded WITHOUT a claim, so
+       the claim watch may take the mailbox once the holder lets go. The watch's own press carries
+       no `consent` and writes nothing. The local spelling only: the shared one is not served here. */
+    let consentRecorded = false;
+    if (press?.person === true && new URL(req.url).pathname.startsWith("/local/")) {
+      try {
+        consentRecorded = (await recordConsentWithoutClaim(
+          store.db, { mailboxId, now: deps.now?.() ?? new Date() },
+        )) === "recorded";
+      } catch (err) {
+        log("organizer_consent_record_failed", {
+          err, mailboxId,
+          reason: "a person agreed while another install organizes this mailbox and the consent could "
+            + "not be written; nothing was recorded, the press is refused as before and the next asks again",
+        });
+      }
+    }
+    const refusedBecause = consentRecorded
+      ? "another install is renewing its claim on this mailbox, so this phone reads it; the person's "
+        + "consent is recorded here without a claim, and this phone takes the mailbox once that install lets go"
+      : "another install is renewing its claim on this mailbox, so no consent "
+        + "was recorded here; this phone has no takeover verb and reads the mailbox instead";
     /* ══ ONE LINE PER STANDING CAUSE ═══════════════════════════════════════════════════════════
        The claim watch presses once a tick for as long as another install keeps the mailbox, and
        this logged every press: 37 identical lines 10.016 s apart in one device run, for one cause
@@ -1202,7 +1237,7 @@ async function composePhoneEngine(
 
        BOTH EVENT NAMES STAY LITERAL, on the rule the paragraph above them states: a ternary is an
        event name no grep can find, and the log census reads these call sites as text. */
-    const signature = JSON.stringify([fromRow.answer, holder.name, holder.kind]);
+    const signature = JSON.stringify([fromRow.answer, holder.name, holder.kind, consentRecorded]);
     const worthSaying = refusedHolders.get(mailboxId)?.logged !== signature;
     if (worthSaying && fromRow.answer === "held") {
       log("organizer_consent_refused_elsewhere", { mailboxId, verdict: "held", reason: refusedBecause });
@@ -1243,32 +1278,54 @@ async function composePhoneEngine(
   };
 
   /**
+   * THE CONSENT PRESS'S BODY, READ ONCE: the refusal and the forward both need it, and a request
+   * body can be read only once. `person` is the one key only a finger's press carries (Connect and
+   * the Start verb); the claim watch presses with none, so no machine press can mint a consent.
+   * `fields` is `null` for a body that is not a JSON object, which is forwarded untouched.
+   */
+  const readOrganizePress = async (req: Request): Promise<OrganizePress> => {
+    const raw = await req.text();
+    try {
+      const v: unknown = raw === "" ? {} : JSON.parse(raw);
+      if (v === null || typeof v !== "object" || Array.isArray(v)) return { raw, fields: null, person: false };
+      const fields = v as Record<string, unknown>;
+      return { raw, fields, person: fields.consent === "person" };
+    } catch {
+      return { raw, fields: null, person: false };
+    }
+  };
+
+  /**
    * THE VERB THIS DOOR WRITES, onto every consent request that passes it — here and not in the
    * app, because a check the caller supplies is one the next caller can be added past.
    *
    * Three things the rebuild must get right: `req.body` is never touched (React Native's bodies
    * are not the streams `new Request(req.body, …)` expects); `content-length` is dropped, the body
-   * having grown by a key; and the door's key is spread LAST, so a body asking for `takeover` gets
-   * `join`. An unparseable body is forwarded untouched, so the API's own refusal answers it.
+   * having changed; and the door's key is spread LAST, so a body asking for `takeover` gets `join`.
+   * The person's marker stops here: the route behind reads only `intent` and `screening`.
    */
-  const organizeWithJoinIntent = async (req: Request): Promise<Request> => {
-    const raw = await req.text();
-    let parsed: Record<string, unknown>;
-    try {
-      const v: unknown = raw === "" ? {} : JSON.parse(raw);
-      if (v === null || typeof v !== "object" || Array.isArray(v)) return new Request(req, { body: raw });
-      parsed = v as Record<string, unknown>;
-    } catch {
-      return new Request(req, { body: raw });
-    }
+  const forwardWithJoinIntent = (req: Request, press: OrganizePress): Request => {
+    if (press.fields === null) return new Request(req, { body: press.raw });
+    const forwarded: Record<string, unknown> = { ...press.fields };
+    delete forwarded.consent;
     const headers = new Headers(req.headers);
     headers.delete("content-length");
     headers.set("content-type", "application/json");
     return new Request(req.url, {
       method: req.method,
       headers,
-      body: JSON.stringify({ ...parsed, intent: "join" }),
+      body: JSON.stringify({ ...forwarded, intent: "join" }),
     });
+  };
+
+  /**
+   * HAS ANYBODY CONSENTED ON THIS PHONE — the row's own column, read for a press that carries no
+   * person's consent. `null` is a row this door cannot find, which the route behind answers for.
+   */
+  const consentOnRow = async (mailboxId: string): Promise<boolean | null> => {
+    const [row] = await store.db.select({ consentedAt: mailboxes.organizeConsentedAt })
+      .from(mailboxes).where(eq(mailboxes.id, mailboxId)).limit(1);
+    return row === undefined ? null : row.consentedAt !== null;
   };
 
     /**
@@ -1295,9 +1352,11 @@ async function composePhoneEngine(
   const answer = async (req: Request): Promise<Response> => {
       /* THE ONE-ORGANIZER RULE FIRST, on every organize and takeover spelling. A live foreign
          claim is the answer a person's screen needs — the holder NAMED — and it outranks "this
-         door is not served": answering 404 there would lose the holder the panel renders.
-         Nothing is written before this check. */
-      const held = await refuseIfOrganizedElsewhere(req);
+         door is not served": answering 404 there would lose the holder the panel renders. The
+         one write it makes is a PERSON's consent on a refused press: no stamp, no intent. */
+      const isConsent = req.method === "POST" && ORGANIZE_ROUTE.test(new URL(req.url).pathname);
+      const press = isConsent ? await readOrganizePress(req) : null;
+      const held = await refuseIfOrganizedElsewhere(req, press);
       if (held !== null) return held;
       /* A TAKEOVER PRESS IS NEVER REINTERPRETED AS A JOIN — it is refused at the door. */
       if (req.method === "POST" && new URL(req.url).pathname === TAKEOVER_ROUTE) {
@@ -1322,9 +1381,33 @@ async function composePhoneEngine(
           { status: 404, headers: { "content-type": "application/json" } },
         );
       }
+      if (press === null) return sidecar.handle(req);
+      /* A PRESS WITHOUT A PERSON'S CONSENT is the claim watch's: answered `no_consent` with nothing
+         written over a row nobody consented on, and over a mailbox this install never organized,
+         whose consent came from a press the holder refused: the watch only RETURNS a
+         mailbox; a freed one waits for the person's press. */
+      if (!press.person) {
+        const mailboxId = decodeURIComponent(ORGANIZE_ROUTE.exec(new URL(req.url).pathname)![1]!);
+        let consented: boolean | null;
+        try {
+          consented = await consentOnRow(mailboxId);
+        } catch (err) {
+          log("organizer_consent_row_read_failed", {
+            err,
+            reason: "whether anybody consented on this phone could not be read, so a press that "
+              + "carries no person's consent was refused and nothing was written; the next press asks again",
+          });
+          return unreadableResponse();
+        }
+        if (consented === false || !sidecar.organizedHere(mailboxId)) {
+          return new Response(
+            JSON.stringify({ outcome: "no_consent", previousReason: null }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+      }
       /* AND THE VERB IS STAMPED AT THE DOOR, never taken from the caller. */
-      const isConsent = req.method === "POST" && ORGANIZE_ROUTE.test(new URL(req.url).pathname);
-      return sidecar.handle(isConsent ? await organizeWithJoinIntent(req) : req);
+      return sidecar.handle(forwardWithJoinIntent(req, press));
   };
 
   /**
@@ -1353,19 +1436,20 @@ async function composePhoneEngine(
   };
 
   /** The engine pressing its OWN door, with this launch's bearer. See {@link SELF_ORIGIN}. */
-  const pressOwnRoute = async (path: string): Promise<Response> => phoneHandle(new Request(
-    `${SELF_ORIGIN}${path}`,
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${sidecar.sessionToken}`,
-        "content-type": "application/json",
+  const pressOwnRoute = async (path: string, body: Record<string, unknown>): Promise<Response> =>
+    phoneHandle(new Request(
+      `${SELF_ORIGIN}${path}`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${sidecar.sessionToken}`,
+          "content-type": "application/json",
+        },
+        /* NO SCREENING ANSWER: that belongs to the door that asks the question. A person's press
+           carries `consent: "person"` and nothing else; the watch's and the stop's carry nothing. */
+        body: JSON.stringify(body),
       },
-      /* EMPTY. The screening answer belongs to the door that asks the question; this verb is the
-         claim-back, which asks nothing and must write nothing about a window. */
-      body: "{}",
-    },
-  ));
+    ));
 
   /* ══ A REFUSED PRESS SAYS WHY, AND THIS DOOR IS THE ONLY PLACE THAT KNOWS ═════════════════
    *
@@ -1388,7 +1472,7 @@ async function composePhoneEngine(
     }
   };
 
-  const claimHere = async (): Promise<ClaimHereOutcome> => {
+  const claimHere = async (opts: { by: ClaimHereBy }): Promise<ClaimHereOutcome> => {
     const mailboxId = soleMailbox();
     if (mailboxId === null) {
       log("organizer_claim_here_refused", {
@@ -1398,7 +1482,11 @@ async function composePhoneEngine(
     }
     let res: Response;
     try {
-      res = await pressOwnRoute(LOCAL_ORGANIZE_PATH(mailboxId));
+      /* ONLY A PERSON'S PRESS CARRIES CONSENT. The watch asks with nothing, so over a row nobody
+         consented on the door answers `no_consent` and writes nothing. */
+      res = await pressOwnRoute(
+        LOCAL_ORGANIZE_PATH(mailboxId), opts.by === "press" ? { consent: "person" } : {},
+      );
     } catch (err) {
       log("organizer_claim_here_failed", { err, mailboxId });
       return "refused";
@@ -1436,6 +1524,15 @@ async function composePhoneEngine(
       (b) => b as { outcome?: unknown },
       () => ({ outcome: undefined }),
     );
+    if (body.outcome === "no_consent") {
+      log("organizer_claim_here_refused", {
+        mailboxId,
+        status: res.status,
+        reason: "no consent is recorded on this phone, so the watch takes nothing; the consent "
+          + "sheet and the Start verb are the door",
+      });
+      return "refused";
+    }
     if (body.outcome !== "authorized" && body.outcome !== "already_organizing") {
       log("organizer_claim_here_refused", {
         mailboxId,
@@ -1504,7 +1601,7 @@ async function composePhoneEngine(
     }
     let res: Response;
     try {
-      res = await pressOwnRoute(RELEASE_PATH(mailboxId));
+      res = await pressOwnRoute(RELEASE_PATH(mailboxId), {});
     } catch (err) {
       log("organizer_stop_here_failed", { err, mailboxId });
       return "refused";

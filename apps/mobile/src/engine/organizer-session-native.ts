@@ -47,7 +47,7 @@ export function startOrganizerSessionNative(
          privacy census admits a transport in six named files and this is not one — and the engine
          is the only thing that knows which mailbox its door serves. */
       stopOrganizing: () => engine.stopOrganizing(),
-      claimHere: () => engine.claimHere(),
+      claimHere: (opts) => engine.claimHere(opts),
       heldElsewhere: () => engine.heldElsewhere(),
       /* THE ROW'S ANSWER PER MAILBOX, in the shape the watch reads. A throw propagates: the
          background half treats an unreadable state as "cannot say" and leaves the notification

@@ -2749,7 +2749,7 @@
     "stopOrganizingNotServer": "This server was not organizing this mailbox.",
     "stopOrganizingRefused": "Not possible right now: {reason}",
     "stopOrganizingHandBack": "Hand the mailbox back — the mail stays where it is.",
-    "stopOrganizingHandBackWhat": "On its next pass this computer goes on reading the mailbox and stops filing it: it moves nothing, screens nothing and applies none of your rules. Nothing takes the mailbox over by itself — another install has to press Organize here, or you add it to ohmail Cloud.",
+    "stopOrganizingHandBackWhat": "On its next pass this computer goes on reading the mailbox and stops filing it: it moves nothing, screens nothing and applies none of your rules. Nothing takes the mailbox over by itself except a phone that organized it before and is open; otherwise another install has to press Organize here, or you add it to ohmail Cloud.",
     "chipStopping": "Stopping",
     "stateOrganizing": "Organizing",
     "stateReading": "Reading only",

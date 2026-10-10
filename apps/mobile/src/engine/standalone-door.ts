@@ -31,6 +31,13 @@ export type ClaimHereOutcome =
   | "refused";
 
 /**
+ * WHO IS ASKING — the engine's own word, mirrored. A person's `press` (Settings' Start) carries
+ * their consent; the claim `watch` carries none, and over a mailbox nobody consented to on this
+ * phone the engine answers `refused` and writes nothing.
+ */
+export type ClaimHereBy = "press" | "watch";
+
+/**
  * WHAT THE PERSON'S STOP SETTLED — the engine's own three answers, mirrored here.
  *
  * `released` is the only one a caller may act on as "the mailbox has been let go": the claim is
@@ -92,9 +99,9 @@ export interface StandaloneEngine {
    * not one of them. The app presses a verb; the engine's own door presses its own route.
    *
    * `held` is the refusal that matters and it is the ORDINARY answer for a phone whose mailbox
-   * another machine organizes — see {@link ClaimHereOutcome}.
+   * another machine organizes — see {@link ClaimHereOutcome}. `by` is required: {@link ClaimHereBy}.
    */
-  claimHere(): Promise<ClaimHereOutcome>;
+  claimHere(opts: { by: ClaimHereBy }): Promise<ClaimHereOutcome>;
   /** The row's own answer to "does a live foreign claim hold this mailbox" — no press. */
   heldElsewhere(): Promise<boolean | null>;
   /**

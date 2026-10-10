@@ -137,9 +137,12 @@ export interface BackgroundEngine {
   /**
    * ASK FOR THIS PHONE — the engine's `claimHere`. `held` is a live foreign claim, refused at the
    * door; it is the ordinary answer while another machine organizes the mailbox and owes nobody a
-   * sentence.
+   * sentence. This module is the claim WATCH and always asks `by: "watch"`, which carries no
+   * consent: over a mailbox nobody consented to on this phone the answer is `refused`.
    */
-  claimHere(): Promise<"claimed" | "held" | "unreadable" | "meta_folder_full" | "meta_undeletable" | "refused">;
+  claimHere(opts: { by: "press" | "watch" }): Promise<
+    "claimed" | "held" | "unreadable" | "meta_folder_full" | "meta_undeletable" | "refused"
+  >;
   /**
    * DOES A LIVE FOREIGN CLAIM HOLD THE MAILBOX, as the row says — asked before {@link claimHere},
    * so a stood-down phone presses only once the holder has gone. `null` is "cannot say" and the
@@ -986,14 +989,13 @@ export function createBackgroundOrganizing(deps: BackgroundDeps): BackgroundOrga
   };
 
   /**
-   * The holder left, and this phone is the one in front of the person — a stand-down is a one-way
-   * door without this. Measured on a device: the laptop handed the mailbox back, the claim was
-   * gone, and minutes later the phone had not re-claimed while its panel still named the machine
-   * that left. A phone organizes WHILE OPEN, so a stood-down session keeps asking on the claim
-   * watch's cadence and takes the mailbox back when nothing holds it — it cannot displace anybody,
-   * since {@link BackgroundEngine.claimHere} is refused while a foreign claim is renewed (where the
-   * one-organizer invariant is enforced). Bounded three ways — only while the session is live, only
-   * where the engine says this install is STOOD DOWN, and on the claim watch's clock.
+   * The holder left, and this phone is the one in front of the person — without this a stand-down
+   * is a one-way door (measured: the laptop handed the mailbox back and the phone never re-claimed).
+   * A stood-down session keeps asking on the claim watch's cadence and takes the mailbox back when
+   * nothing holds it; it cannot displace anybody, since {@link BackgroundEngine.claimHere} is refused
+   * while a foreign claim is renewed. Bounded four ways: only while the session is live, only where
+   * the engine says this install is STOOD DOWN, on the claim watch's clock, and only over a mailbox
+   * somebody consented to on this phone — the watch's press carries no consent of its own.
    */
   const reclaimCheck = async (): Promise<void> => {
     if (disposed) return;
@@ -1031,7 +1033,9 @@ export function createBackgroundOrganizing(deps: BackgroundDeps): BackgroundOrga
     if (held === true || disposed) return;
     let outcome: "claimed" | "held" | "unreadable" | "meta_folder_full" | "meta_undeletable" | "refused";
     try {
-      outcome = await deps.engine.claimHere();
+      /* THE WATCH, NEVER A PERSON: it carries no consent, so it can only take back a mailbox
+         somebody consented to on this phone. */
+      outcome = await deps.engine.claimHere({ by: "watch" });
     } catch (err) {
       log("organizer_reclaim_failed", { err, why: "holder_left" });
       /* A THROW IS A REFUSAL FOR THE BACKOFF'S PURPOSE. It has its own line — the one above, which

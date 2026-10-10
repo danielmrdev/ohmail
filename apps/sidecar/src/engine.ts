@@ -585,6 +585,12 @@ export interface Sidecar {
   /** `Request → Response`, with a fresh `ApiDeps` per call. This is what the stdio host serves. */
   handle(req: Request): Promise<Response>;
   /**
+   * DID THIS INSTALL ORGANIZE THE MAILBOX — a gate in this process read its row saying `organizer`,
+   * which only this install's own promotion writes. The claim watch's licence: it returns a mailbox
+   * this install organized, and never one a refused press only recorded consent on.
+   */
+  organizedHere(mailboxId: string): boolean;
+  /**
    * The foreground wake — re-dial every mailbox whose connection has died, now. One call for the
    * whole install, because the event is one event: the app came back to the foreground, or the
    * machine woke, and every socket this process held is stale at the same moment. Per-mailbox it
@@ -2390,6 +2396,8 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
      * `stop()` alone, so a mailbox removed or re-pointed meanwhile still gives its claim back.
      */
     let leavingForRestart = false;
+    /** The mailboxes whose row a gate in this process read as `organizer` — {@link Sidecar.organizedHere}. */
+    const organizedHereIds = new Set<string>();
     /**
      * One account-scoped pass at a time across the whole install. The passes below take an
      * account and no mailbox; every runtime's drain reaches them, and drains of different
@@ -4922,6 +4930,7 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
             .from(mailboxes).where(eq(mailboxes.id, mb.id)).limit(1);
           if (row) {
             rowRead = true;
+            if (row.role === "organizer") organizedHereIds.add(mb.id);
             takeoverAuthorized = row.at !== null;
             observedTakeoverAt = row.at;
             /* A value outside the column's closed set cannot be written by this program; read as
@@ -9983,6 +9992,7 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
         /* STRICT: the one word that keeps the claim. Anything else is the quit, and releases. */
         if (reason === "restart") leavingForRestart = true;
       },
+      organizedHere: (mailboxId: string) => organizedHereIds.has(mailboxId),
     };
   } catch (err) {
     // The lock and the PGlite instance must not survive a failed assembly, or the next launch

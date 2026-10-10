@@ -2749,7 +2749,7 @@
     "stopOrganizingNotServer": "Dieser Server hat dieses Postfach nicht organisiert.",
     "stopOrganizingRefused": "Zurzeit nicht möglich: {reason}",
     "stopOrganizingHandBack": "Postfach zurückgeben — die Post bleibt, wo sie ist.",
-    "stopOrganizingHandBackWhat": "Ab dem nächsten Durchlauf liest dieser Computer das Postfach weiter, sortiert es aber nicht mehr ein: Er verschiebt nichts, sortiert nichts aus und wendet keine deiner Regeln an. Nichts übernimmt das Postfach von selbst — eine andere Installation muss „Hier organisieren“ drücken, oder du fügst es ohmail Cloud hinzu.",
+    "stopOrganizingHandBackWhat": "Ab dem nächsten Durchlauf liest dieser Computer das Postfach weiter, sortiert es aber nicht mehr ein: Er verschiebt nichts, sortiert nichts aus und wendet keine deiner Regeln an. Nichts übernimmt das Postfach von selbst außer einem Telefon, das es vorher organisiert hat und geöffnet ist; sonst muss eine andere Installation „Hier organisieren“ drücken, oder du fügst es ohmail Cloud hinzu.",
     "chipStopping": "Wird beendet",
     "stateOrganizing": "Organisiert",
     "stateReading": "Liest nur",

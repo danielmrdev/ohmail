@@ -195,7 +195,9 @@ export function takeConsentPress(): boolean {
 export async function claimHereStandalone(): Promise<ClaimHereOutcome> {
   const held = door;
   if (held === null) return "refused";
-  const outcome = await held.claimHere().catch((): ClaimHereOutcome => "refused");
+  /* A FINGER PRESSED: Settings' Start carries the person's consent, which is what lets a phone
+     connected while another machine organized take the mailbox later. Never the watch's word. */
+  const outcome = await held.claimHere({ by: "press" }).catch((): ClaimHereOutcome => "refused");
   if (outcome === "claimed") settingsLeftBehind = null;
   notifyOrganizerState();
   return outcome;

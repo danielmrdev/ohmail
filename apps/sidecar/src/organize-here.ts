@@ -494,6 +494,36 @@ export async function requestOrganizerTakeover(
 }
 
 /**
+ * A PERSON'S CONSENT, RECORDED WITHOUT A CLAIM — the phone door's write on a press it refuses
+ * because another install holds the mailbox. The first half of {@link requestOrganizerTakeover}'s
+ * transaction: the screening baseline and `organize_consented_at`, both coalesced, and NO takeover
+ * stamp and no intent. The row stays a reader, so the gate only looks; the claim watch takes the
+ * mailbox once the holder lets go. Nothing is written on a removed mailbox.
+ */
+export async function recordConsentWithoutClaim(
+  db: LocalDb,
+  input: { mailboxId: string; now: Date },
+): Promise<"recorded" | "removed" | "no_mailbox"> {
+  const [row] = await db
+    .select({ id: mailboxes.id, accountId: mailboxes.accountId, status: mailboxes.status })
+    .from(mailboxes)
+    .where(eq(mailboxes.id, input.mailboxId))
+    .limit(1);
+  if (!row) return "no_mailbox";
+  if (row.status === "disabled") return "removed";
+  await db.transaction(async (tx) => {
+    await writeConsentScreening(tx, dialect(db), { accountId: row.accountId, now: input.now });
+    await tx
+      .update(mailboxes)
+      .set({
+        organizeConsentedAt: sql`coalesce(${mailboxes.organizeConsentedAt}, ${dialect(db).ts(input.now)})`,
+      })
+      .where(and(eq(mailboxes.id, row.id), ne(mailboxes.status, "disabled")));
+  });
+  return "recorded";
+}
+
+/**
  * Who holds this mailbox, if it is not this install. The row's holder columns, as the gate's last
  * peek left them: `organizer_state` is `held` only while a claim in `ohmail/_meta` is still being
  * renewed, so it is LIVENESS, not the row's memory of a stand-down. `disabled_reason` is that
