@@ -55,6 +55,7 @@ import {
 import {
   discardKeepsRow,
   reopenWouldOverwrite,
+  ownDraftDiscard,
   useComposeAutosave,
   worthSaving,
   type ComposeFate,
@@ -1772,7 +1773,11 @@ export function useShellCompose({
          text holding no row, and two seconds later wrote a second one for it.
          So the release, the block state and the reply seed all move inside the CONFIRMED branch,
          and the refusal restores the binding instead. */
+      // THIS PAGE'S OWN DELETE: its tombstone may land before the answer lets go of the editor.
+      ownDraftDiscard(draftId, true);
+      let queued = false;
       void engine.mutate({ kind: "draft_discard", draftId }).then((res) => {
+        queued = res.status === "queued";
         if (res.status === "rolled_back" && res.error?.code === "send_recorded") {
           /* A SEND STILL RUNNING, said by the server under its row lock — the row comes back, so
              the compose that was bound to it is bound to it again, and the row says why. */
@@ -1845,6 +1850,9 @@ export function useShellCompose({
         for (const [lane, held] of replyRows.current) {
           if (held.row === draftId) replyRows.current.delete(lane);
         }
+      }).then(() => {
+        // Forgotten once the answer above has been handled; a queued delete is still this page's.
+        if (!queued) ownDraftDiscard(draftId, false);
       });
     },
   );

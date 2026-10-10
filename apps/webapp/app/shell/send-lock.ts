@@ -822,6 +822,22 @@ export function holdOf(
 }
 
 /**
+ * DOES THIS BROWSER HOLD A SEND RECORD FOR THIS MESSAGE — by row or by compose session, in any
+ * state. A `sent` row a record names is this browser's own send whose tab died before its answer,
+ * never another device's; {@link releaseSendLockForRow}'s matching rule. Read only. A jar that
+ * cannot be read answers `true`: it cannot say no.
+ */
+export function sendRecordNames(
+  lane: string, draftId: string, session: string | null, owner: string | null = storageOwner(),
+): boolean {
+  const all = load(owner);
+  if (all === null) return true;
+  const names = new Set<string>([`draft:${draftId}`]);
+  if (session !== null) names.add(`compose:${session}`);
+  return all.some((r) => r.lane === lane && (r.draftId === draftId || lockSubjects(r).some((n) => names.has(n))));
+}
+
+/**
  * THE SERVER SAYS THIS ROW WAS SENT, SO THE RECORD ABOUT IT IS SETTLED — release it.
  *
  * The confirmed path releases a record through {@link releaseSendLock}, keyed by the fingerprint

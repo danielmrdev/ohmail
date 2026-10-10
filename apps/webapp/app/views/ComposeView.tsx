@@ -39,7 +39,7 @@ import {
 } from "../shell/format";
 import { activeFormatLocale, activeFormatZone } from "../shell/locale";
 import type { ComposeFields, ComposePlan } from "../shell/compose";
-import { draftNoteKey, worthSaving } from "../shell/compose-autosave";
+import { draftNoteKey, worthSaving, type ComposeElsewhere } from "../shell/compose-autosave";
 import { formatRecipientChips, type ResolvedFrom } from "../shell/compose-from";
 import { SignatureBlock } from "../shell/SignatureBlock";
 import { SIG_FOLLOWING } from "../shell/signature";
@@ -166,11 +166,11 @@ export function ComposeView({
    */
   discardKeeps?: boolean;
   /**
-   * THE LETTER ON SCREEN WAS SENT FROM ANOTHER DEVICE — `useComposeAutosave`'s `elsewhere`. Said at
-   * once; Send then refuses in words, and once something was typed since it offers that text as a
-   * new letter ({@link onSendAsNew}) rather than sending anything by itself.
+   * THE LETTER ON SCREEN WAS SENT OR DELETED ON ANOTHER DEVICE — `useComposeAutosave`'s `elsewhere`.
+   * Said at once; Send then refuses in words and offers what is on screen as a new letter
+   * ({@link onSendAsNew}) — for a sent one only once something was typed since, as it already went.
    */
-  elsewhere?: { why: "sent"; typedSince: boolean } | null;
+  elsewhere?: ComposeElsewhere | null;
   /** Go on with what is on screen as a NEW letter, and send it. */
   onSendAsNew?: () => void;
   /** `true` when the plain compose door opened on a message left unfinished — see `composeResumed`. */
@@ -976,7 +976,9 @@ export function ComposeView({
             {/* THE LETTER WENT FROM ANOTHER DEVICE, said the moment the mirror says so. An alert
                 because it arrives while somebody may be typing into a letter that no longer exists. */}
             {elsewhere !== null ? (
-              <p className="compose-note" role="alert">{t("sentElsewhere")}</p>
+              <p className="compose-note" role="alert">
+                {t(elsewhere.why === "deleted" ? "deletedElsewhere" : elsewhere.earlier ? "sentElsewhereKept" : "sentElsewhere")}
+              </p>
             ) : null}
             {/* THE QUESTION SITS ABOVE THE ROW IT WAS ASKED FROM, at full panel width — the
                 Drafts list's panel, and deliberately not an overlay: Compose was moved OUT of a
@@ -1002,7 +1004,9 @@ export function ComposeView({
                     warning exaggerates. */}
                 <p className="set-note-inline" id="compose-cancel-what">
                   {elsewhere !== null
-                    ? t(elsewhere.typedSince ? "cancelWhatSentElsewhereTyped" : "cancelWhatSentElsewhere")
+                    ? t(elsewhere.why === "deleted"
+                      ? (elsewhere.typedSince ? "cancelWhatDeletedElsewhereTyped" : "cancelWhatDeletedElsewhere")
+                      : (elsewhere.typedSince ? "cancelWhatSentElsewhereTyped" : "cancelWhatSentElsewhere"))
                     : discardKeeps
                       ? t("cancelWhatHeld")
                       : plan.mutation.draftId ? t("cancelWhat") : t("cancelWhatLocal")}
@@ -1142,12 +1146,12 @@ export function ComposeView({
               {needNote && needsContent ? (
                 <span className="send-note" role="status">{t("needContent")}</span>
               ) : null}
-              {/* WHY SEND DID NOT SEND, and the one way on: the text typed since, as a new letter.
-                  Nothing is offered for an unchanged letter — it already went. */}
+              {/* WHY SEND DID NOT SEND, and the one way on: what is on screen, as a new letter.
+                  Nothing is offered for an unchanged SENT letter — it already went. */}
               {elsewhereNote && elsewhere !== null ? (
                 <span className="send-note" role="status">
-                  {t("sentElsewhereSend")}
-                  {elsewhere.typedSince && onSendAsNew ? (
+                  {t(elsewhere.why === "deleted" ? "deletedElsewhereSend" : "sentElsewhereSend")}
+                  {(elsewhere.typedSince || elsewhere.why === "deleted") && onSendAsNew ? (
                     <Button variant="ghost" onClick={() => { setElsewhereNote(false); onSendAsNew(); }}>
                       {t("sendAsNew")}
                     </Button>

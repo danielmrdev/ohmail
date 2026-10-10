@@ -399,6 +399,7 @@ export function resetComposerForTest(): void {
   claimSettled = false;
   recoveries.clear();
   unannounced.clear();
+  rowHolds.clear();
 }
 
 /** The un-owned key this browser may still hold. Removed on clear, never read. */
@@ -487,8 +488,50 @@ export function writeComposeDraft(f: ComposeFields): void {
   // paperclip pointing at bytes it no longer holds. Everything textual is persisted as before.
   const { attachments: _drop, ...persisted } = f;
   // `locked`: written while this page holds its composer, so a crash leaves a unit it may adopt.
-  const stored = composerLocked ? { ...persisted, locked: true } : persisted;
+  const locked = composerLocked ? { ...persisted, locked: true } : persisted;
+  const holds = rowHoldsOf(composeDraftKey());
+  const stored = holds === null ? locked : { ...locked, holds };
   durableSet(composeDraftKey(), JSON.stringify(stored), "compose.draft");
+}
+
+/**
+ * WHAT THE ACCOUNT'S ROW HELD at this browser's last confirmed write: the row and a hash of the
+ * form as written. Kept INSIDE the buffer, so it moves with the unit at a handoff and goes with it.
+ * A reload that finds the row sent elsewhere compares it with the buffer, and keeps what the row
+ * never held. Read only against the row the composer holds, so one left over names nothing.
+ */
+export interface ComposeRowHolds { row: string; sig: string }
+/* Read once per key per page. A unit moves INTO a composer's keys only before its composer is ready
+   (the handoff, a dead tab's recovery), and the marker is read after; a stale miss reads as unknown. */
+const rowHolds = new Map<string, ComposeRowHolds | null>();
+
+function rowHoldsOf(key: string): ComposeRowHolds | null {
+  const known = rowHolds.get(key);
+  if (known !== undefined) return known;
+  let found: ComposeRowHolds | null = null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    const h = raw ? (JSON.parse(raw) as { holds?: Partial<ComposeRowHolds> }).holds : undefined;
+    if (typeof h?.row === "string" && h.row !== "" && typeof h.sig === "string") found = { row: h.row, sig: h.sig };
+  } catch { /* a refused jar or a foreign shape knows nothing */ }
+  rowHolds.set(key, found);
+  return found;
+}
+
+export function readComposeRowHolds(owner: string | null = storageOwner()): ComposeRowHolds | null {
+  adoptHandoff(owner);
+  return rowHoldsOf(composeDraftKey(owner));
+}
+
+/** Record what the row holds, and write it into the stored buffer now. */
+export function markComposeRowHolds(holds: ComposeRowHolds, owner: string | null = storageOwner()): void {
+  const key = composeDraftKey(owner);
+  rowHolds.set(key, holds);
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return;
+    durableSet(key, JSON.stringify({ ...(JSON.parse(raw) as Record<string, unknown>), holds }), "compose.draft");
+  } catch { /* the marker stays in this page's memory */ }
 }
 
 /**

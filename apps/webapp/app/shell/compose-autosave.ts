@@ -16,10 +16,10 @@ import { draftOverCeiling } from "@trafficflow/core/outbound-text";
 import type { OhmailEngine } from "@ohmail/client-engine";
 import type { ComposeFields } from "./compose";
 import { COMPOSE_SEND_KEY, sendLockOwed, writeReplyMeta } from "./mail-send";
-import { holdOf, releaseSendLockForRow, type Hold } from "./send-lock";
+import { holdOf, releaseSendLockForRow, sendRecordNames, type Hold } from "./send-lock";
 import {
-  clearComposeDraft, composeSessionId, parseRecipients, readComposeRow, whenComposerReady,
-  writeComposeRow,
+  clearComposeDraft, composeSessionId, markComposeRowHolds, parseRecipients, readComposeDraft,
+  readComposeRow, readComposeRowHolds, whenComposerReady, writeComposeRow,
 } from "./compose";
 
 /** How long the form must be still before it is written to the account. */
@@ -119,6 +119,41 @@ function signatureOf(f: ComposeFields): string {
   return JSON.stringify([f.to, f.cc ?? "", f.bcc ?? "", f.subject, f.body, f.html ?? "", f.forwardOf ?? ""]);
 }
 
+/** {@link signatureOf} hashed (cyrb53), for the marker the buffer carries — the body is not stored twice. */
+export function holdsSig(f: ComposeFields): string {
+  const s = signatureOf(f);
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < s.length; i += 1) {
+    const c = s.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
+/**
+ * ROWS THIS PAGE ASKED THE SERVER TO DELETE. Their tombstone is this page's own act arriving, never
+ * "deleted on another device": the Drafts list can delete the row the editor holds, and the delta
+ * lands before the list's answer lets go of the binding. `asked: false` when the delete was refused.
+ */
+const ownDiscards = new Set<string>();
+export function ownDraftDiscard(draftId: string, asked: boolean): void {
+  if (asked) ownDiscards.add(draftId);
+  else ownDiscards.delete(draftId);
+}
+
+/** The mirror put this row down on a delta — the authoritative delete. Absence alone is never one. */
+function tombstoned(engine: OhmailEngine, draftId: string): boolean {
+  try {
+    return engine.store?.isTombstoned?.("draft", draftId) === true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * How a bound compose's message ended — the input to {@link ComposeAutosave.settleCompose}. Two
  * arms are built; the third that invariant T names — the durable outbox settling a `mail_send`
@@ -137,6 +172,8 @@ export function discardKeepsRow(hold: Hold, row: string | null): "held" | "unkno
   if (row === null || hold.kind === "free") return null;
   return hold.kind === "parked" ? "held" : "unknown";
 }
+
+export interface ComposeElsewhere { why: "sent" | "deleted"; typedSince: boolean; earlier: boolean }
 
 export type ComposeFate =
   /**
@@ -240,12 +277,14 @@ export interface ComposeAutosave {
    */
   settled: (sentDraftId: string | null) => void;
   /**
-   * THE ROW THIS COMPOSER HELD WAS SENT FROM ANOTHER DEVICE — the mirror's `sent` arrived for it
-   * with no send of this browser's on record. The row is let go of on that word, so nothing is
-   * written to a sent letter again, and `typedSince` says whether the form has moved off what was
-   * on screen then: anything typed after it is saved as a NEW draft by the ordinary pause.
+   * THE ROW THIS COMPOSER HELD WAS SENT OR DELETED ON ANOTHER DEVICE — the mirror's `sent` with no
+   * send of this browser's on record, or a delete the server stated (a `/sync` tombstone, or a 404
+   * to this editor's own save). The row is let go of, so nothing is written to it again, and
+   * `typedSince` says whether the form has moved off what the row held: that is saved as a NEW
+   * draft by the ordinary pause. `earlier`: the words were typed before this page learned of it
+   * (a tab closed or offline at the time), and are kept rather than cleared.
    */
-  elsewhere: { why: "sent"; typedSince: boolean } | null;
+  elsewhere: ComposeElsewhere | null;
 }
 
 /**
@@ -300,6 +339,11 @@ export function useComposeAutosave(opts: {
    * carries the current resolution) is the backstop.
    */
   const savedMailbox = useRef<string | null>(null);
+  /**
+   * WHAT THE ROW HOLDS AS A HASH ({@link holdsSig}) — the buffer's marker, and the one fact a reload
+   * has when `saved` is unknown. `null` = not known.
+   */
+  const savedHash = useRef<string | null>(null);
   /** One save at a time: a second create while the first is in flight is a second row. */
   const inFlight = useRef(false);
   /**
@@ -321,8 +365,13 @@ export function useComposeAutosave(opts: {
    * into since is a different message, and that one is still worth saving.
    */
   const abandonedAt = useRef<string | null>(null);
-  /** See {@link ComposeAutosave.elsewhere}; `at` is the form's signature when the word arrived. */
-  const [elsewhereAt, setElsewhereAt] = useState<{ why: "sent"; rowId: string; at: string } | null>(null);
+  /**
+   * See {@link ComposeAutosave.elsewhere}. `at` is the signature of what the row held when the word
+   * arrived; `null` = nothing on screen is the row's (words typed before this page learned of it).
+   */
+  const [elsewhereAt, setElsewhereAt] = useState<
+    { why: "sent" | "deleted"; rowId: string; at: string | null; earlier: boolean } | null
+  >(null);
   /** A restored form the account may not hold yet — see {@link ComposeAutosave.restored}. */
   const openWrite = useRef(false);
   const restored = useCallback(() => { openWrite.current = true; }, []);
@@ -335,6 +384,8 @@ export function useComposeAutosave(opts: {
     // the same message's text does — see `composeRowKey`.
     writeComposeRow(id);
     saved.current = signatureOf(f);
+    savedHash.current = holdsSig(f);
+    markComposeRowHolds({ row: id, sig: savedHash.current });
     savedMailbox.current = f.fromMailboxId;
     // A row taken over is a message this surface holds again — see `abandonedAt`.
     abandonedAt.current = null;
@@ -368,9 +419,30 @@ export function useComposeAutosave(opts: {
     setDraftId(null);
     writeComposeRow(null);
     saved.current = null;
+    savedHash.current = null;
     savedMailbox.current = null;
     setElsewhereAt(null);
   }, []);
+
+  /**
+   * LET GO OF A ROW ANOTHER DEVICE ENDED — sent or deleted. No delete, the form stays, the text the
+   * row held is not written again, and anything typed after is the next pause's new row.
+   */
+  const letGo = useCallback((why: "sent" | "deleted", rowId: string) => {
+    /* WHAT THE ROW HELD AS FAR AS THIS TAB KNOWS, never the form: words typed here that never
+       reached the row (a pause not yet run, a save refused offline) are text after it ended, and
+       they are kept as the new draft by the next pause rather than counted as the row's. After a
+       reload only the marker's hash may be known; known by neither, the form is kept (`null`) —
+       unless a record of this browser's names the message: then the send was its own. */
+    const form = signatureOf(fieldsRef.current);
+    const own = why === "sent" && sendRecordNames(COMPOSE_SEND_KEY, rowId, composeSessionId());
+    const at = saved.current ?? (own || savedHash.current === holdsSig(fieldsRef.current) ? form : null);
+    release();
+    abandonedAt.current = at;
+    // Nothing new on screen: the buffer is the row's letter, and a reload must not make it a draft.
+    if (form === at) clearComposeDraft();
+    setElsewhereAt({ why, rowId, at, earlier: at === null });
+  }, [release]);
 
   /**
    * The row this surface was holding when the tab died, adopted on mount. A reload restored the TEXT and
@@ -434,6 +506,22 @@ export function useComposeAutosave(opts: {
          go of and the record is settled on the mirror's own word, which is what the confirmed path
          does with the answer it received. */
       if (hold.kind === "parked" && hold.status === "sent") {
+        /* ANOTHER DEVICE'S SEND — no record of this browser's names the message — AND WORDS THIS
+           ROW NEVER HELD: a tab closed or offline inside the pause, reopened after the send. The
+           buffer is not what the row held at this browser's last write (or that is not known), so
+           the words are kept as a new draft and said. This browser's own send settles below. */
+        const buffer = readComposeDraft();
+        const holds = readComposeRowHolds();
+        if (worthSaving(buffer) && !sendRecordNames(COMPOSE_SEND_KEY, held, composeSessionId())
+          && !(holds !== null && holds.row === held && holds.sig === holdsSig(buffer))) {
+          adopted.current = true;
+          epoch.current += 1;
+          writeComposeRow(null);
+          saved.current = null;
+          abandonedAt.current = null;
+          setElsewhereAt({ why: "sent", rowId: held, at: null, earlier: true });
+          return true;
+        }
         /* INVARIANT T(b). This arm used to release the record and drop the held row and stop
            there — which left the DELIVERED TEXT in the form with the projection reading idle, and
            the next ordinary press minted a second Idempotency-Key for a message the mirror says
@@ -452,6 +540,9 @@ export function useComposeAutosave(opts: {
       if (hold.kind !== "free") return false;
       adopted.current = true;
       epoch.current += 1;
+      // What the row holds is known here only as the marker's hash, and only for this row.
+      const marked = readComposeRowHolds();
+      savedHash.current = marked !== null && marked.row === held ? marked.sig : null;
       setDraftId(held);
       // `saved` stays `null` on purpose: what the account holds for this row is not known to this
       // mount, so the first change writes an UPDATE to it rather than being deduped away.
@@ -600,10 +691,10 @@ export function useComposeAutosave(opts: {
    * stated on screen for as long as they stand, so a close over one of them loses nothing
    * silently.
    */
-  const writeNow = useCallback(async (): Promise<ComposeFlush> => {
+  const writeNow = useCallback(async (asNew = false): Promise<ComposeFlush> => {
     const f = fieldsRef.current;
     const mailbox = mailboxRef.current;
-    const row = draftIdRef.current;
+    const row = asNew ? null : draftIdRef.current;
     if (!worthSaving(f)) return { kind: "nothing" };
     const signature = signatureOf(f);
     // THE MESSAGE THIS SURFACE LET GO OF, UNCHANGED SINCE — see `abandonedAt`.
@@ -660,6 +751,10 @@ export function useComposeAutosave(opts: {
     if (row === null && sendInFlightRef.current) return { kind: "nothing" };
     inFlight.current = true;
     const era = epoch.current;
+    /* A 404 to a PUT is the server's word only when the mirror held the row: an absent row is
+       refused locally with the same 404 (a resync between pages), and absence is not a delete. */
+    const mirrored = row !== null && engine.read().get("draft", row) != null;
+    let gone = false;
     let outcome: ComposeFlush = { kind: "failed", reason: null };
     const run = (async () => {
       try {
@@ -690,6 +785,8 @@ export function useComposeAutosave(opts: {
            durable in the outbox before it reaches the wire, so it is on its way and the composer
            may go. */
         if (result.status === "rolled_back") {
+          gone = mirrored && era === epoch.current
+            && (result.error?.status === 404 || result.error?.code === "not_found");
           outcome = { kind: "failed", reason: result.error?.message ?? null };
           return;
         }
@@ -725,6 +822,9 @@ export function useComposeAutosave(opts: {
              written, and that is bound where the record is written (`mail-send.ts`). */
         }
         saved.current = signature;
+        savedHash.current = holdsSig(f);
+        const savedRow = row ?? result.entityId;
+        if (savedRow) markComposeRowHolds({ row: savedRow, sig: savedHash.current });
         if (mailbox) savedMailbox.current = mailbox;
         openWrite.current = false;
         outcome = { kind: "saved" };
@@ -741,8 +841,13 @@ export function useComposeAutosave(opts: {
     inFlightP.current = run;
     await run;
     if (inFlightP.current === run) inFlightP.current = null;
+    // THE SERVER SAYS THE ROW IS GONE: let go of it, and what this save carried becomes the new row.
+    if (gone && row !== null && draftIdRef.current === row) {
+      letGo("deleted", row);
+      return writeNow(true);
+    }
     return outcome;
-  }, [engine]);
+  }, [engine, letGo]);
 
   useEffect(() => {
     if (!active && !openWrite.current) return;
@@ -763,7 +868,8 @@ export function useComposeAutosave(opts: {
     }).kind === "parked") return;
     const timer = window.setTimeout(() => { void writeNow(); }, AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [engine, fields, mailboxId, active, draftId, sendInFlight, writeNow]);
+    // `elsewhereAt`: a row let go of at mount changes no other input, and its words wait on this.
+  }, [engine, fields, mailboxId, active, draftId, sendInFlight, writeNow, elsewhereAt]);
 
   /**
    * THE BELT ON EVERY CLOSE PATH NO DOOR CAN INTERCEPT — the rail, a `g` jump, the browser's
@@ -779,12 +885,11 @@ export function useComposeAutosave(opts: {
   }, [active, writeNow]);
 
   /**
-   * A SEND FROM ANOTHER DEVICE ENDS THIS EDITOR'S HOLD ON ITS ROW. The server marks a sent draft
-   * `sent` and `/sync` brings the row back; the editor used to stay bound to it, and every save and
-   * press was refused in silence. A `sent` read by status (no unconfirmed record of this browser's)
-   * while no send of this surface is in flight is another device's send: the row is let go of
-   * without a delete, the form stays, the text the row held is not written again, and anything
-   * typed after is the next pause's new row.
+   * ANOTHER DEVICE ENDING THE ROW ENDS THIS EDITOR'S HOLD ON IT. A `sent` read by status (no record
+   * of this browser's) while no send of this surface is in flight is another device's send. A
+   * delete is the mirror's TOMBSTONE for the row — a delta the server sent — never mere absence: a
+   * resync empties the mirror before refilling it, and a pruned row is absent too. This page's own
+   * delete ({@link ownDraftDiscard}) and a park by record are not "elsewhere".
    */
   useEffect(() => {
     if (draftId === null) return;
@@ -793,23 +898,22 @@ export function useComposeAutosave(opts: {
       const hold = holdOf(engine, {
         lane: COMPOSE_SEND_KEY, draftId, session: composeSessionId(),
       });
-      if (hold.kind !== "parked" || hold.by !== "status" || hold.status !== "sent") return;
-      /* WHAT THE ROW HELD AS FAR AS THIS TAB KNOWS, never the form: words typed here that never
-         reached the row (a pause not yet run, a save refused offline) are text after the send, and
-         they are kept as the new draft by the next pause rather than counted as the sent letter. */
-      const at = saved.current ?? signatureOf(fieldsRef.current);
-      release();
-      abandonedAt.current = at;
-      // Nothing new on screen: the buffer is the sent letter, and a reload must not make it a draft.
-      if (signatureOf(fieldsRef.current) === at) clearComposeDraft();
-      setElsewhereAt({ why: "sent", rowId: draftId, at });
+      if (hold.kind === "parked" && hold.by === "status" && hold.status === "sent") {
+        letGo("sent", draftId);
+        return;
+      }
+      if (hold.kind !== "parked" && !ownDiscards.has(draftId) && tombstoned(engine, draftId)) {
+        letGo("deleted", draftId);
+      }
     };
     check();
     return engine.subscribe(check);
-  }, [engine, draftId, release]);
+  }, [engine, draftId, letGo]);
 
   const elsewhere = elsewhereAt === null ? null : {
-    why: elsewhereAt.why, typedSince: signatureOf(fields) !== elsewhereAt.at,
+    why: elsewhereAt.why,
+    typedSince: elsewhereAt.at === null || signatureOf(fields) !== elsewhereAt.at,
+    earlier: elsewhereAt.earlier,
   };
 
   const flush = useCallback(async (): Promise<ComposeFlush> => {
@@ -817,7 +921,7 @@ export function useComposeAutosave(opts: {
        the keystrokes typed during its round trip would be the ones that never landed. */
     const pending = inFlightP.current;
     if (pending) await pending;
-    return writeNow();
+    return writeNow(false);
   }, [writeNow]);
 
   /* `settled` is defined below `settleCompose` and is called from inside it — through a ref, so
