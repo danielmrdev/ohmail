@@ -4761,7 +4761,18 @@ export class ImapAdapter implements MailboxAdapter, AdapterPort, FolderScanner {
     // Fire-and-forget: `idle()` resolves only when the NEXT command interrupts it, so awaiting
     // it here would hang the visit that called this. It no-ops when IDLE is already running,
     // and a failure is the connection dying — which the `close`/`error` listeners own.
-    void this.client.idle().catch(() => { /* the connection's own listeners handle it */ });
+    /* BEHIND THE CLIENT'S OWN BUSY GUARD, asked a turn later. Started at once, an IDLE queued
+       behind a command another pass had just sent (the lease read's LIST) and landed before that
+       caller's next command (its LSUB), which waited until a heartbeat NOOP broke it: 15 s at a
+       press. A busy connection declines; its work re-arms auto-IDLE, and the next visit asks
+       again. */
+    const timer = setTimeout(() => {
+      // `connectionBusy` is the client's own guard (its auto-IDLE asks it) and is not in its types.
+      const client = this.client as ImapFlow & { connectionBusy?: () => boolean };
+      if (client.connectionBusy?.() === true || client.idling) return;
+      void this.client.idle().catch(() => { /* the connection's own listeners handle it */ });
+    }, 0);
+    (timer as { unref?: () => void }).unref?.();
   }
 
   /**
