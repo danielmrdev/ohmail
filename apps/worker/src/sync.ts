@@ -1374,11 +1374,15 @@ async function syncCycleWithin(
   // clients tombstone on. A cross-batch external move is tombstoned here and RESURRECTED by the adopt
   // path (`clearDeletedOnAdopt` + the move change) — the client contract's "a LATER create resurrects"
   // end to end. Junk-parked rows are excluded in the query; optional-guarded so every fake repo works.
-  if (typeof repo.tombstoneInstanceless === "function") {
+  const reapOwed = batch.unchanged !== true || reaperDrained.get(adapter) !== true;
+  // SKIPPED on a pass the adapter proved `unchanged` when this connection's last reap took less
+  // than its limit: only a removed instance makes a victim, and an empty batch removes none.
+  if (typeof repo.tombstoneInstanceless === "function" && reapOwed) {
     const reaped = await fencedLiveGroup(deps, (r) =>
       typeof r.tombstoneInstanceless === "function"
         ? r.tombstoneInstanceless(accountId, mailboxId, TOMBSTONE_MAX_PER_CYCLE)
         : Promise.resolve(0));
+    reaperDrained.set(adapter, reaped < TOMBSTONE_MAX_PER_CYCLE);
     if (reaped > 0) {
       log?.info("sync_tombstoned_expunged", {
         mailboxId, accountId, reaped,
@@ -1677,6 +1681,9 @@ async function syncCycleWithin(
  * on every visit.
  */
 const ownMailReleaseDone = new Set<string>();
+
+/** Adapter → its last reap took less than its limit. Per connection, so a new one reaps first. */
+const reaperDrained = new WeakMap<object, boolean>();
 
 /**
  * `PlanDeps.ownAddresses` for one page — read once, and only when the page holds mail the gate

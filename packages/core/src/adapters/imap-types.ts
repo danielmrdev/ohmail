@@ -892,6 +892,12 @@ export interface ChangeBatch {
    * {@link deletes}, whose epoch guard skips a prior epoch; forgotten per folder in one transaction.
    */
   resetGone?: readonly Change[];
+  /**
+   * Every folder this pass scanned was proved unchanged by the server's own keys, none was read in
+   * full, and the batch is empty. A caller may skip work that only a change on the server can make
+   * owed (the worker's reaper); `IMAP_QUIET_FULL_READ_MS` bounds how long. Absent reads as `false`.
+   */
+  unchanged?: boolean;
 }
 
 export interface OutboundMessage {

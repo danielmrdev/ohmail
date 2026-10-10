@@ -1133,6 +1133,41 @@ function isMetaFolder(mailbox: { path?: unknown; delimiter?: unknown } | false |
   return mailbox.path === `ohmail${d}_meta`;
 }
 
+/**
+ * The longest a folder may go unread while its SELECT keys stay equal — {@link ImapAdapter.provedQuiet}.
+ * Equal UIDVALIDITY, UIDNEXT and EXISTS prove no arrival and no expunge (RFC 3501: an append takes a
+ * UID at or above UIDNEXT, so an expunge hidden by an append still moves UIDNEXT); HIGHESTMODSEQ
+ * proves no flag change on a CONDSTORE server; without CONDSTORE the flag read still runs every
+ * pass. The bound covers a server that keeps its keys still while its mail moves.
+ */
+export const IMAP_QUIET_FULL_READ_MS = 15 * 60_000;
+
+/** What a full read found when it found nothing — the keys a later SELECT must repeat to skip it. */
+interface QuietRead {
+  uidValidity: string; uidNext: number; exists: number;
+  /** The server's HIGHESTMODSEQ, or `null` on a server without CONDSTORE. */
+  modseq: string | null;
+  /** The cursor this read published — a caller that did not store it is not skipped. */
+  cursor: PersistedFolderCursor;
+  /** {@link knownPrint} of what the caller handed over: a changed known-set or set-aside reads again. */
+  print: string;
+  atMs: number;
+}
+
+/** An order-free print of a folder's known-set and set-aside rows: count, sum and xor of a mixed hash. */
+function knownPrint(known: readonly KnownEntry[], aside: readonly MessageSite[]): string {
+  let sum = 0;
+  let xor = 0;
+  const mix = (a: number, b: number): void => {
+    const h = Math.imul((a ^ Math.imul(b, 0x9e3779b1)) >>> 0, 0x85ebca6b) >>> 0;
+    sum = (sum + h) >>> 0;
+    xor = (xor ^ Math.imul(h ^ (h >>> 13), 0xc2b2ae35)) >>> 0;
+  };
+  for (const k of known) mix(k.uid, k.seen === true ? 1 : k.seen === false ? 2 : 3);
+  for (const a of aside) mix(a.uid, 4 + (Number(a.uidValidity) % 0x7fff));
+  return `${known.length}:${aside.length}:${sum}:${xor}`;
+}
+
 /** Every row stream of this connection pulled in slices of the event loop (`slicedFetch`). */
 function sliceRowStreams(client: ImapFlow): void {
   if (typeof client.fetch !== "function") return;
@@ -1223,6 +1258,11 @@ export class ImapAdapter implements MailboxAdapter, AdapterPort, FolderScanner {
   private passiveStatus: ReadonlyMap<string, FolderStatus> = new Map();
   /** Folder → in-flight bounded flag drain. See {@link FlagDrain}. */
   private readonly flagDrain = new Map<string, FlagDrain>();
+  /**
+   * Folder → the last full read that found nothing. In memory like {@link flagDrain}: losing it
+   * costs one full read, never a message. See {@link provedQuiet}.
+   */
+  private readonly quietReads = new Map<string, QuietRead>();
 
   /**
    * Where the last pass's byte budget ran out. In memory beside {@link ImapAdapter.flagDrain} and
@@ -3264,6 +3304,30 @@ export class ImapAdapter implements MailboxAdapter, AdapterPort, FolderScanner {
   }
 
   /**
+   * May this pass skip the folder's UID enumeration (with CONDSTORE, its flag read too)? Only when
+   * the last full read found nothing, within {@link IMAP_QUIET_FULL_READ_MS}, and this SELECT repeats its UIDVALIDITY,
+   * UIDNEXT, EXISTS and (CONDSTORE) HIGHESTMODSEQ, while the caller hands back the cursor that read
+   * published and the same known-set and set-aside. Any missing key reads the folder (fail closed).
+   */
+  private provedQuiet(
+    folder: string, mb: Pick<MailboxObject, "uidValidity" | "uidNext" | "exists" | "highestModseq">,
+    prev: FolderCursor | undefined, condstore: boolean, print: string,
+  ): boolean {
+    const q = this.quietReads.get(folder);
+    if (!q || !prev) return false;
+    if (this.now() - q.atMs >= IMAP_QUIET_FULL_READ_MS) return false;
+    if (!sameEpoch(epochOf(prev.uidValidity), epochOf(q.cursor.uidValidity)) || prev.uidNext !== q.cursor.uidNext
+      || prev.highestModseq !== q.cursor.highestModseq || print !== q.print) return false;
+    // The remembered UIDNEXT, like every remembered uid, stands only under the epoch now stated.
+    const atEpoch = uidRefsAtEpoch([{ epoch: epochOf(q.uidValidity), uid: q.uidNext }], epochOf(mb.uidValidity));
+    if (atEpoch !== "usable") return false;
+    if (typeof mb.uidNext !== "number" || mb.uidNext !== q.uidNext) return false;
+    if (typeof mb.exists !== "number" || mb.exists !== q.exists) return false;
+    if (!condstore) return true;
+    return mb.highestModseq != null && String(mb.highestModseq) === q.modseq;
+  }
+
+  /**
    * Does the server itself state this remembered folder does not exist? One STATUS by name; only
    * an answer {@link statesMailboxNonexistent} reads as that statement is a yes. Found, refused,
    * or a NO naming another cause keeps the folder's rows. A deadline is a breach and fails the
@@ -3427,6 +3491,8 @@ export class ImapAdapter implements MailboxAdapter, AdapterPort, FolderScanner {
     // What every claimant behind a folder keeps whatever that folder does with its turn.
     const flagFloor = Math.max(1, Math.floor(flagTotal / (2 * Math.max(1, flagClaimants.size))));
 
+    /** Folders this pass proved unchanged without reading them — see {@link ChangeBatch.unchanged}. */
+    let unchangedFolders = 0;
     for (const [folderIndex, folder] of scanOrder.entries()) {
       const isSent = folder === sentFolder;
       const isPassive = passiveFolders.has(folder);
@@ -3439,8 +3505,12 @@ export class ImapAdapter implements MailboxAdapter, AdapterPort, FolderScanner {
         newFolders[folder] = {
           uidValidity: prev!.uidValidity, uidNext: prev!.uidNext, highestModseq: prev!.highestModseq,
         };
+        unchangedFolders++;
         continue;
       }
+      // imapflow grants the lock on an already-selected folder WITHOUT a SELECT (IDLE keeps INBOX
+      // selected between passes), so its UIDNEXT and HIGHESTMODSEQ are the last SELECT's.
+      const cachedSelect = !!this.client.mailbox && this.client.mailbox.path === serverPath;
       let lock: { release(): void };
       try {
         lock = await this.bounded(this.client.getMailboxLock(serverPath));
@@ -3456,14 +3526,49 @@ export class ImapAdapter implements MailboxAdapter, AdapterPort, FolderScanner {
         if (err instanceof ImapBoundExceeded) throw err;
         // Folder does not exist yet (e.g. ensureFolders not run, or server lacks it).
         // Carry the previous cursor forward and skip — no changes can be observed here.
+        this.quietReads.delete(folder);
         newFolders[folder] = prev
           ? { uidValidity: prev.uidValidity, uidNext: prev.uidNext, highestModseq: prev.highestModseq }
           : { uidValidity: "0", uidNext: 0, highestModseq: "0" };
         continue;
       }
       try {
+        // A quiet verdict is read only off a SELECT this pass made: a cached one is re-SELECTed.
+        let freshKeys = !cachedSelect;
+        if (!freshKeys && typeof this.client.mailboxOpen === "function") {
+          await this.bounded(this.client.mailboxOpen(serverPath), folder);
+          freshKeys = true;
+        }
         const mb = this.client.mailbox as MailboxObject;
         const curUidValidity = mb.uidValidity;
+        // The keys AS SELECTED: imapflow mutates `mb` on every untagged EXISTS, so a message
+        // arriving after the enumeration would otherwise be written into the record as seen.
+        const selected = {
+          uidValidity: mb.uidValidity, uidNext: mb.uidNext, exists: mb.exists, highestModseq: mb.highestModseq,
+        };
+        // PROVED QUIET: this SELECT repeats the keys of a full read that found nothing, so the UID
+        // enumeration is skipped. With CONDSTORE (or in Sent, which takes no flag read) the folder
+        // is done; without it the flag read still runs this pass, against the known-set.
+        const print = knownPrint(prev?.known ?? [], asideByFolder.get(folder) ?? []);
+        const quiet = freshKeys && this.provedQuiet(folder, selected, prev, caps.condstore, print);
+        if (quiet && (caps.condstore || isSent)) {
+          newFolders[folder] = {
+            uidValidity: prev!.uidValidity, uidNext: prev!.uidNext, highestModseq: prev!.highestModseq,
+            serverExists: mb.exists,
+          };
+          if (folder === "INBOX") {
+            this.lastInboxSeen = { uidValidity: String(curUidValidity), uidNext: mb.uidNext ?? 0 };
+          }
+          unchangedFolders++;
+          continue;
+        }
+        /** The proved-quiet read's clock, kept so the flag read does not restart the bound. */
+        const quietSince = quiet ? this.quietReads.get(folder)!.atMs : undefined;
+        if (quiet) unchangedFolders++;
+        this.quietReads.delete(folder);
+        const reportsBefore = {
+          deletes: deletes.length, flags: flagChanges.length, stale: setAsideStale.length,
+        };
         const knownMap = new Map<number, KnownEntry>((prev?.known ?? []).map((k) => [k.uid, k]));
         // A reset is a CONTRADICTION between two named epochs. A cold cursor names none and a
         // silent server names none, and neither is evidence that the folder was recreated — read
@@ -3502,7 +3607,8 @@ export class ImapAdapter implements MailboxAdapter, AdapterPort, FolderScanner {
         /** Below this no UID may be a create — the Sent watermark; 0 everywhere else. */
         let createFloorUid = 0;
         if (!isSent) {
-          currentUids = await this.enumerateUids(folder);
+          // Proved quiet: the server holds exactly the known-set, so it stands in for the read.
+          currentUids = quiet ? [...knownMap.keys()] : await this.enumerateUids(folder);
         } else {
           const watermark = uidValidityChanged ? 0 : (prev?.uidNext ?? 0);
           if (watermark > 0) {
@@ -3805,6 +3911,21 @@ export class ImapAdapter implements MailboxAdapter, AdapterPort, FolderScanner {
         if (folder === "INBOX") {
           this.lastInboxSeen = { uidValidity: String(curUidValidity), uidNext: mb.uidNext ?? 0 };
         }
+        // A full read that found NOTHING is the only one a later SELECT may stand in for: every
+        // report this folder could make is empty, its cursor advanced whole, and the keys exist.
+        const foundNothing = !uidValidityChanged && !truncated && !flagsTruncated
+          && unknownUids.length === 0 && withheldUids.length === 0 && refusedOnSize.length === 0
+          && deletes.length === reportsBefore.deletes && flagChanges.length === reportsBefore.flags
+          && setAsideStale.length === reportsBefore.stale
+          && typeof selected.uidNext === "number" && typeof selected.exists === "number"
+          && (!caps.condstore || selected.highestModseq != null);
+        if (foundNothing) {
+          this.quietReads.set(folder, {
+            uidValidity: String(selected.uidValidity), uidNext: selected.uidNext!, exists: selected.exists,
+            modseq: caps.condstore ? String(selected.highestModseq) : null,
+            cursor: newFolders[folder]!, print, atMs: quietSince ?? this.now(),
+          });
+        }
       } finally {
         lock.release();
       }
@@ -3882,6 +4003,10 @@ export class ImapAdapter implements MailboxAdapter, AdapterPort, FolderScanner {
       ...(resetGone.length > 0 ? { resetGone: resetGone.map(asDelete) } : {}),
       ...(overrun !== undefined ? { overrun } : {}),
       ...(setAsideStale.length > 0 ? { setAsideStale } : {}),
+      ...(unchangedFolders === scanOrder.length && creates.length === 0 && deletes.length === 0
+        && flagChanges.length === 0 && setAsideStale.length === 0 && !hasBacklog
+        && stoppedAt === undefined && overrun === undefined && unreadableCursors.length === 0
+        ? { unchanged: true } : {}),
     };
   }
 
