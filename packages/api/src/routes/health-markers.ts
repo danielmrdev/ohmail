@@ -891,7 +891,7 @@ export const SCHEMA_INDEX_MARKERS: ReadonlyArray<IndexMarker> = [
   ["messages_id_account_uq", "ON public.messages USING btree (id, account_id)"],
   // mail 0125_message_search. The SILENT kind, like the first five: without the two word indexes
   // every search is a sequential scan of the account's documents — nothing raises, every test
-  // stays green, and the first page stops answering in milliseconds. Mail 0150 bounds their pending
+  // stays green, and the first page stops answering in milliseconds. Mail 0152 bounds their pending
   // list (every search read up to 4 MB of every account's) and the needle carries it: ONE marker per
   // index, because the probe counts index rows and a second entry for one index is never found.
   ["message_search_head_tsv_idx", "ON public.message_search USING gin (head_tsv) WITH (gin_pending_list_limit='256')"],

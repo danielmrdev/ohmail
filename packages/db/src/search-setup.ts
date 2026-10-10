@@ -39,7 +39,7 @@ export const TRIGRAM_INDEX_SPECS: readonly ConcurrentIndexSpec[] = [
     // recipient's domain is one index read. The ACCOUNT leads (btree_gin): a trigram's candidates
     // are then one account's, where the plain index handed a smaller account every account's
     // candidates to re-check, and its typo page ran past the budget. The pending list is bounded as
-    // mail 0150 bounds the journal's two: every search reads it whole.
+    // mail 0152 bounds the journal's two: every search reads it whole.
     name: "message_search_terms_trgm_idx",
     table: "message_search",
     ddl: sql`create index concurrently if not exists "message_search_terms_trgm_idx"

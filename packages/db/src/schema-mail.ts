@@ -2402,7 +2402,7 @@ export const messageSearch = pgTable("message_search", {
   source: text("source").notNull(),
   builtAt: timestamp("built_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
-  // Pending list bounded at 256 kB (mail 0150): every search reads it whole.
+  // Pending list bounded at 256 kB (mail 0152): every search reads it whole.
   ixHeadTsv: index("message_search_head_tsv_idx").using("gin", t.headTsv).with({ gin_pending_list_limit: 256 }),
   ixTextTsv: index("message_search_text_tsv_idx").using("gin", t.textTsv).with({ gin_pending_list_limit: 256 }),
   ixAccount: index("message_search_account_idx").on(t.accountId, t.messageId),
