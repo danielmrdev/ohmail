@@ -18,7 +18,7 @@ See [Status](README.md#status--read-this-first).
 Signed installers — a real Apple Developer ID and an Authenticode certificate. See
 [Roadmap](README.md#roadmap).
 
-## [0.25.21] — 2026-10-10
+## [0.25.21] — 2026-10-11
 
 ### Mail under a company's name through a mailing list's address waits at the Screener
 <!-- changes: fix-026-list-address-is-not-a-person.md -->
