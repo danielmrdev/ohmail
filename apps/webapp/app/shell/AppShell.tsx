@@ -191,7 +191,7 @@ import { MailStateProvider, useMailState, type FreshnessProbe, type MailboxProbe
    what changed about who organizes these mailboxes that nobody has acknowledged? Settings →
    Mailboxes renders its own state line from the same `readerStandDown` underneath. */
 import {
-  gapOffers, notOrganizingYetOf, organizerNotices, otherOrganizerOf, readerMoveRefusal, rosterStateOf, screenerMode,
+  notOrganizingYetOf, otherOrganizerOf, readerMoveRefusal, rosterStateOf, screenerMode,
 } from "./mail-state";
 /* Every press that changes mail leaves through here. See the module. */
 import { useShellDispatch } from "./shell-dispatch";
@@ -209,6 +209,8 @@ import { useStableCallback } from "./stable-callback";
 /* The once-per-change line above the Ohbox, and the shape of the press that ends it. */
 import { OrganizerNotice, type OrganizerNoticeTransport } from "./OrganizerNotice";
 import { GapLettersNotice, type GapLettersTransport } from "./GapLettersNotice";
+/* The organizer notice and the gap offer: their rows, their doors and when each is drawn. */
+import { useOrganizerLines } from "./organizer-lines";
 /* The OS-answer seam, threaded to `SettingsView` for the hosts that must inject one. */
 import type { NotificationHost } from "./notification-settings";
 import { ViewBoundary } from "./ViewBoundary";
@@ -1460,37 +1462,9 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTranspor
      roster to a committed key handler. The initial `null` is the safe value — `readerMoveRefusal`
      refuses on it, which is what a destructive verb should do before it knows. */
   useEffect(() => { rosterRef.current = rosterStateOf(rosterProbed, facts); }, [rosterProbed, facts]);
-  /**
-   * WHAT CHANGED ABOUT WHO ORGANIZES THESE MAILBOXES, AND HAS NOT BEEN ACKNOWLEDGED.
-   *
-   * `organizerNotices` in `mail-state.ts` is the rule, memoised on the polled rows. The list is
-   * usually empty — a change is a rare event — so this costs a filter over the roster per poll.
-   */
-  const organizerChanges = useMemo(() => organizerNotices(facts), [facts]);
-  /**
-   * How "Mark read" reaches the organizer-notice row, or `null` where nothing can — and `null`
-   * withholds the line (a notice that cannot be acknowledged is a standing warning; Settings →
-   * Mailboxes keeps the permanent controls). Injected, never imported: the publish script
-   * denies `app/api-client` to this shared shell, so one route (`POST
-   * /mailboxes/:id/organizer-notice/dismiss`) rides two transports. `refreshFacts` on success
-   * so the line leaves on the answer; a rejection is passed through — the component puts the
-   * line back. A stable callback, not a `useMemo` closure: a memoized closure pins its render's
-   * whole scope (`stable-callback.ts`).
-   */
-  const acknowledgeOrganizerNotice: OrganizerNoticeTransport = useStableCallback(async (id: string) => {
-    const answer = await organizerNoticeTransport?.(id);
-    refreshFacts();
-    return answer;
-  });
-  // Withheld where no door can write the stamp (the demo; no transport): it would stand for ever.
-  const noticeOn = !demo && organizerNoticeTransport !== undefined && organizerChanges.length > 0;
-  /* THE GAP OFFERS (mail 0151): asked of the same polled rows, answered through the injected door,
-     and the rows read again either way, so a refused count is replaced by the server's new one. */
-  const gapOfferList = useMemo(() => gapOffers(facts), [facts]);
-  const answerGapLetters: GapLettersTransport = useStableCallback(async (id: string, a: { file: boolean; count: number }) => {
-    try { return await gapLettersTransport?.(id, a); } finally { refreshFacts(); }
-  });
-  const gapOn = !demo && gapLettersTransport !== undefined && gapOfferList.length > 0;
+  /* The organizer's two lines above the Ohbox, and their doors (`organizer-lines.ts`). */
+  const { organizerChanges, acknowledgeOrganizerNotice, noticeOn, gapOfferList, answerGapLetters, gapOn } =
+    useOrganizerLines({ facts, demo, organizerNoticeTransport, gapLettersTransport, refreshFacts });
   const screenerShownAt = useStableCallback((subject: readonly EngineMessage[], dest: ScreeningDest) =>
     screeningShown(engine.read(), subject, dest, { consent: demo ? null : consent, now: nowAt(), ownAddresses, firstImportDoneAt }));
   const screener = useScreenerState(
