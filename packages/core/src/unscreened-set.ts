@@ -169,12 +169,21 @@ export async function unscreenedWalk(
 }
 
 /**
+ * A PLACEMENT NOBODY DECIDED, the per-row question both scopes ask: `folder_state.decided_at` is
+ * unset — neither a person's filing (here, or adopted from another client) nor an answer the gate
+ * admitted for itself alone. A decided letter is never offered, counted or swept.
+ */
+export function placementUndecided(): SQL {
+  return isNull(folderState.decidedAt);
+}
+
+/**
  * ONE PAGE. Candidates are desired `INBOX`; the offer reads every mailbox this install organizes,
  * oldest id first; the agree scope one mailbox whatever its role (the count is read before the
- * press), newest arrival first. Exclusions: a triage pile, a reply draft, a decided approval, an
- * answered sender, the account's own mail; and for the agree scope also a placement a person made
- * (`decided_at`), a tag, a letter with no recorded arrival and, for the sweep, one stored after the
- * press — with the window as a prefilter `member` re-asks.
+ * press), newest arrival first. Exclusions: a decided placement ({@link placementUndecided}), a
+ * triage pile, a reply draft, a decided approval, an answered sender, the account's own mail; and
+ * for the agree scope also a tag, a letter with no recorded arrival and, for the sweep, one stored
+ * after the press — with the window as a prefilter `member` re-asks.
  */
 async function selectCandidates(
   t: Tx,
@@ -187,6 +196,7 @@ async function selectCandidates(
   const filters: SQL[] = [
     eq(messages.accountId, opts.accountId),
     eq(folderState.desiredFolder, OHBOX),
+    placementUndecided(),
     sql`not exists (
       select 1 from ${messageStates} ms
        where ms.message_id = ${messages.id} and ms.state <> 'none'
@@ -208,7 +218,6 @@ async function selectCandidates(
     )`);
   } else {
     filters.push(eq(messages.mailboxId, opts.scope.mailboxId));
-    filters.push(isNull(folderState.decidedAt));
     filters.push(sql`not exists (
       select 1 from ${messageTags} mt where mt.message_id = ${messages.id}
     )`);
