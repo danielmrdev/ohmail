@@ -220,7 +220,7 @@ import {
   closeAfterFailedStart, openLocalDb, type LocalDb, type LocalDbOpenPhase, type MigrationProgress,
   type OpenLocalDb,
 } from "./db.js";
-import { inStoreLane, ingestIsRunning } from "./store-lanes.js";
+import { forPerson, inStoreLane, ingestIsRunning } from "./store-lanes.js";
 import { awaitFirstPage, firstPageDoorArmed } from "./first-page-gate.js";
 
 /**
@@ -8555,6 +8555,12 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
       authorized: launchBearerAuthorized, db: db as unknown as Tx, accountId: world.accountId,
     });
 
+    /* A SEARCH IS A PERSON WAITING, on every door: its statements go ahead of a drain's and the
+       drain waits for it (`forPerson`). Only the search — a poll that jumped the queue would starve
+       the mail it is polling for. */
+    const asPerson = (req: Request, run: () => Promise<Response>): Promise<Response> =>
+      req.method === "GET" && new URL(req.url).pathname === "/search" ? forPerson(run) : run();
+
     let lastDoorMark: string | null = null;
     let doorKickInFlight = false;
     const noteDoorWrite = (req: Request, res: Response): void => {
@@ -9859,7 +9865,7 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
             },
           );
         }
-        const answered = await app.handle(req, depsFor());
+        const answered = await asPerson(req, () => app.handle(req, depsFor()));
         noteDoorWrite(req, answered);
         // The mailbox list carries this install's own settled sync verdicts — on `handle`
         // ALONE, like the local routes above: a paired device renders its own indicator and
@@ -9883,7 +9889,7 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
             handleHost: async (req: Request): Promise<Response> => {
               attention.note(req.method, new URL(req.url).pathname);
               const match = matchRoute(desktopHostRoutes, req.method, new URL(req.url).pathname);
-              if (match.matched || match.methodNotAllowed) return hostApp.handle(req, depsForHost());
+              if (match.matched || match.methodNotAllowed) return asPerson(req, () => hostApp.handle(req, depsForHost()));
               return hostStatic!.serve(req, new URL(req.url));
             },
             // The LAN door, present IFF the operator also chose an interface: the SAME table and
@@ -9896,7 +9902,7 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
                     attention.note(req.method, new URL(req.url).pathname);
                     const match = matchRoute(desktopHostRoutes, req.method, new URL(req.url).pathname);
                     if (match.matched || match.methodNotAllowed) {
-                      const answered = await hostApp.handle(req, depsForHost());
+                      const answered = await asPerson(req, () => hostApp.handle(req, depsForHost()));
                       noteDoorWrite(req, answered);
                       return answered;
                     }

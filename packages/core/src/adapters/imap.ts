@@ -109,7 +109,7 @@ import { MAX_RAW_MESSAGE_BYTES } from "../mime.js";
 // count, size and wait this file accepts from that server is a lever on other people's mail.
 import {
   ImapBoundExceeded, ImapDeadline, boundedCollect, boundedFetch, boundListResponse, boundSearchResult,
-  boundEnvelopeAddresses, bodyOverrunCeiling, minOf,
+  boundEnvelopeAddresses, bodyOverrunCeiling, minOf, slicedFetch,
   IMAP_ENUM_MAX_UIDS, IMAP_CANDIDATE_BODY_PROBES_MAX,
   IMAP_FLAG_SCAN_MAX_ROWS, IMAP_SAMPLE_MAX_ROWS,
   IMAP_READ_DEADLINE_MS, IMAP_CYCLE_DEADLINE_MS,
@@ -1133,6 +1133,12 @@ function isMetaFolder(mailbox: { path?: unknown; delimiter?: unknown } | false |
   return mailbox.path === `ohmail${d}_meta`;
 }
 
+/** Every row stream of this connection pulled in slices of the event loop (`slicedFetch`). */
+function sliceRowStreams(client: ImapFlow): void {
+  if (typeof client.fetch !== "function") return;
+  client.fetch = slicedFetch(client.fetch.bind(client)) as ImapFlow["fetch"];
+}
+
 export class ImapAdapter implements MailboxAdapter, AdapterPort, FolderScanner {
   private client!: ImapFlow;
   private transporter: Transporter | null = null;
@@ -1488,9 +1494,11 @@ export class ImapAdapter implements MailboxAdapter, AdapterPort, FolderScanner {
     const resolvedAuth = await resolveImapAuth(this.config.auth);
     if (this.opts.client) {
       this.client = this.opts.client as ImapFlow;
+      sliceRowStreams(this.client);
       this.guardAsyncErrors();
     } else {
       this.client = new ImapFlow(imapFlowOptions({ ...this.config, auth: resolvedAuth }, { logger: this.opts.logger }));
+      sliceRowStreams(this.client);
       // BEFORE the dial, not after, and the ordering is the whole point. imapflow's own
       // `emitError` routes to `initialReject` only while the connect promise is pending; the
       // moment it resolves, every later failure is a plain `emit("error")`. `connect()` is

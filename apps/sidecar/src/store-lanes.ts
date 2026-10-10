@@ -86,6 +86,31 @@ export function outsideStoreLanes<T>(fn: () => T): T {
   return lanes.exit(() => holding.exit(fn));
 }
 
+/**
+ * A PERSON IS WAITING: searches in flight, and the edges every scheduler listens on. While one
+ * runs, its statements are admitted first with no turn, and the ingest waits for it rather than
+ * the reverse (the bound is {@link PERSON_HOLD_MAX_MS}).
+ */
+let personsWaiting = 0;
+const personEdges = new Set<(waiting: boolean) => void>();
+
+/** How long one person's request may keep the ingest waiting before both share again. */
+export const PERSON_HOLD_MAX_MS = 2_000;
+
+/** Run `fn` as a person's request: interactive, and ahead of the ingest while it runs. */
+export function forPerson<T>(fn: () => Promise<T>): Promise<T> {
+  if (personsWaiting++ === 0) for (const edge of personEdges) edge(true);
+  return lanes.run("interactive", fn).finally(() => {
+    if (--personsWaiting === 0) for (const edge of personEdges) edge(false);
+  });
+}
+
+/** Hear every edge of {@link forPerson}: `true` when the first person begins, `false` when the last ends. */
+export function onPersonEdge(listener: (waiting: boolean) => void): () => void {
+  personEdges.add(listener);
+  return () => { personEdges.delete(listener); };
+}
+
 /** Whether mail is being taken in right now — the condition the scheduler engages on. */
 export function ingestIsRunning(): boolean {
   return drainsRunning > 0;
@@ -157,6 +182,7 @@ export function createStoreScheduler(
   clock: () => number = () => performance.now(),
   creditBurstMs: number = CREDIT_BURST_MS,
   ingestGapTurns: number = INGEST_GAP_TURNS,
+  personHoldMaxMs: number = PERSON_HOLD_MAX_MS,
 ): StoreScheduler {
   const queues: Record<StoreLane, Waiter[]> = { ingest: [], interactive: [] };
   let active: symbol | null = null;
@@ -175,6 +201,16 @@ export function createStoreScheduler(
   let sinceTurn = 0;
   /** Turns since the ingest's last statement returned — see {@link INGEST_GAP_TURNS}. */
   let sinceIngest = Infinity;
+  /** The pending turn, so a person's statement can take its place rather than wait behind it. */
+  let turn: ReturnType<typeof setImmediate> | null = null;
+  /** When the person now waiting began, or `null`; the bound's timer beside it. See {@link forPerson}. */
+  let personAt: number | null = null;
+  let personTimer: ReturnType<typeof setTimeout> | null = null;
+  const personFirst = (): boolean => personAt !== null && clock() - personAt < personHoldMaxMs;
+  const nextTurn = (): void => {
+    scheduled = true;
+    turn = setImmediate(onTurn);
+  };
 
   /**
    * ONE TURN OF THE EVENT LOOP BETWEEN STATEMENTS, AND THE CHOICE MADE INSIDE IT.
@@ -188,15 +224,22 @@ export function createStoreScheduler(
    */
   const dispatch = (): void => {
     scheduled = false;
+    turn = null;
     if (busy) return;
     const ready = LANES.filter((l) => queues[l].length > 0);
     if (ready.length === 0) return;
-    if (holdForIngest(ready)) {
-      scheduled = true;
-      setImmediate(onTurn);
-      return;
+    let next: StoreLane;
+    if (personFirst()) {
+      /* A PERSON FIRST: their statement now, and the ingest waits for their request to end. */
+      if (queues.interactive.length === 0) return;
+      next = "interactive";
+    } else {
+      if (holdForIngest(ready)) {
+        nextTurn();
+        return;
+      }
+      next = ready.reduce((a, b) => (owed[a] <= owed[b] ? a : b));
     }
-    const next = ready.reduce((a, b) => (owed[a] <= owed[b] ? a : b));
     const w = queues[next].shift()!;
     busy = true;
     admissions++;
@@ -218,18 +261,36 @@ export function createStoreScheduler(
   };
 
   const pump = (): void => {
-    if (busy || scheduled) return;
+    if (busy) return;
     if (queues.ingest.length + queues.interactive.length === 0) return;
+    // No turn in front of a person's statement, and a pending one is taken back for it.
+    if (personFirst()) {
+      if (turn !== null) clearImmediate(turn);
+      dispatch();
+      return;
+    }
+    if (scheduled) return;
     const idle: StoreLane = lastServed.ingest >= lastServed.interactive ? "interactive" : "ingest";
     const shared = admissions - lastServed[idle] <= SHARED_WINDOW;
     if (shared || ++sinceTurn >= TURN_EVERY) {
       sinceTurn = 0;
-      scheduled = true;
-      setImmediate(onTurn);
+      nextTurn();
       return;
     }
     dispatch();
   };
+
+  onPersonEdge((waiting) => {
+    if (personTimer !== null) clearTimeout(personTimer);
+    personTimer = null;
+    personAt = waiting ? clock() : null;
+    if (waiting) {
+      personTimer = setTimeout(() => { personTimer = null; pump(); }, personHoldMaxMs);
+      personTimer.unref?.();
+    } else {
+      pump();
+    }
+  });
 
   const enqueue = (lane: StoreLane): Promise<void> =>
     new Promise<void>((resolve) => {

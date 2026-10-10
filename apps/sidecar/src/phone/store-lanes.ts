@@ -27,3 +27,8 @@ export function currentStoreLane(): StoreLane {
 export function ingestIsRunning(): boolean {
   return false;
 }
+
+/** A person's request, as the desktop names it; with no scheduler there is no queue to jump. */
+export function forPerson<T>(fn: () => Promise<T>): Promise<T> {
+  return fn();
+}

@@ -536,6 +536,32 @@ export async function boundedCollect<T, R>(
  * over-answer inside the enumeration ceiling and still crash the pass. A helper rather than an
  * inline loop so the next spread over a server-sized array has somewhere obvious to go.
  */
+/**
+ * THE FETCH STREAM HANDS THE EVENT LOOP BACK EVERY {@link FETCH_SLICE_MS}. imapflow's reader
+ * yields every ten responses only while its stream holds them, and under backpressure it holds
+ * one, so a 74 000-row `1:* (UID)` ran as nextTick chains of a socket chunk each: 225 ms here
+ * and 600 on a slower machine, in which no request of the process ran. Not pulling is what pauses
+ * the server stream, so the turn is taken between pulls.
+ */
+export const FETCH_SLICE_MS = 8;
+
+/** `fetch`, its rows pulled with a turn of the loop once a slice is spent. */
+export function slicedFetch<A extends unknown[], T>(
+  fetch: (...args: A) => AsyncIterable<T>,
+  sliceMs: number = FETCH_SLICE_MS,
+  clock: () => number = () => performance.now(),
+): (...args: A) => AsyncGenerator<T> {
+  return async function* sliced(...args: A): AsyncGenerator<T> {
+    let since = clock();
+    for await (const row of fetch(...args)) {
+      yield row;
+      if (clock() - since < sliceMs) continue;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      since = clock();
+    }
+  };
+}
+
 export function minOf(xs: readonly number[], empty: number): number {
   if (xs.length === 0) return empty;
   let m = xs[0]!;
