@@ -607,6 +607,11 @@ export interface StoreSearchMeta {
   importing: boolean;
   /** Page one came from a paired desktop's mirror: the verdict is about the mail on this computer. */
   fromMirror: boolean;
+  /**
+   * The wait a person had, in ms: page one's request leaving to its verdict on screen. `null` until
+   * the view reports the paint ({@link StoreSearchWalker.painted}); the line says no time before it.
+   */
+  waitedMs: number | null;
 }
 
 /**
@@ -746,6 +751,8 @@ export class StoreSearchWalker {
     }
     this.signal.bump();
     if (this.status === "unavailable") return;
+    // The way to the store is warmed while the debounce runs (`OhmailEngine.warmSearch`).
+    this.engine.warmSearch?.();
     this.timers.push(setTimeout(() => {
       if (epoch !== this.epoch) return;
       if (this.marks?.epoch === epoch) this.marks.fired = performance.now();
@@ -783,6 +790,7 @@ export class StoreSearchWalker {
     this.meta = {
       total: out.total, totalExact: out.totalExact, about: null, tier: out.tier, ms: out.ms, bounded: out.bounded,
       indexed: out.indexed, facets: out.facets, importing: out.importing === true, fromMirror: out.fromMirror === true,
+      waitedMs: null,
     };
     this.status = "ready";
     if ((this.key?.sort ?? "relevance") === "relevance") {
@@ -848,6 +856,11 @@ export class StoreSearchWalker {
     m.told = true;
     const now = performance.now();
     const ms = (a: number, b: number): number => Math.max(0, Math.round(b - a));
+    // The line states this wait, not the server's own time: re-rendered once, with it.
+    if (this.meta !== null) {
+      this.meta = { ...this.meta, waitedMs: Math.max(1, ms(m.sent, now)) };
+      this.signal.bump();
+    }
     this.engine.reportSearchPhases({
       verdict: m.verdict, debounceMs: ms(m.start, m.fired), sendMs: ms(m.fired, m.sent), roundTripMs: ms(m.sent, m.answered),
       paintMs: ms(m.answered, now), totalMs: ms(m.start, now), serverMs: m.serverMs === null ? null : Math.round(m.serverMs),

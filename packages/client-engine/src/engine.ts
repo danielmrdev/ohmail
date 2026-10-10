@@ -1873,6 +1873,12 @@ function defaultEngineLocks(): EngineLocks | null {
 export interface EngineOptions {
   adapter: EngineAdapter;
   /**
+   * The first key of a search warms the way to the store ({@link OhmailEngine.warmSearch}): the
+   * desktop window, whose relay to a paired account drops an idle connection after 4 s. Omitted:
+   * off (a browser keeps its connection for minutes).
+   */
+  warmSearch?: boolean;
+  /**
    * THE OUTBOX'S OWNERSHIP between tabs over one shared mirror — see {@link OhmailEngine.adoptOrphanedOutbox}. Omitted:
    * the browser's `navigator.locks`. `null`: no ownership, today's shape, and a store that no other engine shares
    * (memory, the phone's database) never uses it either way.
@@ -1956,6 +1962,13 @@ export interface EngineOptions {
  * stops the drive from waiting, never the verb from landing.
  */
 export const OUTBOX_REPLAY_DEADLINE_MS = 10_000;
+
+/**
+ * How long without a search before the first key of the next one warms the way to the store
+ * ({@link OhmailEngine.warmSearch}): under Node's 4 s keep-alive, so a connection that is still
+ * open is never warmed twice.
+ */
+export const SEARCH_WARM_IDLE_MS = 3_500;
 
 /**
  * REFUSALS THAT ARE A STATE MACHINE WORKING, NOT A FAULT — they spend none of the give-up ceiling. `send_queued` and
@@ -2935,6 +2948,7 @@ export class OhmailEngine {
     // The adapter's own capability is the shipped path; the option is the override. Resolved
     // ONCE, here, so `serverSearchAvailable()` cannot answer differently from what
     // `searchServer` will do a moment later.
+    this.searchWarms = opts.warmSearch === true;
     this.serverSearchFn =
       opts.serverSearch ??
       (opts.adapter as ServerSearchCapableAdapter).searchServer?.bind(opts.adapter) ??
@@ -9418,6 +9432,25 @@ export class OhmailEngine {
     return this.serverSearchFn !== null;
   }
 
+  /** When the last search left for the store, `performance.now()`; see {@link warmSearch}. */
+  private lastSearchSentAt = Number.NEGATIVE_INFINITY;
+  /** {@link EngineOptions.warmSearch}. */
+  private readonly searchWarms: boolean;
+
+  /**
+   * THE FIRST KEY OF A SEARCH WARMS THE WAY TO THE STORE. A paired desktop's hop to the account
+   * drops an idle connection after 4 s, so the page after a pause dialled TCP and TLS again (72-182
+   * ms over the server's time against 46-86 for the estimate right behind it). A blank search costs
+   * no lookup and passes the same doors, so sent while the typing debounce runs, the page finds the
+   * connection open. Only after {@link SEARCH_WARM_IDLE_MS} without a search; never awaited.
+   */
+  warmSearch(): void {
+    const fn = this.serverSearchFn;
+    if (!this.searchWarms || fn === null || performance.now() - this.lastSearchSentAt < SEARCH_WARM_IDLE_MS) return;
+    this.lastSearchSentAt = performance.now();
+    void Promise.resolve().then(() => fn("", { parts: "page", limit: 1 })).catch(() => undefined);
+  }
+
   /**
    * Search the whole corpus — `GET /search`, the RRF-ranked hybrid that had zero callers. The SECOND answer, never
    * the first: {@link OhmailEngine.search} has already painted, and a surface that awaited this before rendering
@@ -9462,6 +9495,7 @@ export class OhmailEngine {
     ]);
     const inFlight = this.serverSearches.get(key);
     if (inFlight) return inFlight;
+    this.lastSearchSentAt = performance.now();
 
     // Through a resolved promise, so a transport that throws SYNCHRONOUSLY lands in the `catch`
     // below as a failed outcome — called bare, the throw rejected this method, which never rejects.

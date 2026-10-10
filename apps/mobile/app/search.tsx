@@ -252,7 +252,7 @@ function SearchBody() {
               <Empty title={Copy.searchIndexing} hint={verdict ?? ""} />
             ) : store.verdict === "searching" ? null : (
               <>
-                <Empty title={Copy.searchEmptyTitle} hint="" />
+                <Empty title={Copy.searchEmptyTitle} hint={store.ready ? Copy.searchDepth : ""} />
                 {partsSaid ? (
                   <Txt variant="note" tone="ink3" style={{ paddingHorizontal: 16, paddingTop: 8 }}>{Copy.searchPartReach}</Txt>
                 ) : null}

@@ -52,6 +52,13 @@ const SEARCH_RANK_WINDOW_FACTOR = 40;
  */
 const SEARCH_PART_WALK_FACTOR = 6;
 /**
+ * A BOUNDED arm first asks the newest page-cut of mail (K messages) and walks the full bound only
+ * when at least K / {@link SEARCH_PART_WALK_FACTOR} of them match: a sparser part could not fill
+ * its cut inside the walk, so it is read off the GIN at once. A part in one message of 200 was
+ * walked 1,200 documents deep for six hits (11.7 ms of a 30 ms page at 74k), then read anyway.
+ */
+const SEARCH_PART_PROBE_SHARE = SEARCH_PART_WALK_FACTOR;
+/**
  * On the desktop's own store an arm reads its matches off its index only while it has at most this
  * many cuts' worth (counted off the search document alone); past that it walks the newest
  * {@link SEARCH_PART_WALK_FACTOR} cuts of mail. Each match read that way costs a lookup of its
@@ -560,12 +567,14 @@ export class SearchService {
    * `nulls last`), so off its GIN. Exactly one of the two answers.
    */
   private boundedRead(where: SQL, branches: readonly Branch[], k: number): SQL {
-    const newest = sql`select m.id as id, m.date as date from messages m left join folder_state fs on fs.message_id = m.id
-      where ${where} order by m.date desc nulls last, m.id desc limit ${SEARCH_PART_WALK_FACTOR * k}`;
+    const newestOf = (n: number): SQL => sql`select m.id as id, m.date as date from messages m left join folder_state fs on fs.message_id = m.id
+      where ${where} order by m.date desc nulls last, m.id desc limit ${n}`;
     const hit = sql`exists (select 1 from messages m left join message_search s on s.message_id = m.id
       left join message_bodies b on b.message_id = m.id
       where m.id = w.id and (${sql.join(branches.map((b) => b.pred), sql` or `)}) limit 1 offset 0)`;
-    const walked = sql`select w.id as id, w.date as date from (${newest}) w where ${hit}
+    // The probe: the newest K asked first; a part too sparse there to fill the walk skips it.
+    const dense = sql`(select count(*) from (${newestOf(k)}) w where ${hit}) >= ${Math.ceil(k / SEARCH_PART_PROBE_SHARE)}`;
+    const walked = sql`select w.id as id, w.date as date from (${newestOf(SEARCH_PART_WALK_FACTOR * k)}) w where ${dense} and ${hit}
       order by w.date desc nulls last, w.id desc limit ${k}`;
     const read = (b: Branch): SQL => sql`select id, date from (select m.id as id, m.date as date ${this.from}
       where ${where} and ${b.pred} order by (m.date is null), m.date desc, m.id desc limit ${k}) r`;

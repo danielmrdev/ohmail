@@ -9,7 +9,7 @@
  * explicitly because this dialect's `like` folds ASCII only.
  */
 import { sql, type SQL } from "drizzle-orm";
-import { assertComparable, assertJsonKey, PART_PREFIX_MIN_CHARS, partWordTails, partWordsOf } from "./index.js";
+import { assertComparable, assertJsonKey, eszettForms, PART_PREFIX_MIN_CHARS, partWordTails, partWordsOf } from "./index.js";
 import type { Dialect, LockOptions, MailWordArms, SearchArm, SearchCorpus } from "./index.js";
 
 /**
@@ -245,11 +245,32 @@ export function ftsQueryOf(q: string, mode: "words" | "parts" = "words"): { matc
   return { match: [head, ...excluded.map((e) => `NOT ${e}`)].join(" "), exclude: null };
 }
 
+/**
+ * {@link ftsQueryOf} over every ß/ss form of the query (`eszettForms`), each form's expression
+ * parenthesised and OR-ed; a query with one form is exactly its own expression.
+ */
+export function ftsFoldedQueryOf(q: string, mode: "words" | "parts" = "words"): { match: string | null; exclude: string | null } {
+  const forms = eszettForms(q);
+  if (forms.length === 1) return ftsQueryOf(q, mode);
+  const matches = forms.map((f) => ftsQueryOf(f, mode).match).filter((m): m is string => m !== null);
+  return matches.length === 0 ? ftsQueryOf(q, mode) : { match: matches.map((m) => `(${m})`).join(" OR "), exclude: null };
+}
+
+/** The header columns and the recipients' `terms` LIKE every ß/ss form of `q` (`eszettForms`). */
+function headLike(q: string): SQL {
+  const one = (f: string): SQL => {
+    const like = `%${f}%`;
+    return sql`lower(m.subject) like lower(${like}) or lower(m.from_address) like lower(${like})
+                  or lower(coalesce(s.terms, '')) like lower(${like})`;
+  };
+  return sql`(${sql.join(eszettForms(q).map(one), sql` or `)})`;
+}
+
 /** `col` among the rows `table` holds for this query — never a syntax error, whatever was typed. */
 function ftsRows(
   col: SQL, table: "messages_fts" | "message_bodies_fts" | "kb_entries_fts", q: string, mode: "words" | "parts" = "words",
 ): SQL {
-  const f = ftsQueryOf(q, mode);
+  const f = ftsFoldedQueryOf(q, mode);
   const t = sql.raw(table);
   if (f.match !== null) return sql`${col} IN (SELECT rowid FROM ${t} WHERE ${t} MATCH ${f.match})`;
   if (f.exclude !== null) return sql`${col} NOT IN (SELECT rowid FROM ${t} WHERE ${t} MATCH ${f.exclude})`;
@@ -258,7 +279,7 @@ function ftsRows(
 
 /** The bm25 rank of one row for this query, negated to rank as the server's does; 0 with no match. */
 function ftsRank(rowid: SQL, table: "messages_fts" | "kb_entries_fts", q: string): SQL {
-  const f = ftsQueryOf(q);
+  const f = ftsFoldedQueryOf(q);
   const t = sql.raw(table);
   return f.match === null ? sql`0`
     : sql`-COALESCE((SELECT bm25(${t}) FROM ${t} WHERE ${t} MATCH ${f.match} AND rowid = ${rowid}), 0)`;
@@ -509,10 +530,8 @@ export function sqliteDialect(): Dialect {
       substring: (q: string): SearchArm => {
         // Every row, whether or not it has a search document yet: this store has no index for a
         // substring either way, so the header columns and the recipients' `terms` are one scan.
-        const like = `%${q}%`;
         return {
-          pred: sql`(lower(m.subject) like lower(${like}) or lower(m.from_address) like lower(${like})
-                  or lower(coalesce(s.terms, '')) like lower(${like}))`,
+          pred: headLike(q),
           rank: sql`coalesce(m.date, 0)`,
         };
       },

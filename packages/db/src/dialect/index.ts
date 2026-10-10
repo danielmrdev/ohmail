@@ -258,6 +258,35 @@ export function partWordsOf(q: string): string[] | null {
   return words.some((w) => [...w].length >= PART_PREFIX_MIN_CHARS) ? words : null;
 }
 
+/** How many `ss` of one text {@link eszettForms} reads both ways; past it the rest stay `ss`. */
+export const ESZETT_FOLD_MAX = 3;
+
+/**
+ * THE ß/ss FOLD, the one function every store's search reads a typed text through: the text with
+ * every ß (and ẞ) as `ss`, then every combination of its first {@link ESZETT_FOLD_MAX} `ss` as `ß`,
+ * so `Strassenbahn` and `Straßenbahn` ask for the same forms. A text with neither is `[text]`
+ * alone, so a query without them reads exactly as before. The first form is always the folded one.
+ */
+export function eszettForms(text: string): string[] {
+  // An excluded word (`-strasse`) is never folded: OR-ing the forms would let each form's exclusion
+  // admit the other, so such a text reads as typed.
+  if (/(^|\s)-+\s*\S*(ss|ß|ẞ)/i.test(text)) return [text];
+  const folded = text.replace(/[ßẞ]/g, "ss");
+  const at = [...folded.matchAll(/ss/gi)].map((m) => m.index).slice(0, ESZETT_FOLD_MAX);
+  if (at.length === 0) return [text];
+  const forms: string[] = [];
+  for (let mask = 0; mask < 1 << at.length; mask++) {
+    let out = "";
+    let from = 0;
+    at.forEach((i, bit) => {
+      out += folded.slice(from, i) + ((mask >> bit) & 1 ? "ß" : folded.slice(i, i + 2));
+      from = i + 2;
+    });
+    forms.push(out + folded.slice(from));
+  }
+  return forms;
+}
+
 /**
  * One JSON array's elements as a joinable relation — see {@link Dialect.jsonArrayElements}.
  *

@@ -1204,6 +1204,11 @@ const TABLE = {
   searchWhole: (n: number) => (n === 0 ? "Searched your whole mailbox — nothing matched" : `Searched your whole mailbox — ${n} matched`),
   searchWholeAtLeast: (n: number) => `Searched your whole mailbox — at least ${n} matched`,
   searchWholeAbout: (n: number) => `Searched your whole mailbox — about ${n} matched`,
+  searchWholeNear: (n: number) => `Searched your whole mailbox — ${n} with a close word`,
+  searchWholeNearAtLeast: (n: number) => `Searched your whole mailbox — at least ${n} with a close word`,
+  searchSyncedNear: (n: number) => `Searched the mail synced so far — ${n} with a close word`,
+  searchSyncedNearAtLeast: (n: number) => `Searched the mail synced so far — at least ${n} with a close word`,
+  searchDepth: "A long message is searched in its first 65,536 characters.",
   /* …and over a store that has not taken in the whole mailbox: the webapp's `search.scopeSynced*`. */
   searchSynced: (n: number) => (n === 0 ? "Searched the mail synced so far — nothing matched" : `Searched the mail synced so far — ${n} matched`),
   searchSyncedAtLeast: (n: number) => `Searched the mail synced so far — at least ${n} matched`,

@@ -150,7 +150,8 @@ under Going deeper.
 ## Fast search
 
 Search answers as you type, typo-tolerant, over your whole mailbox: the words of
-every message, its subject, its sender, its recipients and its attachment names.
+every message (a long one's first 65,536 characters), its subject, its sender, its
+recipients and its attachment names.
 What the app already holds shows at once and is replaced by the mailbox's
 answer; the first page is back in milliseconds, the line under the box says how
 long it took, and the count follows right behind — about how many, then the

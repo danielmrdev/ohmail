@@ -669,7 +669,7 @@ export function SearchView({
   /* A COUNT IS NEVER CUT FROM ITS WORD, NOR A TIME FROM ITS UNIT. On a phone the line broke as
      "109" / "ms" and "936" / "matched". The phrase after the sentence's dash ("936 matched",
      "about 690 matched") and the time go in one unbreakable span; the sentence before it wraps.
-     A time is always said: the store's, else this device's own pass (`tookMs`). */
+     The time is the wait measured at the paint (`waited`), or this device's own pass (`tookMs`). */
   const countWhole = (sentence: string, ms: string | null) => {
     const cut = sentence.lastIndexOf(" — ");
     const head = cut < 0 ? "" : sentence.slice(0, cut + 3);
@@ -679,6 +679,11 @@ export function SearchView({
   /* The verdict carries the count and the time whenever the archive answered, and then the bare
      "N results · M ms" line above it would say the same numbers twice: it stands only where the
      verdict has no count (searching, no archive, no answer) or a facet filters what is shown. */
+  /* THE TIME SAID IS THE WAIT A PERSON HAD: page one's request leaving to its verdict on screen
+     (`waitedMs`, measured at the paint), never the store's own time. Until it is measured, none. */
+  /* Closest words are near, never matched: their count is said as such. */
+  const near = ready?.tier === "similar";
+  const waited = ready?.waitedMs != null ? t("scopeServerMs", { ms: ready.waitedMs }) : null;
   const verdictCounts = !!result && trimmed.length >= 2 && passState !== "idle" && passState !== "searching"
     && passState !== "unavailable" && passState !== "unanswered" && ready !== null;
   const device = indexing ? <>{t("scopeIndexing")} </> : null;
@@ -705,10 +710,10 @@ export function SearchView({
        sentence says whose mail that is. The retry asks the account again. */
     <>
       {countWhole(
-        ready.totalExact ? t("scopeMirror", { total: ready.total })
-          : ready.about !== null ? t("scopeMirrorAbout", { total: ready.about })
-            : t("scopeMirrorAtLeast", { total: ready.total }),
-        t("scopeServerMs", { ms: ready.ms ?? tookMs }),
+        ready.totalExact ? t(near ? "scopeMirrorNear" : "scopeMirror", { total: ready.total })
+          : ready.about !== null && !near ? t("scopeMirrorAbout", { total: ready.about })
+            : t(near ? "scopeMirrorNearAtLeast" : "scopeMirrorAtLeast", { total: ready.total }),
+        waited,
       )}{" "}
       <button type="button" className="btn ghost" onClick={() => setRetryTick((n) => n + 1)}>
         {t("scopeWholeRetry")}
@@ -718,20 +723,20 @@ export function SearchView({
     /* The store has not taken in the whole mailbox (a first sync): the line says what it searched. */
     <>
       {countWhole(
-        ready.totalExact ? t("scopeSynced", { total: ready.total })
-          : ready.about !== null ? t("scopeSyncedAbout", { total: ready.about })
-            : t("scopeSyncedAtLeast", { total: ready.total }),
-        t("scopeServerMs", { ms: ready.ms ?? tookMs }),
+        ready.totalExact ? t(near ? "scopeSyncedNear" : "scopeSynced", { total: ready.total })
+          : ready.about !== null && !near ? t("scopeSyncedAbout", { total: ready.about })
+            : t(near ? "scopeSyncedNearAtLeast" : "scopeSyncedAtLeast", { total: ready.total }),
+        waited,
       )}
     </>
   ) : (
     <>
       {/* Exact, else the estimate's "about N" (replaced in place by the summary), else the page's bound. */}
       {countWhole(
-        ready.totalExact ? t("scopeWhole", { total: ready.total })
-          : ready.about !== null ? t("scopeWholeAbout", { total: ready.about })
-            : t("scopeWholeAtLeast", { total: ready.total }),
-        t("scopeServerMs", { ms: ready.ms ?? tookMs }),
+        ready.totalExact ? t(near ? "scopeWholeNear" : "scopeWhole", { total: ready.total })
+          : ready.about !== null && !near ? t("scopeWholeAbout", { total: ready.about })
+            : t(near ? "scopeWholeNearAtLeast" : "scopeWholeAtLeast", { total: ready.total }),
+        waited,
       )}
     </>
   );
@@ -857,9 +862,12 @@ export function SearchView({
               {/* "Nothing" is the wrong word for a device that has not finished looking. The
                   indexing arm outranks both settled titles for that reason. */}
               {/* No title while the store is still looking: "Nothing matched." is its answer to give. */}
+              {/* "Nothing matched." stands only where the verdict says no count: the verdict
+                  already says nothing matched, and saying it twice reads as two answers. */}
               {indexing ? <b>{t("emptyTitleIndexing")}</b>
-                : passState !== "idle" && passState !== "searching" ? <b>{t("emptyTitle")}</b> : null}
+                : passState !== "idle" && passState !== "searching" && !verdictCounts ? <b>{t("emptyTitle")}</b> : null}
               {scope}
+              {verdictCounts && ready?.total === 0 ? <p className="empty-reach" data-testid="search-depth">{t("scopeDepth")}</p> : null}
               {/* The address door, offered at the moment its two scopes apply. There is no typed
                   operator: an address is searched through `#/address/<addr>`, whose toggle holds
                   the scopes (All · From them · To them) — so the sentence names them and the link
@@ -888,7 +896,8 @@ export function SearchView({
                   {/* The time of the pass whose rows these are: the store's, once it answered. */}
                   <span className="nobr">
                     <b>{t("resultsHead", { count: found })}</b>
-                    {t("resultsMeta", { ms: ready?.ms ?? tookMs })}
+                    {ready === null ? t("resultsMeta", { ms: tookMs })
+                      : ready.waitedMs != null ? t("resultsMeta", { ms: ready.waitedMs }) : null}
                   </span>
                   {filter ? <> · {t("filtered")}</> : null}
                 </div>

@@ -7,7 +7,12 @@
 import { substringOpen } from "@ohmail/client-engine";
 import { Copy } from "../copy";
 
-export function searchCountLine(s: { total: number; totalExact: boolean; about: number | null; importing?: boolean }): string {
+export function searchCountLine(s: { total: number; totalExact: boolean; about: number | null; importing?: boolean; tier?: "exact" | "similar" }): string {
+  // Closest words are near, never matched; the typo tier has no "about".
+  if (s.tier === "similar") {
+    if (s.importing === true) return s.totalExact ? Copy.searchSyncedNear(s.total) : Copy.searchSyncedNearAtLeast(s.total);
+    return s.totalExact ? Copy.searchWholeNear(s.total) : Copy.searchWholeNearAtLeast(s.total);
+  }
   if (s.importing === true) {
     if (s.totalExact) return Copy.searchSynced(s.total);
     return s.about !== null ? Copy.searchSyncedAbout(s.about) : Copy.searchSyncedAtLeast(s.total);

@@ -116,6 +116,7 @@ export interface PhoneStoreSearch {
   totalExact: boolean;
   /** While `total` is a lower bound: about how many match, from the store's estimate. */
   about: number | null;
+  /** The wait a person had (page one's request to its verdict on screen); `null` until measured. */
   ms: number | null;
   indexedPercent: number | null;
   /** The store has not taken in the whole mailbox (a first sync): the verdict says what it searched. */
@@ -162,6 +163,8 @@ export function useStoreSearch(query: string, deviceIds: readonly string[]): Pho
     reask: () => setTick((n) => n + 1),
   } : null), [walker]);
   const renewing = useSessionReask(w.store.renewal, read);
+  // The verdict is on screen once its render commits: the walker measures the wait it states.
+  useEffect(() => { if (walker?.info()) walker.painted(); }, [walker, rev]);
   return useMemo(() => {
     const state = walker ? (renewing ? "searching" : walker.state()) : q.length < 2 ? "idle" : "unavailable";
     const info = walker?.info() ?? null;
@@ -182,7 +185,7 @@ export function useStoreSearch(query: string, deviceIds: readonly string[]): Pho
       total: info?.total ?? 0,
       totalExact: info?.totalExact ?? true,
       about: info?.about ?? null,
-      ms: info?.ms ?? null,
+      ms: info?.waitedMs ?? null,
       indexedPercent: info?.indexed ? Math.floor((100 * info.indexed.done) / info.indexed.total) : null,
       importing: info?.importing === true,
       bounded: info !== null && info.bounded && walker !== null && walker.atEnd(),

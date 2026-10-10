@@ -891,9 +891,11 @@ export const SCHEMA_INDEX_MARKERS: ReadonlyArray<IndexMarker> = [
   ["messages_id_account_uq", "ON public.messages USING btree (id, account_id)"],
   // mail 0125_message_search. The SILENT kind, like the first five: without the two word indexes
   // every search is a sequential scan of the account's documents — nothing raises, every test
-  // stays green, and the first page stops answering in milliseconds.
-  ["message_search_head_tsv_idx", "ON public.message_search USING gin (head_tsv)"],
-  ["message_search_text_tsv_idx", "ON public.message_search USING gin (text_tsv)"],
+  // stays green, and the first page stops answering in milliseconds. Mail 0150 bounds their pending
+  // list (every search read up to 4 MB of every account's) and the needle carries it: ONE marker per
+  // index, because the probe counts index rows and a second entry for one index is never found.
+  ["message_search_head_tsv_idx", "ON public.message_search USING gin (head_tsv) WITH (gin_pending_list_limit='256')"],
+  ["message_search_text_tsv_idx", "ON public.message_search USING gin (text_tsv) WITH (gin_pending_list_limit='256')"],
   // mail 0018_login_email_identity, listed last because it was found last. The SILENT kind: the
   // registration's check reads before it inserts, so only this index serializes two registrations
   // of one address, and `register` catches its 23505. Absent, both commit and a login opens
@@ -1224,7 +1226,7 @@ export const MAIL_EXPECTED_MARKERS =
 // tolerated state, not a schema fault a serving API should 503 over.
 // mail 0146_rule_person_decided_followup (the stamps an older settings copy and a whole-domain spam
 // decision left owed) is two UPDATEs and adds no object: no marker.
-export const MAIL_SCHEMA_MARKER_JOURNAL_TAG = "0151_mailboxes_gap_since";
+export const MAIL_SCHEMA_MARKER_JOURNAL_TAG = "0152_search_gin_pending_bounded";
 
 /** The whole mail tier, in one frozen record: what a mail-tier Postgres host is probed against. */
 export interface MailTier {

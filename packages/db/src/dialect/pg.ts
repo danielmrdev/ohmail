@@ -8,7 +8,7 @@
  * being written.
  */
 import { sql, type SQL } from "drizzle-orm";
-import { type LockMode, assertComparable, assertDistinct, assertJsonKey, type Dialect, type LockOptions, type SearchArm, type SearchCorpus, type SearchDocumentParts, type UnindexedMailArms, type MailWordArms, PART_PREFIX_MIN_CHARS, partWordTails, partWordsOf } from "./index.js";
+import { type LockMode, assertComparable, assertDistinct, assertJsonKey, type Dialect, type LockOptions, type SearchArm, type SearchCorpus, type SearchDocumentParts, type UnindexedMailArms, type MailWordArms, PART_PREFIX_MIN_CHARS, eszettForms, partWordTails, partWordsOf } from "./index.js";
 
 // Re-exported because it was defined here first and the server arm's tests import it by this
 // path; the refusal itself belongs to both arms and now lives in the contract.
@@ -32,16 +32,35 @@ function partTsquery(q: string): SQL | null {
   const lit = (s: string): string => `'${s}'`;
   const groups = words.map((w, i) => {
     const long = [...w].length >= PART_PREFIX_MIN_CHARS;
-    const forms = long ? [w, ...partWordTails(w).map((t) => w + t)].join(" ") : w;
-    const stems = `strip(to_tsvector('${TEXT_SEARCH_CONFIG}', ${lit(forms)}))::text`;
-    const extra = long ? `regexp_replace(${stems}, '''' || lower(${lit(w)}) || '[^'']*''', ' ', 'g')` : stems;
-    const alts = `regexp_replace(btrim(${extra}), '\\s+', ' | ', 'g')`;
-    const group = `'(''' || lower(${lit(w)}) || '''${long ? ":*" : ""}' || coalesce(' | ' || nullif(${alts}, ''), '') || ')'`;
+    // One alternative per ß/ss form of the word (`eszettForms`), each the shape it always had.
+    const one = (v: string): string => {
+      const forms = long ? [v, ...partWordTails(v).map((t) => v + t)].join(" ") : v;
+      const stems = `strip(to_tsvector('${TEXT_SEARCH_CONFIG}', ${lit(forms)}))::text`;
+      const extra = long ? `regexp_replace(${stems}, '''' || lower(${lit(v)}) || '[^'']*''', ' ', 'g')` : stems;
+      const alts = `regexp_replace(btrim(${extra}), '\\s+', ' | ', 'g')`;
+      return `'(''' || lower(${lit(v)}) || '''${long ? ":*" : ""}' || coalesce(' | ' || nullif(${alts}, ''), '') || ')'`;
+    };
+    const variants = eszettForms(w).map(one);
+    const group = variants.length === 1 ? variants[0]! : `'(' || ${variants.join(" || ' | ' || ")} || ')'`;
     const kept = long && i === words.length - 1 ? group
       : `case when length(to_tsvector('${TEXT_SEARCH_CONFIG}', ${lit(w)})) = 0 then null else ${group} end`;
     return `coalesce(' & ' || ${kept}, '')`;
   });
   return sql.raw(`(nullif(substr(${groups.join(" || ")}, 4), '')::tsquery)`);
+}
+
+/** The typed query as a tsquery, every ß/ss form of it OR-ed (`eszettForms`); one form is the old shape. */
+function foldedTsquery(q: string): SQL {
+  const forms = eszettForms(q);
+  return forms.length === 1 ? sql`websearch_to_tsquery(${TEXT_SEARCH_CONFIG}, ${q})`
+    : sql`(${sql.join(forms.map((f) => sql`websearch_to_tsquery(${TEXT_SEARCH_CONFIG}, ${f})`), sql` || `)})`;
+}
+
+/** `col ilike '%q%'` for every ß/ss form of `q`; one form is the old single predicate. */
+function likeAny(col: SQL, q: string): SQL {
+  const forms = eszettForms(q);
+  return forms.length === 1 ? sql`${col} ilike ${`%${q}%`}`
+    : sql`(${sql.join(forms.map((f) => sql`${col} ilike ${`%${f}%`}`), sql` or `)})`;
 }
 
 export function pgDialect(): Dialect {
@@ -256,7 +275,7 @@ export function pgDialect(): Dialect {
         return { pred: sql`s.terms ilike ${like}`, rank: sql`coalesce(extract(epoch from m.date), 0)` };
       },
       words: (q: string): MailWordArms => {
-        const tsq = sql`websearch_to_tsquery(${TEXT_SEARCH_CONFIG}, ${q})`;
+        const tsq = foldedTsquery(q);
         return {
           head: { pred: sql`s.head_tsv @@ ${tsq}`, rank: sql`ts_rank_cd(s.head_tsv, ${tsq})` },
           text: { pred: sql`s.text_tsv @@ ${tsq}`, rank: sql`coalesce(extract(epoch from m.date), 0)` },
@@ -273,14 +292,13 @@ export function pgDialect(): Dialect {
       },
       substring: (q: string, opts): SearchArm => ({
         // `message_search_terms_trgm_idx` serves the ILIKE where pg_trgm exists (search-setup.ts).
-        pred: sql`s.terms ilike ${`%${q}%`}`,
+        pred: likeAny(sql`s.terms`, q),
         rank: opts.trigram ? sql`word_similarity(${q}, s.terms)` : sql`coalesce(extract(epoch from m.date), 0)`,
       }),
       unindexed: (q: string, opts): UnindexedMailArms => {
         // The pre-0125 columns, one index per branch (subject_tsv / body_tsv GINs, the two trgm
         // GINs) — never an OR, which is the shape that seq-scanned.
-        const tsq = sql`websearch_to_tsquery(${TEXT_SEARCH_CONFIG}, ${q})`;
-        const like = `%${q}%`;
+        const tsq = foldedTsquery(q);
         const recency = sql`coalesce(extract(epoch from m.date), 0)`;
         const sim = (col: SQL): SQL => (opts.trigram ? sql`word_similarity(${q}, ${col})` : recency);
         const part = partTsquery(q);
@@ -294,8 +312,8 @@ export function pgDialect(): Dialect {
             text: { pred: sql`b.body_tsv @@ ${part}`, rank: recency },
           },
           substring: [
-            { pred: sql`m.subject ilike ${like}`, rank: sim(sql`m.subject`) },
-            { pred: sql`m.from_address ilike ${like}`, rank: sim(sql`m.from_address`) },
+            { pred: likeAny(sql`m.subject`, q), rank: sim(sql`m.subject`) },
+            { pred: likeAny(sql`m.from_address`, q), rank: sim(sql`m.from_address`) },
           ],
           fuzzy: opts.trigram
             ? [

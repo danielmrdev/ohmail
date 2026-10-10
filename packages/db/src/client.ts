@@ -242,6 +242,14 @@ export const SESSION_ACQUIRE_TIMEOUT_MS = 5_000;
 export const POOLED_MAX_CONNECTIONS = 4;
 
 /**
+ * How long, in seconds, a pooled connection may sit idle before the client closes it. At 20 s a
+ * person's next search after a pause dialled the pooler again (startup and auth): 134-178 ms against
+ * 66-72 ms warm on a 10 ms round trip. In transaction mode an idle client connection holds no server
+ * connection, so the longer window costs pooler client slots only: at most four per warm instance.
+ */
+export const POOLED_IDLE_TIMEOUT_S = 120;
+
+/**
  * Thrown when a statement or a transaction spent its ceiling on the pooled handle without the
  * backend beginning it — the connection was occupied by whatever sat ahead. Not a database-down
  * signal: its own class, answered 503 with `Retry-After`. A refused STATEMENT may still reach the
@@ -556,8 +564,8 @@ function withOneFlush(client: ReturnType<typeof postgres>): ReturnType<typeof po
 // reuses it across requests instead of opening a connection per invocation (which exhausts the
 // upstream pooler under concurrency). `prepare: false` is REQUIRED behind a transaction-mode
 // pooler (see `session-url.ts`): cached prepared statements collide across pooled backends — pass
-// the POOLED connection string here, not the direct one. Small `max` + short `idle_timeout` keep
-// each instance's footprint tiny. `connection: POOLED_TIMEOUTS` reaches the backend ONLY on a
+// the POOLED connection string here, not the direct one. A small `max` keeps each instance's
+// footprint tiny; `POOLED_IDLE_TIMEOUT_S` keeps a searching person's connection between searches. `connection: POOLED_TIMEOUTS` reaches the backend ONLY on a
 // direct connection (self-host) — measured inert through a transaction-mode pooler; the mechanism
 // for a pooled deployment is ROLE_DEFAULT_TIMEOUTS. The wait for a connection is bounded
 // client-side by POOLED_ACQUIRE_TIMEOUT_MS, because every server ceiling bounds a statement that
@@ -593,7 +601,7 @@ export function makePooledDb(
   if (!pooled) {
     // `max` is read when this URL's pool is FIRST built; a later handle over it shares that pool.
     pooled = postgres(url, withPgSocket({
-      ...pgTlsOptions(url), prepare: false, max: opts.max ?? POOLED_MAX_CONNECTIONS, idle_timeout: 20, connect_timeout: 10,
+      ...pgTlsOptions(url), prepare: false, max: opts.max ?? POOLED_MAX_CONNECTIONS, idle_timeout: POOLED_IDLE_TIMEOUT_S, connect_timeout: 10,
       connection: POOLED_TIMEOUTS, onnotice: onNotice,
     }));
     pools.set(url, pooled);

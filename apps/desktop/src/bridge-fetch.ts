@@ -889,6 +889,9 @@ export function createLocalEngine(scope: string): OhmailEngine {
     store: new WindowOutboxStore({ scope, write: bridgeFetch, read: retryingBridgeFetch }),
     storePolicy: DESKTOP_WINDOW,
     eagerBodies: true,
+    // Paired to an account, the sidecar's hop to it drops an idle connection after 4 s: the first
+    // key of a search warms it while the debounce runs.
+    warmSearch: true,
     // A server without the Cancel route (the hosted one, in Cloud mode), said once per send.
     onWithdrawUnsupported: () => console.warn("ohmail: send_withdraw_unsupported — this server has no Cancel route"),
   });
