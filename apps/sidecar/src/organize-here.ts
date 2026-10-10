@@ -497,8 +497,9 @@ export async function requestOrganizerTakeover(
  * A PERSON'S CONSENT, RECORDED WITHOUT A CLAIM — the phone door's write on a press it refuses
  * because another install holds the mailbox. The first half of {@link requestOrganizerTakeover}'s
  * transaction: the screening baseline and `organize_consented_at`, both coalesced, and NO takeover
- * stamp and no intent. The row stays a reader, so the gate only looks; the claim watch takes the
- * mailbox once the holder lets go. Nothing is written on a removed mailbox.
+ * stamp and no intent. The row stays a reader, so the gate only looks; once the holder lets go the
+ * person's next press takes the mailbox (the claim watch returns only one this install organized).
+ * Nothing is written on a removed mailbox.
  */
 export async function recordConsentWithoutClaim(
   db: LocalDb,

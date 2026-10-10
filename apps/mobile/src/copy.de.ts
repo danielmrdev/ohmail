@@ -133,7 +133,7 @@ export const DE: Deck = {
   /* Ohne Desktop-Zwilling: nur auf dem Telefon kann ein Start hinter einem Stopp warten. */
   phoneStateStarting: "Wird gestartet",
   phoneStateNotOrganized: "Dieses Postfach wird von nichts organisiert",
-  phoneFreeOffer: "Dieses Postfach wird gerade von nichts organisiert. Von diesem Telefon aus organisieren, solange ohmail offen ist?",
+  phoneFreeOffer: "Dieses Postfach wird gerade von nichts organisiert. Von diesem Telefon aus organisieren, solange ohmail darauf läuft?",
   /* Der Übergangszustand: zurückgegeben und noch nicht wieder übernommen. */
   phoneStateHandedBack: "Zurückgegeben",
   phoneStateHandedBackWhy: "Ein anderer Computer kann dieses Postfach jetzt übernehmen.",

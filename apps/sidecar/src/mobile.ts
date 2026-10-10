@@ -1205,9 +1205,10 @@ async function composePhoneEngine(
        wants to know which one saw the claim. Not one event with a `source` field — that would be a
        new name on the logger's own census, which is a decision about every line in the product —
        and not a ternary, which is an event name no grep can find. */
-    /* A PERSON'S PRESS IS STILL A PERSON'S CONSENT, refused or not: recorded WITHOUT a claim, so
-       the claim watch may take the mailbox once the holder lets go. The watch's own press carries
-       no `consent` and writes nothing. The local spelling only: the shared one is not served here. */
+    /* A PERSON'S PRESS IS STILL A PERSON'S CONSENT, refused or not: recorded WITHOUT a claim. Once
+       the holder lets go the list offers the mailbox and the person's next press takes it; the claim
+       watch returns only a mailbox this install organized. The watch's own press carries no
+       `consent` and writes nothing. The local spelling only: the shared one is not served here. */
     let consentRecorded = false;
     if (press?.person === true && new URL(req.url).pathname.startsWith("/local/")) {
       try {
@@ -1224,7 +1225,8 @@ async function composePhoneEngine(
     }
     const refusedBecause = consentRecorded
       ? "another install is renewing its claim on this mailbox, so this phone reads it; the person's "
-        + "consent is recorded here without a claim, and this phone takes the mailbox once that install lets go"
+        + "consent is recorded here without a claim, and once that install lets go this phone offers the mailbox "
+        + "and takes it on the person's next press"
       : "another install is renewing its claim on this mailbox, so no consent "
         + "was recorded here; this phone has no takeover verb and reads the mailbox instead";
     /* ══ ONE LINE PER STANDING CAUSE ═══════════════════════════════════════════════════════════

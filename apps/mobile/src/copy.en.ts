@@ -228,8 +228,10 @@ const TABLE = {
      about, and the chip has to say which of the two is happening. */
   phoneStateStarting: "Starting",
   phoneStateNotOrganized: "Nothing organizes this mailbox",
-  /** The list's offer once a mailbox frees: nothing takes it over by itself, so the person is asked. */
-  phoneFreeOffer: "Nothing organizes this mailbox now. Organize it from this phone while ohmail is open?",
+  /** The list's offer once a mailbox frees: nothing takes it over by itself, so the person is asked.
+      "while ohmail is running on it", as `scheduledNotOnThisPhone`: Android organizes behind its
+      notification and iPhone while the app is open, and one sentence has to be true on both. */
+  phoneFreeOffer: "Nothing organizes this mailbox now. Organize it from this phone while ohmail is running on it?",
   /**
    * THE SEVENTH, AND IT IS TRANSITIONAL: this phone gave the mailbox back and has not taken it
    * again. Read as "nothing organizes it" a person is told their mail is unfiled and offered a
