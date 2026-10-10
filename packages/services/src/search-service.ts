@@ -65,6 +65,12 @@ const SEARCH_PART_PROBE_SHARE = SEARCH_PART_WALK_FACTOR;
  * message, and in-process PGlite plans a few thousand as a scan of the whole mailbox (0.1-0.6 s).
  */
 const LOCAL_ARM_READ_FACTOR = 4;
+/**
+ * The typo arm walks at most this many cuts of the newest mail, asking each document the cheap
+ * necessary condition (`typoPrefilter`) before the similarity: ~7-10 µs a 75-character document
+ * for the similarity, ~3-4 for the condition and the lookup, so 8 000 at most (~35 ms at 74k).
+ */
+const SEARCH_TYPO_WALK_FACTOR = 40;
 /** How many senders the sender facet returns. */
 const SENDER_FACET_LIMIT = 10;
 
@@ -336,6 +342,8 @@ interface Arm {
   readonly bounded?: boolean;
   /** Read by {@link SearchService.localRead} for this account: the desktop's own store, documents built. */
   readonly local?: { readonly account: string };
+  /** The typo arm's walk test, a cheap necessary condition first: read by {@link SearchService.typoRead}. */
+  readonly typo?: { readonly walkPred: SQL };
 }
 
 /** A relevance cursor: the last row's fused score, date and id, and the tier it belongs to. */
@@ -454,7 +462,13 @@ export class SearchService {
       documents ? { pred: sql`(s.account_id = ${ctx.accountId} and ${b.pred})`, rank: b.rank, raw: b.pred } : b;
     if (tier === "similar") {
       const fuzz = d.search.fuzzy(q, "mail", { trigram, threshold: FUZZY_THRESHOLD });
-      return [{ name: "similar", ranked: true, branches: [own(fuzz), ...(legacy?.fuzzy ?? []).map(bare)] }];
+      const arm: Arm = { name: "similar", ranked: true, branches: [own(fuzz), ...(legacy?.fuzzy ?? []).map(bare)] };
+      // The server's documents only: the desktop's store keeps its scans inside six cuts.
+      const pre = trigram && documents && legacy === null && this.opts.localStore !== true
+        ? d.search.typoPrefilter(q, { threshold: FUZZY_THRESHOLD, terms: sql`s.terms`, lowered: sql`s.t` }) : null;
+      if (pre === null) return [arm];
+      const walkPred = sql`(s.account_id = ${ctx.accountId} and (case when ${pre} then ${fuzz.pred} else false end))`;
+      return [{ ...arm, typo: { walkPred } }];
     }
     const words = d.search.words(q);
     const out: Arm[] = [
@@ -501,6 +515,7 @@ export class SearchService {
       ${this.from} where ${where} and ${b.pred}
       order by m.date desc nulls last, m.id desc limit ${cut})`;
     const merged = arm.local && walk ? this.localRead(where, arm, k, cut, walk)
+      : arm.typo ? this.typoRead(where, arm.branches[0]!, arm.typo.walkPred, k)
       : arm.bounded ? this.boundedRead(where, arm.branches, k)
       : arm.branches.length === 1 ? branch(arm.branches[0]!)
       : sql`(select id, date, max(rank) as rank from (${sql.join(arm.branches.map(branch), sql` union all `)}) u group by id, date)`;
@@ -583,6 +598,37 @@ export class SearchService {
       select id, date, 0 as rank from pw where (select count(*) from pw) >= ${k}
       union all
       select id, date, 0 as rank from (${matched}) pm where (select count(*) from pw) < ${k})`;
+  }
+
+  /**
+   * THE TYPO ARM'S NEWEST K, ranked. The newest K under the filters are asked first, and their hits
+   * `h` say about how many messages hold K matches (K²/h): the walk reads them, each document asked
+   * `walkPred` (the cheap condition, then the similarity), when that is at most
+   * {@link SEARCH_TYPO_WALK_FACTOR} cuts and the mailbox has that many. Otherwise, or when the walk
+   * holds fewer than K, the operator's matches are read off the trigram GIN. Either answer is the
+   * newest K matches, and only those K are ranked.
+   */
+  private typoRead(where: SQL, b: Branch, walkPred: SQL, k: number): SQL {
+    const newestOf = (n: SQL | number): SQL => sql`select m.id as id, m.date as date from messages m left join folder_state fs on fs.message_id = m.id
+      where ${where} order by m.date desc nulls last, m.id desc limit ${n}`;
+    // Each walked message's document asked by itself (`offset 0`), so the walk streams in its order
+    // and stops at K: joined, a mailbox inside the bound was read whole and sorted. `lower` once each.
+    const asked = (n: number): SQL => sql`(${newestOf(n)}) w cross join lateral (select s.account_id, s.terms, lower(s.terms) as t
+      from message_search s where s.message_id = w.id offset 0) s where ${walkPred}`;
+    const h = sql`(select h from tp)`;
+    const need = sql`((${k * k} + ${h} - 1) / (case when ${h} > 0 then ${h} else 1 end))`;
+    const dense = sql`${h} >= ${Math.ceil(k / SEARCH_TYPO_WALK_FACTOR)}
+      and (select count(*) from (${newestOf(need)}) n) >= ${need}`;
+    const walked = sql`select w.id as id, w.date as date from ${asked(SEARCH_TYPO_WALK_FACTOR * k)} and ${dense}
+      order by w.date desc nulls last, w.id desc limit ${k}`;
+    const read = sql`select m.id as id, m.date as date ${this.from} where ${where} and ${b.pred}
+      order by (m.date is null), m.date desc, m.id desc limit ${k}`;
+    const rank = sql`(select ${b.rank} from message_search s where s.message_id = u.id)`;
+    return sql`(with tp as (select count(*) as h from ${asked(k)}), tw as (${walked})
+      select u.id, u.date, ${rank} as rank from (
+        select id, date from tw where (select count(*) from tw) >= ${k}
+        union all
+        select id, date from (${read}) tm where (select count(*) from tw) < ${k}) u)`;
   }
 
   /** The union of every branch's id set — what `total` and the facets count over. */

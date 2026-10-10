@@ -8,7 +8,7 @@
  * being written.
  */
 import { sql, type SQL } from "drizzle-orm";
-import { type LockMode, assertComparable, assertDistinct, assertJsonKey, type Dialect, type LockOptions, type SearchArm, type SearchCorpus, type SearchDocumentParts, type UnindexedMailArms, type MailWordArms, PART_PREFIX_MIN_CHARS, eszettForms, partWordTails, partWordsOf } from "./index.js";
+import { type LockMode, assertComparable, assertDistinct, assertJsonKey, type Dialect, type LockOptions, type SearchArm, type SearchCorpus, type SearchDocumentParts, type UnindexedMailArms, type MailWordArms, PART_PREFIX_MIN_CHARS, eszettForms, partWordTails, partWordsOf, typoTrigramsOf } from "./index.js";
 
 // Re-exported because it was defined here first and the server arm's tests import it by this
 // path; the refusal itself belongs to both arms and now lives in the contract.
@@ -273,6 +273,23 @@ export function pgDialect(): Dialect {
         // there is no relevance signal left, and a constant here would have thrown away the one
         // ordering the caller still had.
         return { pred: sql`s.terms ilike ${like}`, rank: sql`coalesce(extract(epoch from m.date), 0)` };
+      },
+      typoPrefilter: (q: string, opts): SQL | null => {
+        // A trigram present in an ASCII document is a substring of its lower-cased text, at a
+        // word edge where it is padded. Every literal is [a-z0-9] and regex syntax, so INLINED.
+        const all = typoTrigramsOf(q);
+        if (all === null) return null;
+        const need = Math.ceil(opts.threshold * all.length - 1e-6);
+        if (need <= 0) return null;
+        const edge = "[^a-z0-9]";
+        const test = (t: string): string => {
+          const core = t.trim();
+          const re = (t.startsWith(" ") ? `(^|${edge})` : "") + core + (t.endsWith(" ") ? `(${edge}|$)` : "");
+          return t === core ? `(strpos(LOW, '${core}') > 0)::int` : `(strpos(LOW, '${core}') > 0 and LOW ~ '${re}')::int`;
+        };
+        const parts = all.map(test).join(" + ").split("LOW");
+        const sum = sql.join(parts.map((p) => sql.raw(p)), opts.lowered);
+        return sql`(octet_length(${opts.terms}) > length(${opts.terms}) or (${sum}) >= ${sql.raw(String(need))})`;
       },
       words: (q: string): MailWordArms => {
         const tsq = foldedTsquery(q);

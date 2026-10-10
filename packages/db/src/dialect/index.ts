@@ -258,6 +258,22 @@ export function partWordsOf(q: string): string[] | null {
   return words.some((w) => [...w].length >= PART_PREFIX_MIN_CHARS) ? words : null;
 }
 
+/**
+ * pg_trgm's distinct trigrams of an ASCII query, as `show_trgm` lists them: lower-cased, each run
+ * of letters and digits a word padded `"  w "`. `null` outside printable ASCII, where pg_trgm's
+ * word characters and its hashed multibyte trigrams are the locale's to decide, not this copy's.
+ */
+export function typoTrigramsOf(q: string): string[] | null {
+  if (!/^[\x20-\x7e]*$/.test(q)) return null;
+  const out = new Set<string>();
+  for (const w of q.toLowerCase().split(/[^a-z0-9]+/)) {
+    if (w === "") continue;
+    const padded = `  ${w} `;
+    for (let i = 0; i + 3 <= padded.length; i++) out.add(padded.slice(i, i + 3));
+  }
+  return [...out];
+}
+
 /** How many `ss` of one text {@link eszettForms} reads both ways; past it the rest stay `ss`. */
 export const ESZETT_FOLD_MAX = 3;
 
@@ -617,6 +633,14 @@ export interface Dialect {
      * returns — a product decision, not a port's.
      */
     fuzzy(q: string, corpus: SearchCorpus, opts: { trigram: boolean; threshold: number }): SearchArm;
+    /**
+     * A NECESSARY CONDITION for the mail arm's `q <% terms`, cheap enough to ask before it, or
+     * `null` where there is none: the operator holds only where at least `threshold` of the query's
+     * distinct trigrams ({@link typoTrigramsOf}) occur in the document, and an ASCII document
+     * answers that by substring and word-edge tests on `lowered` (its `lower(terms)`). A document
+     * outside ASCII always passes. Never a match by itself; the operator still decides.
+     */
+    typoPrefilter(q: string, opts: { threshold: number; terms: SQL; lowered: SQL }): SQL | null;
     /** See {@link MailWordArms}. A quoted span is a phrase on both stores' query parsers. */
     words(q: string): MailWordArms;
     /**

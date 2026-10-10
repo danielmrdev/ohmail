@@ -535,6 +535,8 @@ export function sqliteDialect(): Dialect {
           rank: sql`coalesce(m.date, 0)`,
         };
       },
+      // The typo arm here is a LIKE already (`fuzzy`): there is no costlier operator to spare.
+      typoPrefilter: (): null => null,
       // A LIKE, not an index operator, and one planner: there is nothing to set.
       searchSession: (): null => null,
       // The FTS5 tables are kept by triggers over every row, so nothing here is unindexed.
