@@ -459,6 +459,43 @@ function appVersion() {
   return String(JSON.parse(readFileSync(join(aliases.MOBILE, "app.json"), "utf8")).expo?.version ?? "");
 }
 
+/**
+ * IMAPFLOW'S READER, RE-ARMED IN THIS BUNDLE ONLY (PERF-026). It ignores `readable` while its loop runs
+ * and clears that guard a few promise turns after the loop saw the parser empty. On a phone `nextTick`
+ * is a microtask (bridgeless React Native installs `setImmediate` as a `queueMicrotask` shim), so the
+ * next response line lands in that gap and is never read. The worker, desktop and server load upstream
+ * imapflow untouched. The anchor must match once, in the version written against, or the build refuses.
+ */
+export const IMAPFLOW_REARM_MARKER = "Reader re-armed for data that arrived as it finished";
+export const IMAPFLOW_REARM_VERSION = "1.7.8";
+const IMAPFLOW_REARM_ANCHOR = `                    .finally(() => {
+                        this.reading = false;
+                    });`;
+const IMAPFLOW_REARM_WITH = `                    .finally(() => {
+                        this.reading = false;
+                        if (this.streamer.readableLength > 0 && !this.streamer.destroyed) {
+                            this.log.trace({ msg: '${IMAPFLOW_REARM_MARKER}', cid: this.id });
+                            this.socketReadable();
+                        }
+                    });`;
+export function rearmImapflowReader(source, version) {
+  if (version !== IMAPFLOW_REARM_VERSION) {
+    throw new Error(`imapflow ${version} is not the ${IMAPFLOW_REARM_VERSION} the phone's reader re-arm was written against; re-read its reader and move the anchor.`);
+  }
+  const at = source.split(IMAPFLOW_REARM_ANCHOR).length - 1;
+  if (at !== 1) throw new Error(`imapflow's reader guard matched ${at} times, not once; the phone's re-arm was not applied.`);
+  return source.replace(IMAPFLOW_REARM_ANCHOR, IMAPFLOW_REARM_WITH);
+}
+const imapflowReaderPlugin = {
+  name: "ohmail-phone-imapflow-reader",
+  setup(build) {
+    build.onLoad({ filter: /[\\/]imapflow[\\/]lib[\\/]imap-flow\.js$/ }, (args) => {
+      const pkg = JSON.parse(readFileSync(join(dirname(args.path), "..", "package.json"), "utf8"));
+      return { contents: rearmImapflowReader(readFileSync(args.path, "utf8"), pkg.version), loader: "js" };
+    });
+  },
+};
+
 export async function buildPhoneEngine({ write = true, workspaceSources = false } = {}) {
   const esbuild = await loadEsbuild();
   const { plugin, applied } = substitutions(workspaceSources ? workspaceSourceAliases(REPO) : {},
@@ -488,7 +525,7 @@ export async function buildPhoneEngine({ write = true, workspaceSources = false 
     metafile: true,
     write: false,
     logLevel: "silent",
-    plugins: [plugin],
+    plugins: [plugin, imapflowReaderPlugin],
   });
 
   /* Stripped BEFORE anything else sees it, so `text` and the bytes on disk are the same artifact:
@@ -559,7 +596,7 @@ export async function bundleProbe(entrySource) {
     metafile: true,
     write: false,
     logLevel: "silent",
-    plugins: [plugin],
+    plugins: [plugin, imapflowReaderPlugin],
   });
 
   const bundlePath = join(dir, "probe.js");

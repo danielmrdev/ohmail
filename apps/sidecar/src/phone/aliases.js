@@ -86,6 +86,10 @@ const NODE_MODULES = {
   net: path.join(SHIMS, "net.js"),
   tls: path.join(SHIMS, "tls.js"),
   url: path.join(SHIMS, "url.js"),
+  /* THE INJECTED GLOBAL'S OWN OBJECT. Unaliased, readable-stream's explicit `process/` import bundled
+     `process@0.11.10/browser.js`, whose `nextTick` is a 0 ms timer: ~17 serial timer turns per
+     message parsed, most of a phone's first sync. `process/` is its row in PACKAGE_ALIASES. */
+  process: path.join(SHIMS, "process.js"),
 
   // ── REFUSED, each for a reason its own file states ────────────────────────────────────────
   zlib: path.join(SHIMS, "zlib.js"),
@@ -107,6 +111,8 @@ const NODE_MODULES = {
 
 /** Non-builtin packages the engine reaches that also have no place on a phone. */
 const PACKAGE_ALIASES = {
+  /* readable-stream's spelling of the `process` row above — the package path, not the builtin. */
+  "process/": path.join(SHIMS, "process.js"),
   /* `imapflow` requires this at module scope for its proxy connector and calls it only for a
      configured proxy, which nothing here can configure. */
   socks: path.join(SHIMS, "socks.js"),

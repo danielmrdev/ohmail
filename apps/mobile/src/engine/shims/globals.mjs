@@ -6,7 +6,7 @@
  * order. A third global (`crypto.randomUUID`) was rejected: the answer was to stop reading a global. The
  * `process` stand-in is deliberately thin: `env` is empty and stays empty (a library finding `NODE_DEBUG`
  * would start logging, and an engine that logs mail content on a device is a privacy failure); `nextTick` is
- * a microtask (a timer would reorder work the streams depend on); `platform` says what this is.
+ * `setImmediate` (see beside it), and `process.js` hands this one object to every module requiring `process`.
  */
 /* ESM, and that is not a style choice: the bundler's `inject` binds the NAMES a module exports, so
    the exports have to be statically visible. A CommonJS `module.exports = { … }` relies on the
@@ -27,7 +27,10 @@ const processShim = {
   version: "",
   versions: {},
   argv: [],
-  nextTick: (fn, ...args) => { Promise.resolve().then(() => fn(...args)); },
+  /* `setImmediate`: a macrotask under node, a MICROTASK on the phone (bridgeless React Native installs
+     it as a `queueMicrotask` shim). imapflow's reader is re-armed in this bundle for the second
+     (`bundle-engine.mjs`); `engine-bundle-first-sync.imap.test.ts` runs the first sync under both. */
+  nextTick: (fn, ...args) => { setImmediate(() => fn(...args)); },
   /* Read by stream implementations for high-resolution timing. Monotonic and cheap. */
   hrtime: Object.assign(
     (previous) => {
