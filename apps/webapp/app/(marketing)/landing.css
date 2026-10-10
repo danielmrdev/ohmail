@@ -4486,6 +4486,21 @@ html[data-demo-full] {
 html[data-analytics] .l-consent {
   display: none;
 }
+/* Reopened from a "change your choice" control: pinned to the viewport, so
+   the choice appears where the press was, not at the top of a long page. */
+.l-consent-pinned {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  z-index: 90;
+  max-width: 820px;
+  margin: 0 auto;
+  border: 1px solid var(--hair-soft);
+  border-radius: var(--r-card);
+  background: var(--float);
+  box-shadow: var(--lift-3);
+}
 .l-consent-text {
   margin: 0;
   max-width: 68ch;
@@ -4522,5 +4537,10 @@ html[data-analytics] .l-consent {
   }
   .l-consent .btn {
     padding: 5px 12px;
+  }
+  .l-consent-pinned {
+    left: 8px;
+    right: 8px;
+    bottom: max(8px, env(safe-area-inset-bottom));
   }
 }

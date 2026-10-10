@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Script from "next/script";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -82,18 +82,48 @@ export function Analytics({ id }: { id: string }) {
   /* "unknown" until mounted: the server render and the first client render both show the
      notice, and the pre-paint stamp in the marketing root hides it for a decided browser. */
   const [choice, setChoice] = useState<Choice | null | "unknown">("unknown");
+  /* Non-zero while the notice was reopened by a "change your choice" press: it is then pinned to the
+     viewport, wherever on the page that press was, and holds focus until a choice or Escape. */
+  const [reopened, setReopened] = useState(0);
+  const opener = useRef<HTMLElement | null>(null);
+  const declineRef = useRef<HTMLButtonElement>(null);
   const onSite = MARKETING_PATHS.includes(pathname);
 
   useEffect(() => {
     if (!onSite) return;
     setChoice(readChoice());
-    const reopen = () => {
+    const reopen = (e: Event) => {
+      const from = (e as CustomEvent<{ opener?: unknown }>).detail?.opener;
+      opener.current = from instanceof HTMLElement ? from : null;
       delete document.documentElement.dataset.analytics;
       setChoice(null);
+      setReopened((n) => n + 1);
     };
     window.addEventListener(CONSENT_REOPEN_EVENT, reopen);
     return () => window.removeEventListener(CONSENT_REOPEN_EVENT, reopen);
   }, [onSite]);
+
+  /** Closes a reopened notice and hands focus back to the control that opened it. */
+  const settle = useCallback(() => {
+    setReopened(0);
+    if (opener.current?.isConnected) opener.current.focus();
+    opener.current = null;
+  }, []);
+
+  useEffect(() => {
+    if (reopened === 0) return;
+    declineRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      const kept = readChoice();
+      if (kept) document.documentElement.dataset.analytics = kept;
+      setChoice(kept);
+      settle();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [reopened, settle]);
 
   const granted = onSite && choice === CONSENT_GRANTED;
   useEffect(() => {
@@ -118,8 +148,9 @@ export function Analytics({ id }: { id: string }) {
       document.documentElement.dataset.analytics = next;
       if (next === CONSENT_DENIED) stopGtag(id);
       setChoice(next);
+      settle();
     },
-    [id],
+    [id, settle],
   );
 
   if (!onSite) return null;
@@ -127,7 +158,11 @@ export function Analytics({ id }: { id: string }) {
     <>
       {granted ? <Script id="ohmail-gtag" src={gtagUrl(id)} strategy="afterInteractive" /> : null}
       {choice === null || choice === "unknown" ? (
-        <div className="l-consent" role="region" aria-label={t("label")}>
+        <div
+          className={reopened ? "l-consent l-consent-pinned" : "l-consent"}
+          role={reopened ? "dialog" : "region"}
+          aria-label={t("label")}
+        >
           <p className="l-consent-text">
             {t("notice")}{" "}
             <a href="/privacy#analytics">{t("more")}</a>
@@ -136,7 +171,7 @@ export function Analytics({ id }: { id: string }) {
             <button type="button" className="btn primary" onClick={() => decide(CONSENT_GRANTED)}>
               {t("accept")}
             </button>
-            <button type="button" className="btn" onClick={() => decide(CONSENT_DENIED)}>
+            <button type="button" className="btn" ref={declineRef} onClick={() => decide(CONSENT_DENIED)}>
               {t("decline")}
             </button>
           </div>
@@ -146,13 +181,15 @@ export function Analytics({ id }: { id: string }) {
   );
 }
 
-/** "Change your choice": reopens the notice wherever it is mounted on this page. */
+/** "Change your choice": reopens the notice in view, focus on Decline; Escape comes back here. */
 export function AnalyticsChoiceButton({ label }: { label: string }) {
   return (
     <button
       type="button"
       className="l-consent-change"
-      onClick={() => window.dispatchEvent(new Event(CONSENT_REOPEN_EVENT))}
+      onClick={(e) =>
+        window.dispatchEvent(new CustomEvent(CONSENT_REOPEN_EVENT, { detail: { opener: e.currentTarget } }))
+      }
     >
       {label}
     </button>
