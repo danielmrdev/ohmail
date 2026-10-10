@@ -13,6 +13,63 @@ See [Status](README.md#status--read-this-first).
 
 ## [Unreleased]
 
+### Search on the desktop answers at once while mail syncs
+<!-- changes: fix-026-desktop-search-waits-behind-a-drain.md -->
+
+A search typed while the desktop app is syncing a large mailbox no longer waits for the sync to
+finish a step: its first page comes back in its own time, and the sync waits for it instead.
+
+### Idle syncs cost less CPU
+<!-- changes: perf-026-idle-drain-enumerates-every-uid.md -->
+
+When nothing changed in the mailbox, a sync now checks each folder's counters instead of listing
+every message in it. On a large mailbox an idle sync takes about a sixth of the CPU it did where
+the server supports CONDSTORE, and about 40% less where it does not. Mail added, deleted or marked
+read in another mail app still shows on the next sync.
+
+### Agreeing to organize screens what setup counted
+<!-- changes: fix-026-organize-decision-does-what-it-says.md -->
+
+The "How far back" step of setup now says how many letters from how many senders you have not decided
+about will wait in the Screener, and agreeing moves exactly those once ohmail organizes the mailbox.
+Older mail, and mail you moved, tagged, put in a pile or answered, stays where it is. Over 1,000
+letters, the newest 1,000 move and the Screener offers the rest; while ohmail is still reading the
+mailbox, the step shows the count so far and says so. Until you decide, setup asks again each time you
+open ohmail, and a key pressed behind it no longer closes it. On the phone, "Organize on this phone"
+says what agreeing does to mail already there.
+
+### The Screener says what a decision does
+<!-- changes: fix-026-screener-says-what-it-does.md -->
+
+An answer to a message you sent, from an address you had not written to, stays in the Ohbox when that
+address writes again: only the new letter waits, and screening the sender out no longer moves the answer.
+When a Screener decision is answered, the letters its card shows move with it, a decision refused when you
+press moves nothing, and the sender's mail already filed elsewhere stays where it is, including a letter
+you filed elsewhere while the app was closed; the sender sheet and Settings → Rules still offer to move
+mail already filed, and doing so skips letters you filed yourself. A whole-domain decision names, before
+you press, the other senders whose waiting letters it files and how many, and keeps that domain's letters
+held for claiming a company's name in the Screener. The offer to screen mail still in the Ohbox leaves
+letters you filed there and answers to your own mail. "A suggestion is coming" now shows only while one is
+being bought, and a missing AI allowance is said one way. On the phone, a waiting sender whose name claims
+a company shows the claim on the list, and a decision for everyone at a shared mail provider is no longer
+offered.
+
+### A draft deleted on another device says so in the editor
+<!-- changes: fix-026-web-draft-elsewhere-rest.md -->
+
+When a draft open in ohmail was deleted from another device or tab, the editor kept saying it would save it,
+and saving and Send went nowhere. The editor now says the draft was deleted, anything you type after that is
+saved as a new draft, and Send offers to send the letter as a new one. And reopening a tab after another device
+sent its draft no longer clears what you typed there before it was saved: those words are kept as a new draft,
+and the editor says why.
+
+### The worker reports a database outage wherever it meets one
+<!-- changes: fix-026-tail-stages-announce-a-database-fault.md -->
+
+When the database stops answering during the worker's end-of-cycle passes, `/health` now reports the worker
+degraded until a sync cycle completes again. A slow query or a refused value on one account is still that
+account's failure alone.
+
 ### Still to come
 
 Signed installers — a real Apple Developer ID and an Authenticode certificate. See
