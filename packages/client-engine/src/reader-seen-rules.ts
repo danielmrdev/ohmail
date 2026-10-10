@@ -2,8 +2,9 @@
  * SCROLL-TO-READ'S NUMBERS AND ITS DWELL DECISION, one copy for the web reader and the phone's
  * (`apps/webapp/app/shell/reader-seen.ts`, `apps/mobile/src/ui/reader-seen.ts`). Pure: each core
  * hands in its panels' boxes in one coordinate system and gets back what the dwell reads. The
- * END-OF-READER rule lives here: at the reader's scroll end a member that can never pass or span
- * the line is read once it is wholly in view, after the same dwell.
+ * EDGE rules live here: a member that can never pass or span the line is read once it is wholly in
+ * view after the same dwell — at the scroll end every such member, at the scroll top the ones wholly
+ * above the line (a short first letter; the ones below it still have the line to pass).
  */
 
 /** The reading line, as a fraction of the viewport's height from its top. */
@@ -19,25 +20,30 @@ export interface PanelBox {
   bottom: number;
 }
 
+/** Can the reader scroll no further up? A pixel of rounding is the top. */
+export function atScrollTop(offset: number): boolean {
+  return offset <= 1;
+}
+
 /** Can the reader scroll no further down? A pixel of rounding is the end. */
 export function atScrollEnd(offset: number, viewport: number, content: number): boolean {
   return offset + viewport >= content - 1;
 }
 
 /**
- * What the dwell reads: the one panel spanning the line, and at the scroll end every panel wholly
- * in view as well. `panels` are the unread candidates only, in order; the result keeps that order.
+ * What the dwell reads: the one panel spanning the line; at the scroll end every panel wholly in
+ * view as well; at the scroll top every panel wholly in view above the line. `panels` are the
+ * unread candidates only, in order; the result keeps that order.
  */
 export function dwellCommits(
   panels: readonly PanelBox[],
   view: { top: number; bottom: number; line: number },
   atEnd: boolean,
+  atTop: boolean,
 ): string[] {
-  const out: string[] = [];
-  for (const p of panels) {
-    const spans = p.top <= view.line && p.bottom > view.line;
-    const whole = atEnd && p.top >= view.top - 1 && p.bottom <= view.bottom + 1;
-    if (spans || whole) out.push(p.id);
-  }
-  return atEnd ? out : out.slice(0, 1);
+  const spans = (p: PanelBox): boolean => p.top <= view.line && p.bottom > view.line;
+  const whole = (p: PanelBox): boolean => p.top >= view.top - 1 && p.bottom <= view.bottom + 1;
+  if (atEnd) return panels.filter((p) => spans(p) || whole(p)).map((p) => p.id);
+  const first = panels.find(spans);
+  return panels.filter((p) => p === first || (atTop && whole(p) && p.bottom <= view.line)).map((p) => p.id);
 }

@@ -430,10 +430,13 @@ export type WorldEarlier = Held & {
   attachments?: WorldAttachment[];
   /** A pinned member: its pin is the row's to release, so the reader's Mark as read leaves it out. */
   resurfaced?: true;
+  /** Newer than the opened message: the reader's heading over the members names them for it. */
+  later?: true;
 };
 
 export type WorldMail = Omit<Mail, "earlier"> & {
-  /** The rest of the conversation, oldest → newest, each member with its files. */
+  /** The rest of the conversation, oldest → newest, each member with its files; a member newer
+   *  than this message carries `later`. */
   earlier: WorldEarlier[];
   attachments?: WorldAttachment[];
   bodyState?: BodyState;
@@ -1856,9 +1859,12 @@ export function liveMessage(
   // The place the reader arrived through, on the row that carries no other honest one: the
   // message screen titles itself History off this, where `place` would say Ohbox.
   if (retired) row.historyPlace = physicalFolderOf(m);
-  row.earlier = threadOf(pres, id)
-    .filter((member) => member.id !== id)
-    .map((member) => {
+  const thread = threadOf(pres, id);
+  const openedAt = thread.findIndex((member) => member.id === id);
+  row.earlier = thread
+    .map((member, at) => ({ member, later: openedAt >= 0 && at > openedAt }))
+    .filter(({ member }) => member.id !== id)
+    .map(({ member, later }) => {
       // The account's own forward wears where it went, not the account's name — the same face
       // the web panel gives it (`isForwardedByUs`), recipients named as every row names a person.
       const forwardedTo = isForwardedByUs(member)
@@ -1871,6 +1877,7 @@ export function liveMessage(
         body: bodyOf(pres, member).text,
         seen: !member.unread,
         ...(isResurfaced(member) ? { resurfaced: true as const } : {}),
+        ...(later ? { later: true as const } : {}),
         ...(forwardedTo ? { face: Copy.forwardedTo(forwardedTo) } : {}),
         ...filesField(engine, member.id),
       };

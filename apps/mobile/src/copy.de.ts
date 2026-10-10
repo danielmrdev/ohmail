@@ -1109,6 +1109,8 @@ export const DE: Deck = {
     n === 1
       ? "Früher in diesem Verlauf — vollständig gezeigt"
       : `Früher in diesem Verlauf — alle ${n} gezeigt`,
+  laterInThread: (n: number) => `Später in diesem Verlauf — alle ${n} gezeigt`,
+  restOfThread: (n: number) => `Der Rest dieses Verlaufs — alle ${n} gezeigt`,
   openMessage: "Öffnen",
   back: "Zurück",
 

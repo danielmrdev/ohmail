@@ -1,13 +1,14 @@
-import { DWELL_MS, EVIDENCE_WINDOW_MS, READING_LINE, atScrollEnd, dwellCommits } from "@ohmail/client-engine";
+import { DWELL_MS, EVIDENCE_WINDOW_MS, READING_LINE, atScrollEnd, atScrollTop, dwellCommits } from "@ohmail/client-engine";
 
 /**
  * SCROLL-TO-READ IN THE PHONE'S READER — the web core's rules and numbers (the engine's
  * `reader-seen-rules.ts`) over React Native's scroll events: rule A, a downward pass (a member
  * panel's bottom was below the reading line at an earlier scroll of this open and a later one
- * carries the line past it); rule B and the end-of-reader rule, the dwell after the finger and its
- * fling settle (`dwellCommits`). The evidence is the DRAG: a scroll counts during it, during the
- * fling it starts, or within a second of the finger lifting; anything else — a restored offset, a
- * programmatic, keyboard or screen-reader scroll — writes nothing. Content coordinates throughout.
+ * carries the line past it); rule B and the edge rules (the reader's end, and its top for a short
+ * first member), the dwell after the finger and its fling settle (`dwellCommits`). The evidence is
+ * the DRAG: a scroll counts during it, during the fling it starts, or within a second of the finger
+ * lifting; anything else — a restored offset, a programmatic, keyboard or screen-reader scroll —
+ * writes nothing. Content coordinates throughout.
  */
 
 export { DWELL_MS, READING_LINE };
@@ -89,7 +90,8 @@ export function createPhoneReaderSeen(o: {
     dwell = setTimeout(() => {
       dwell = null;
       const boxes = [...panels].filter(([id]) => !o.isSeen(id)).map(([id, p]) => ({ id, top: top(p), bottom: top(p) + p.h }));
-      for (const id of dwellCommits(boxes, { top: y, bottom: y + height, line: lineY() }, atScrollEnd(y, height, contentH))) commit(id);
+      const view = { top: y, bottom: y + height, line: lineY() };
+      for (const id of dwellCommits(boxes, view, atScrollEnd(y, height, contentH), atScrollTop(y))) commit(id);
     }, dwellMs);
   };
 

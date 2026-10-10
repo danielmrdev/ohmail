@@ -30,6 +30,7 @@ import { readerVerbMode } from "./reader-verbs";
 import { scaffoldPlan } from "./scaffold/plan";
 import { paneScrollOf, recordPaneScroll } from "./pane-memory";
 import { createPhoneReaderSeen } from "./reader-seen";
+import { threadHeading } from "./thread-heading";
 
 const platformName = Platform.OS === "ios" ? ("ios" as const) : ("android" as const);
 
@@ -308,7 +309,7 @@ export function MessageReader({
               onLayout={(e) => seen.offset("container", e.nativeEvent.layout.y)}
             >
               <Txt variant="caption" tone="ink3">
-                {Copy.earlierInThread(m.earlier.length + 1)}
+                {threadHeading(Copy, m.earlier)}
               </Txt>
               {m.earlier.map((h) => (
                 <Panel key={h.id} radius={t.radius.card} style={{ padding: 18 }}

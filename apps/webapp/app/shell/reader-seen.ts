@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type RefObject } from "react";
-import { DWELL_MS, EVIDENCE_WINDOW_MS, READING_LINE, atScrollEnd, dwellCommits } from "@ohmail/client-engine";
+import { DWELL_MS, EVIDENCE_WINDOW_MS, READING_LINE, atScrollEnd, atScrollTop, dwellCommits } from "@ohmail/client-engine";
 import { SCROLL_KEYS } from "@ohmail/ui";
 import { stampLive } from "./programmatic-scroll";
 
@@ -9,11 +9,11 @@ import { stampLive } from "./programmatic-scroll";
  * SCROLL-TO-READ IN THE READER — a sibling panel carrying `data-unseen` is read only when the PERSON
  * scrolls through it: rule A, a downward pass (its bottom was below the reading line at an earlier
  * scan of this open and an evidenced scroll carries it above); rule B, the dwell (`dwellCommits`:
- * the panel spanning the line, and at the scroll end every panel wholly in view). A scroll counts
- * only with EVIDENCE within a second before it (`evidenced`), voided by a later key, focus or
- * selection move: a wheel, touch or pointer press on the scroller, a scroll key the app did not
- * take, or a framed body under the pointer with no such move just before. A stamped app scroll, a
- * scroll while the geometry moved, or one in the second after a resize never counts. One per open.
+ * the panel spanning the line; at the scroll end every panel wholly in view, at the top every one
+ * wholly in view above the line). A scroll counts only with EVIDENCE within a second before it
+ * (`evidenced`), voided by a later key, focus or selection move: a wheel, touch or pointer press on
+ * the scroller, a free scroll key, or a framed body under the pointer with no such move just before.
+ * A stamped app scroll, one while the geometry moved, or one within a second of a resize never counts.
  */
 
 export { DWELL_MS, EVIDENCE_WINDOW_MS, READING_LINE };
@@ -120,7 +120,7 @@ export function createReaderSeen(o: ReaderSeenOptions): ReaderSeen {
         return { id: el.dataset.convId!, top: r.top, bottom: r.bottom };
       });
       const end = atScrollEnd(scroller.scrollTop, scroller.clientHeight, scroller.scrollHeight);
-      for (const id of dwellCommits(boxes, view(), end)) onSeen(id);
+      for (const id of dwellCommits(boxes, view(), end, atScrollTop(scroller.scrollTop))) onSeen(id);
     }, dwellMs);
   };
 
