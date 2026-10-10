@@ -13,6 +13,13 @@ See [Status](README.md#status--read-this-first).
 
 ## [Unreleased]
 
+### Still to come
+
+Signed installers — a real Apple Developer ID and an Authenticode certificate. See
+[Roadmap](README.md#roadmap).
+
+## [0.25.21] — 2026-10-10
+
 ### Mail under a company's name through a mailing list's address waits at the Screener
 <!-- changes: fix-026-list-address-is-not-a-person.md -->
 
@@ -116,11 +123,6 @@ and Send offers to send it as a new letter.
 Changing the system text size or display size while ohmail is open re-lays the open screen at the
 new size: an open message stays open, the composer keeps its text, and nothing is cut or left
 oversized.
-
-### Still to come
-
-Signed installers — a real Apple Developer ID and an Authenticode certificate. See
-[Roadmap](README.md#roadmap).
 
 ## [0.25.20] — 2026-10-10
 
@@ -11975,7 +11977,8 @@ no network in any of them.
   Gatekeeper, SmartScreen and the AppImage's executable bit all need a manual
   step, and that is a real cost of a preview rather than something to gloss over.
 
-[Unreleased]: https://github.com/trafficflowhq/ohmail/compare/v0.25.20...HEAD
+[Unreleased]: https://github.com/trafficflowhq/ohmail/compare/v0.25.21...HEAD
+[0.25.21]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.21
 [0.25.20]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.20
 [0.25.19]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.19
 [0.25.18]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.18

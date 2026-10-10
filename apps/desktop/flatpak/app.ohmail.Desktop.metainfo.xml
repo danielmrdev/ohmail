@@ -74,6 +74,26 @@
   </screenshots>
 
   <releases>
+    <release version="0.25.21" date="2026-10-10">
+      <description>
+        <ul>
+          <li>Mail under a company's name through a mailing list's address waits at the Screener</li>
+          <li>Letters arriving together all show within seconds, and a read on the web reaches the mail server within seconds</li>
+          <li>Live updates</li>
+          <li>A short first message is marked read when you scroll up to it</li>
+          <li>News and Receipts count only what is new since you were there</li>
+          <li>Keys and a resized window keep your place</li>
+          <li>Restarting the desktop app keeps it organizing your mailbox</li>
+          <li>A phone organizes a mailbox only where you agreed to it</li>
+          <li>Letters that arrive while nothing organizes are offered for filing</li>
+          <li>Search on ohmail Cloud answers faster after a pause</li>
+          <li>Search finds ß and ss alike, and says what it found</li>
+          <li>Changing your statistics choice on the website</li>
+          <li>The phone keeps its editor on a draft sent or deleted on another device</li>
+          <li>Changing the text size keeps the open screen on both phones</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.25.20" date="2026-10-10">
       <description>
         <ul>
@@ -149,18 +169,6 @@
           <li>Settings, compose and search fit a phone</li>
           <li>The phone says what a press did</li>
           <li>A change is kept when another tab signs in or your sign-in cannot be renewed</li>
-        </ul>
-      </description>
-    </release>
-    <release version="0.25.16" date="2026-10-06">
-      <description>
-        <ul>
-          <li>A sign-in renewal that finishes after a reload no longer signs the browser out</li>
-          <li>Sign-in records are deleted after they expire, and a code that adds a device lasts five minutes</li>
-          <li>ohmail/_meta is cleaned when it needs it, and the phone names a full one</li>
-          <li>The update menu can no longer freeze the desktop window</li>
-          <li>An update whose installer does not start no longer closes the app</li>
-          <li>The alert mail sends what matters, at most once per kind of problem every six hours</li>
         </ul>
       </description>
     </release>
