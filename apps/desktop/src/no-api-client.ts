@@ -443,6 +443,16 @@ export interface OrganizerPeek {
     unreadable: number;
 }
 
+/** `GET /screener/unscreened/count` — the shape only; the desktop's first run reads it through its own host. */
+export interface OrganizeDecisionCountWire {
+  letters: number;
+  senders: number;
+  total: number;
+  complete: boolean;
+  max: number;
+  mirrored: boolean;
+}
+
 export type MailboxTakeover = {
     outcome: "authorized";
     previousReason: string;

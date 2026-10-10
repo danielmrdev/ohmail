@@ -10,7 +10,7 @@ import {
   isImapBoundExceeded, loopbackHarnessReason, type ImapConfig, type MailboxAdapter, type CredMetaAuth,
   type NetTimeouts,
 } from "@trafficflow/core/adapters/imap";
-import { makeDrizzleRepo, mailboxProviderAuthservIds, recordSpecialFolders, storedFoldersOf, type WorkerRepo } from "@trafficflow/core/adapters/drizzle-repo";
+import { agreeSweepPass, makeDrizzleRepo, mailboxProviderAuthservIds, recordSpecialFolders, storedFoldersOf, type WorkerRepo } from "@trafficflow/core/adapters/drizzle-repo";
 // The release refusal's OWN class, from the one module that throws it: `releaseOwnClaim` tells a
 // live-sibling refusal (`nonce_unknown` — the pane owes the sibling-lapse sentence) from "could not look".
 import { ClaimReleaseError } from "@trafficflow/core/adapters/organizer-lease";
@@ -169,7 +169,7 @@ import {
 } from "@trafficflow/core/adapters/organizer-lease";
 import { holderIsLive } from "@trafficflow/core/reader-refusal";
 import type { ImapAuth } from "@trafficflow/core/adapters/imap-types";
-import { OrganizerProfileSync, syncProfileMirror } from "@trafficflow/worker/profile";
+import { OrganizerProfileSync, sweepHeld, syncProfileMirror } from "@trafficflow/worker/profile";
 import type { ProfileIo } from "@trafficflow/core/adapters/organizer-profile";
 // THE SYMMETRIC-TAKEOVER REQUEST DRAIN (0.14.1), from the worker's own subpath for
 // the same reason `OrganizerProfileSync` is: one implementation of "apply a reader's decision" or
@@ -4648,6 +4648,8 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
        * nothing to re-create.
        */
       let foldersEnsured = false;
+      /** The stamp the last promotion spent, until the next organizing drain's sweep reads it once. */
+      let agreeStamp: Date | null = null;
 
       /**
        * CLOSE THE SEND-LATER APPOINTMENTS A STAND-DOWN ORPHANS — the local half of
@@ -5498,6 +5500,7 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
             // tombstone, and an unconditional write would revive it; the stamp is spent either
             // way. The write's read-back decides whether this launch organizes at all: finding
             // the tombstone, it organizes nothing and the appended claim ages out.
+            const spentStamp = observedTakeoverAt;
             try {
               const [after] = await db.transaction(async (tx) => {
                 const rows = await tx.update(mailboxes)
@@ -5592,6 +5595,8 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
                 reason: "the lease said organize and this install's claim stands in the folder, so " +
                   "the row moved from reader to organizer before the permit was taken",
               });
+              // The next organizing drain asks, once, whether this was a person's first agree.
+              agreeStamp = spentStamp;
             } catch (err) {
               /* THE ROLE WENT WITH THE STAMP, so this is not "one more spendable cycle": the write
                * that failed is the one that makes the row say `organizer`, and without it this
@@ -6047,6 +6052,29 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
       /** The change-log mark this runtime's last drain left behind; `null` is an unknown. */
       let knownSetMark: string | null = null;
 
+      /** Never throws: a failure leaves the letters to the Screener's offer, and says so. */
+      const sweepAfterAgree = async (stamp: Date): Promise<void> => {
+        try {
+          const clearance = await profileSync.sweepClearance();
+          const out = await agreeSweepPass(db as unknown as Parameters<typeof agreeSweepPass>[0], {
+            accountId: world.accountId, mailboxId: mb.id, stamp, held: sweepHeld(clearance), now: now(),
+            knowledgeFor: (tx) => makeDrizzleRepo(tx as unknown as Parameters<typeof makeDrizzleRepo>[0]),
+            ledgerOf: (tx) => tx as unknown as LedgerTx,
+          });
+          log("organizer_agree_sweep", {
+            mailboxId: mb.id, verdict: out.kind, moved: out.kind === "swept" ? out.total : 0,
+            count: out.kind === "swept" ? out.senders : 0,
+            why: clearance.kind === "unread" ? clearance.why : null,
+          });
+        } catch (err) {
+          log("organizer_agree_sweep_failed", {
+            err, mailboxId: mb.id,
+            reason: "the agree's in-window letters were not given to the Screener; the Screener's "
+              + "offer still names them",
+          });
+        }
+      };
+
       const drain = async (
         maxCycles: number, gen: number, conn: MailboxAdapter, organizing: boolean,
       ): Promise<number> => {
@@ -6065,6 +6093,14 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
            an organizer-only mailbox write off a reader's drain. */
         assertSameConnection(gen, conn);
         if (organizing) await profileSync.armHoldFromFolder();
+        /* THE AGREE'S SWEEP, once, after the hold preflight: `agreeSweepPass` decides whether the
+           spent stamp was a person's first agree and moves the counted set as intents, which this
+           drain's cycles then carry to the mailbox. */
+        if (organizing && agreeStamp !== null) {
+          const stamp = agreeStamp;
+          agreeStamp = null;
+          await sweepAfterAgree(stamp);
+        }
         // BEFORE the cycles, not after: a resurface is a local database fact and does not depend on
         // the mailbox being reachable, so it must survive a cycle that throws on a dead connection.
         /* THE INSTALL'S OWN WORK, ONCE. See {@link onceForTheAccount}: another mailbox's drain that
@@ -8830,7 +8866,9 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
                * is measured from — written separately, there is a gap in which the cutoff is the
                * default. The account is the LAUNCH SESSION's, never a value from the body. */
             const mailboxId = localOrganizeMatch[1]!;
-            let body: { intent?: unknown; screening?: { dormancyDays?: unknown; scope?: unknown } } = {};
+            let body: {
+              intent?: unknown; screening?: { dormancyDays?: unknown; scope?: unknown }; screenBacklog?: unknown;
+            } = {};
             try {
               body = (await req.json()) as typeof body;
             } catch {
@@ -8877,6 +8915,8 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
                 mailboxId, now: now(), accountId: core.accountId,
                 intent,
                 ...(screening ? { screening } : {}),
+                // Only `true`: the press was made on a screen that stated the agree's rule.
+                ...(body.screenBacklog === true ? { screenBacklog: true as const } : {}),
               });
               log("local_mailbox_organize_consented", {
                 verdict: result.outcome,

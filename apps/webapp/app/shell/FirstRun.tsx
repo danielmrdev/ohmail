@@ -22,7 +22,7 @@ import {
 import type { DecisionDestination, DecisionScope } from "@ohmail/ui";
 import { isSharedProviderDomain } from "@trafficflow/core/rule-order";
 import { useDecisionBarCopy } from "./decision-copy";
-import { useKeyBindings } from "./keymap";
+import { useModalGate } from "./modal-gate";
 import { PROVIDERS, hostsFor, providerById, providerLabel, type ProviderPreset } from "./providers";
 import { isLocalServerHost, probeCopyKey, refusalTransport } from "./local-server-host";
 import { noPortProbeKey } from "./no-port-sentence";
@@ -32,7 +32,7 @@ import {
   type OnboardingFacts, type OnboardingStep,
 } from "./onboarding";
 import type {
-  FirstRunHost, FirstRunMailboxInput, FirstRunOrganizeOutcome, FirstRunProbeOk,
+  FirstRunDecisionCount, FirstRunHost, FirstRunMailboxInput, FirstRunOrganizeOutcome, FirstRunProbeOk,
 } from "./first-run-host";
 import { pullEtaMs, pullRate, pullRemaining, pullSampleStep, type PullSample } from "./pull-rate";
 import {
@@ -88,6 +88,9 @@ const DECIDE_LEGEND: Array<{ key: string; copy: "decideOhbox" | "decideReads" | 
  * the facts say, which is the behaviour before this wait existed.
  */
 const SETTLE_MS = 4_000;
+
+/** How often the window step reads its count again while the first import is still reading mail. */
+const COUNT_REREAD_MS = 5_000;
 
 /**
  * HOW LONG AGREE WAITS FOR THE DOOR'S FIRST LOOK AT WHO HOLDS THE MAILBOX. A look that fails
@@ -301,6 +304,25 @@ export function nextStep(
   const i = path.indexOf(step);
   const next = i >= 0 ? path[i + 1] : path[0];
   return next === step ? undefined : next;
+}
+
+/**
+ * The window step's count, in words: all of it, the newest N of M, or nothing to screen. While the
+ * first import is still reading the mailbox it is a count so far and says so, never "nothing".
+ */
+export function decisionCountSentence(
+  t: (key: string, values?: Record<string, number>) => string, c: FirstRunDecisionCount,
+): string {
+  if (!c.mirrored) {
+    return c.letters === 0 ? t("agreeCountReading") : t("agreeCountSoFar", { letters: c.letters, senders: c.senders });
+  }
+  if (c.letters === 0) return t("agreeCountNone");
+  if (c.total > c.letters) {
+    return t(c.complete ? "agreeCountFirst" : "agreeCountFirstFloor", {
+      letters: c.letters, total: c.total, rest: c.total - c.letters,
+    });
+  }
+  return t("agreeCount", { letters: c.letters, senders: c.senders });
 }
 
 export function firstRunStep(
@@ -676,6 +698,8 @@ export function FirstRun({
           screening: win === "all"
             ? { scope: "all_time" }
             : { dormancyDays: Number(win), scope: "window" },
+          // The count was on screen: the organizer screens exactly that set after this press.
+          ...(intent === "join" && shownCount !== null ? { screenBacklog: true as const } : {}),
           intent,
         });
       } catch (err) {
@@ -735,24 +759,27 @@ export function FirstRun({
   }, [host, onLeave, run]);
 
   /**
-   * The one Escape binding, at `overlay` scope — it beats every `view`
-   * binding underneath (`keymap.tsx` argues the rank), so it is not
-   * competing with the Ohbox's selection-clearing Escape. It ASKS rather
-   * than acts: this flow's cancel writes a stamp, and a keystroke that
-   * silently ends setup is the kind of thing a person does not know they
-   * did. `inInput` because the mailbox step is a form — a field you cannot
-   * leave is a trap, the registry's rule for exactly this key.
+   * THE STAGE KEEPS FOCUS. It takes the modal gate, so no shell binding runs behind it — `g s` used
+   * to navigate to the Screener and unmount the stage with nothing asked (FIRST-RUN-STAGE-NEVER-
+   * REOPENS) — and the shell is `inert` while it is open (`AppShell`). Its one key is its own:
+   * Escape ASKS rather than acts, because this flow's cancel writes a stamp, and it is heard in a
+   * field too, since a form you cannot leave is a trap.
    */
-  useKeyBindings(
-    useMemo(() => [{
-      chord: "Escape",
-      group: "app" as const,
-      label: t("cancel"),
-      inInput: true,
-      run: () => setConfirm((c) => (c === "cancel" ? null : "cancel")),
-    }], [t]),
-    "overlay",
-  );
+  useModalGate(true);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      e.preventDefault();
+      setConfirm((c) => (c === "cancel" ? null : "cancel"));
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    // Focus inside the stage on open, unless something in it already has it.
+    if (cardRef.current && !cardRef.current.contains(document.activeElement)) cardRef.current.focus();
+  }, []);
 
   /* ── THE MAILBOX FORM ──────────────────────────────────────────────────────────────── */
 
@@ -979,6 +1006,32 @@ export function FirstRun({
    * reading — the half that has to be there before the press.
    */
   const elsewhereChoice: "here" | "read" = elsewhereChoicePicked ?? "here";
+
+  /* WHAT AGREEING WILL SCREEN, for the window being chosen — read before the press from the walk the
+     organizer runs after it (`countDecision`). A join only: a takeover keeps the arrangement the other
+     install made. Keyed by mailbox and window, so an answer for another choice is never shown. */
+  const takingOver = claimAnsweredFor === mailboxId && elsewhereChoice === "here";
+  const countKey = mailboxId === null ? null : `${mailboxId}|${win}`;
+  const [decisionCount, setDecisionCount] = useState<{ key: string; value: FirstRunDecisionCount } | null>(null);
+  useEffect(() => {
+    const count = host.countDecision;
+    if (step !== "window" || countKey === null || mailboxId === null || takingOver || !count) return;
+    let live = true;
+    let again: ReturnType<typeof setTimeout> | null = null;
+    // A count read while the first import still runs is read again until the import is done.
+    const read = (): void => {
+      count(mailboxId, win === "all" ? { scope: "all_time" } : { dormancyDays: Number(win), scope: "window" })
+        .then((value) => {
+          if (!live) return;
+          setDecisionCount({ key: countKey, value });
+          if (!value.mirrored) again = setTimeout(read, COUNT_REREAD_MS);
+        }, () => { /* no count, no claim */ });
+    };
+    read();
+    return () => { live = false; if (again !== null) clearTimeout(again); };
+  }, [countKey, host, mailboxId, step, takingOver, win]);
+  const shownCount = decisionCount !== null && decisionCount.key === countKey && !takingOver
+    ? decisionCount.value : null;
   /**
    * WHETHER ANYBODY HOLDS THIS MAILBOX, AND WHETHER THEY HAVE A NAME — read once, for the two
    * surfaces below, from `organizedBy` rather than from the display name.
@@ -1105,7 +1158,7 @@ export function FirstRun({
   return (
     <div className="ob-stage">
       <div className="login-card ob-card set-pane" role="dialog" aria-modal="true"
-        aria-labelledby={`${ids}-title`}>
+        aria-labelledby={`${ids}-title`} ref={cardRef} tabIndex={-1}>
         <span className="wordmark"><b><em>oh</em>mail</b></span>
 
         {/* NO RAIL ON EITHER SCREEN THAT IS NOT A PHASE. `vanished` is not in the walk, so
@@ -1550,6 +1603,9 @@ export function FirstRun({
                   moves their mail. No backlog re-route pass exists and the sentence must not
                   imply one. */}
               <p className="set-note-inline">{t("windowLater")}</p>
+              {shownCount !== null ? (
+                <p className="ob-consent ob-agree-count" role="status">{decisionCountSentence(t, shownCount)}</p>
+              ) : null}
               <p className="ob-consent ob-window-recap">{firstSentence(t("consentBody"))}</p>
               {checking ? <SettingsVerdict state="wait" headline={t("windowCheckingHolder")} /> : null}
               {problem ? <SettingsVerdict state="bad" headline={problem} /> : null}

@@ -32,6 +32,7 @@ function organizeInputOf(body: Record<string, unknown>): {
   intent: OrganizeHereInput["intent"];
   imap?: { pass: string };
   screening?: { dormancyDays?: number; scope?: "window" | "all_time" };
+  screenBacklog?: true;
 } {
   /* THE VERB, AND THE BODY MAY ONLY WEAKEN IT. `"join"` is the one value admitted from the wire;
      everything else — absent, misspelled, or the word `"takeover"` itself — is `takeover`, which
@@ -43,7 +44,10 @@ function organizeInputOf(body: Record<string, unknown>): {
     intent: OrganizeHereInput["intent"];
     imap?: { pass: string };
     screening?: { dormancyDays?: number; scope?: "window" | "all_time" };
+    screenBacklog?: true;
   } = { intent: body.intent === "join" ? "join" : "takeover" };
+  // Only `true` counts: the press was made on a screen that stated the agree's rule (and its count).
+  if (body.screenBacklog === true) out.screenBacklog = true;
   const imap = body.imap;
   if (imap && typeof imap === "object" && typeof (imap as { pass?: unknown }).pass === "string") {
     const pass = (imap as { pass: string }).pass;

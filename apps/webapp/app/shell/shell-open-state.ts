@@ -48,6 +48,7 @@ import type { SubjectRuleState } from "./SubjectRuleSheet";
 import type { TagPickerState } from "./TagPicker";
 import type { PaneId } from "../views/SettingsView";
 import type { ReadsChipState } from "../views/ReadsView";
+import { useDecisionReopensOncePerLaunch, type DecisionReopenInput } from "./decision-reopen";
 
 /**
  * How long the located row stays marked, and how long we look for it.
@@ -245,6 +246,8 @@ export interface ShellOpenStateInput {
   tagGroups: ReadonlyArray<{ tag: { id: string }; messages: ReadonlyArray<{ id: string }> }>;
   folderMessages: ReadonlyArray<{ id: string }>;
   trashRows: ReadonlyArray<{ id: string }>;
+  /** What the organize decision's once-per-launch reopen reads (`decision-reopen.ts`). */
+  decision?: DecisionReopenInput;
 }
 
 /** The record the shell composes with. Consumers destructure it: a memo may not depend on it. */
@@ -253,8 +256,10 @@ export type ShellOpenState = ReturnType<typeof useShellOpenState>;
 export function useShellOpenState({
   engine, reader, derived, route, t, toast, mutateAndReport, mailState, screener,
   allOhbox, consentView, folders, parked, partition, piles, presented, receipts, setReplyTo,
-  tagGroups, folderMessages, trashRows,
+  tagGroups, folderMessages, trashRows, decision,
 }: ShellOpenStateInput) {
+  // The organize decision, asked once per launch of a mailbox nobody has decided about.
+  useDecisionReopensOncePerLaunch(route.firstRun, decision);
 
   /* ── view state ── */
   const [ohboxSel, setOhboxSel] = useState<string | null>(null);

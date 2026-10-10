@@ -51,6 +51,13 @@ export {
 } from "../correspondent.js";
 // The identity fact's one write for unchecked rows, on the same leaf: the worker's passes and a press.
 export { checkUncheckedById, writeSenderChecks, type UncheckedRow } from "../sender-check-write.js";
+// The undecided-sender set, on the same leaf: the Screener's offer, the organize decision, the organizer.
+export {
+  AGREE_SCREENS_BACKLOG_ACTION, OHBOX_UNSCREENED_AUDIT_ACTION, OHBOX_UNSCREENED_GROUPS_MAX,
+  OHBOX_UNSCREENED_MESSAGES_MAX, agreeRecordedAt, agreeSweepPass, agreeWindowCutoff, unscreenedGroups,
+  unscreenedWalk, writeScreenerIntents, type AgreeSweepOutcome, type ScreeningAnswer, type UnscreenedKnowledge, type UnscreenedRow,
+  type UnscreenedScope, type UnscreenedSenderGroup, type UnscreenedWalk,
+} from "../unscreened-set.js";
 
 export interface PersistedFolderCursor {
   uidValidity: string; uidNext: number; highestModseq: string;

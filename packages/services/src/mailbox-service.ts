@@ -11,7 +11,7 @@ import {
   closeRemovedMailboxAppointments,
   filingDue, filingDeferred, filingStuck, ourOutstandingFiling, isFilingRefusalClass,
   ACCOUNT_THREAD_STRUCTURE_LOCK_CLASS,
-  OrganizedElsewhereError,
+  OrganizedElsewhereError, auditAction, auditLog,
   type AccessVerdict, type LedgerTx, type MailboxErrorCode, type Tx, type OrganizerIntent,
 } from "@trafficflow/db";
 import { holderIsLive } from "@trafficflow/core/reader-refusal";
@@ -173,6 +173,12 @@ export interface OrganizeHereInput {
     /** `'all_time'` is a MODE: no cutoff and no dormancy anywhere. See `ScreeningScope`. */
     scope?: ScreeningScope;
   };
+  /**
+   * THE PRESS WAS MADE ON A SCREEN THAT STATED THE AGREE'S RULE (the window step, which names the
+   * count). On a FIRST consent it is recorded at the stamp's instant, and the organizer that spends
+   * that stamp screens the in-window mail of undecided senders. Any other press moves nothing old.
+   */
+  screenBacklog?: true;
 }
 
 /**
@@ -2462,9 +2468,18 @@ export class MailboxService {
           // it also fenced out the stand-down this ceremony exists to reverse.
           or(ne(mailboxes.status, "disabled"), isNotNull(mailboxes.disabledReason)),
         ))
-        .returning({ id: mailboxes.id });
+        .returning({ id: mailboxes.id, stamp: mailboxes.takeoverAuthorizedAt });
 
       if (rows.length === 0) return { outcome: "already_organizing" as const };
+      /* THE AGREE RECORD, at the stamp's own instant as the row returned it: only a first consent from
+         the window step writes one, and the organizer that spends this stamp reads it (`agreeRecordedAt`). */
+      const stamp = rows[0]!.stamp;
+      if (input.screenBacklog === true && current.organizeConsentedAt === null && stamp !== null) {
+        await tx.insert(auditLog).values({
+          accountId: ctx.accountId, action: auditAction("organizer.agree_screens_backlog"),
+          payload: { mailboxId: id }, createdAt: stamp,
+        });
+      }
       /**
        * Derived from the ROLE, because the column has had no writer since mail 0083. This read
        * `current.disabledReason`, which is now `null` for every reader row this build writes — so

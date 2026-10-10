@@ -33,7 +33,7 @@ export function platformRuleLine(os: string): string {
 
 /** The limitations screen's three lines, in the ruled order. */
 export function limitationLines(os: string): readonly string[] {
-  return [platformRuleLine(os), Copy.phoneStandaloneL2, Copy.phoneStandaloneL3];
+  return [platformRuleLine(os), Copy.phoneStandaloneL2, Copy.phoneStandaloneL3, Copy.phoneStandaloneL4];
 }
 
 /** The credential form's state. Ports and the TLS arm are strings and a flag, as the fields are. */

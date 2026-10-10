@@ -326,9 +326,10 @@ export async function organizeHere(
   try {
     res = await session.fetch(
       `${requestBase(session)}/local/mailboxes/${encodeURIComponent(mailboxId)}/organize`,
+      // `screenBacklog`: the screen this press follows stated what agreeing does to mail already there.
       {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ consent: "person" }),
+        body: JSON.stringify({ consent: "person", screenBacklog: true }),
       },
     );
   } catch (err) {

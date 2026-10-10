@@ -806,10 +806,10 @@ function readerAdoption(arrivalFolder: string): { adoption?: "peer" } {
  * who did not fail authentication and carries no company claim, and whose mail names at least one
  * message id. `named` says whether a cited copy was written TO that author; either way this message
  * is admitted, and only a named author is taught. A delivery report is no answer: the bounce arm is
- * its door, and it asks for a private copy.
+ * its door, and it asks for a private copy. The organize decision's walk asks it too.
  */
-async function correspondentAtGate(
-  repo: RepoPort, accountId: string, msg: NormalizedMessage,
+export async function correspondentAtGate(
+  repo: Pick<RepoPort, "isCorrespondent">, accountId: string, msg: NormalizedMessage,
   decision: { source: string; matchedRuleId: string | null; identity?: IdentityFact }, auth: AuthVerdict,
   known: KnownSenders,
 ): Promise<{ author: string; evidence: CorrespondentEvidence } | null> {

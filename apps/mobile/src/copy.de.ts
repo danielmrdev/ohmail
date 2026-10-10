@@ -96,6 +96,8 @@ export const DE: Deck = {
   phoneStandaloneL2: "Ein Postfach auf diesem Telefon.",
   phoneStandaloneL3:
     "Dein Mailserver behält alles. Nichts hier ist eine Kopie, die du verlieren könntest.",
+  phoneStandaloneL4:
+    "Post der letzten 60 Tage von Absendern, über die du nicht entschieden hast, kommt in den Screener. Ältere Post und Post, die du abgelegt hast, bleibt, wo sie ist.",
   phoneStandaloneGo: "Weiter",
   phoneStandaloneBack: "Anders wählen",
 

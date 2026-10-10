@@ -1915,8 +1915,21 @@ export const mailboxes = {
     screening?: { dormancyDays?: number; scope?: "window" | "all_time" };
     /** `"join"` yields to a live claim; absent is the takeover the Settings button means. */
     intent?: "join" | "takeover";
+    /** The press was made on the window step, which named what agreeing screens. */
+    screenBacklog?: true;
   } = {}) =>
     api<MailboxTakeover>(`/mailboxes/${id}/organize`, { method: "POST", body }),
+
+  /**
+   * WHAT AGREEING WILL SCREEN, read before the press: this mailbox's letters inside the window from
+   * senders nobody decided about, the person's own filing left out. The organizer moves the same set.
+   */
+  organizeCount: (id: string, screening: { dormancyDays?: number; scope?: "window" | "all_time" }) => {
+    const q = new URLSearchParams({ mailboxId: id });
+    if (screening.dormancyDays !== undefined) q.set("dormancyDays", String(screening.dormancyDays));
+    if (screening.scope !== undefined) q.set("scope", screening.scope);
+    return api<OrganizeDecisionCountWire>(`/screener/unscreened/count?${q.toString()}`);
+  },
 
   /**
    * STOP ORGANIZING THIS MAILBOX HERE, AND KEEP THE MAIL. The mirror of {@link organize}, and NOT step-up-gated,
@@ -2046,6 +2059,19 @@ export interface OrganizerPeek {
   holders: OrganizerHolder[];
   /** Claims present but unreadable — evidence somebody claimed, which is why `state` is not `none`. */
   unreadable: number;
+}
+
+/** `GET /screener/unscreened/count` — what agreeing will screen (`organizeDecisionCount`). */
+export interface OrganizeDecisionCountWire {
+  letters: number;
+  senders: number;
+  /** The whole set; above `letters` when the move bound cuts it. */
+  total: number;
+  /** False when the walk's page bound stopped it, so `total` is a floor. */
+  complete: boolean;
+  max: number;
+  /** False while the first import is still reading the mailbox: a count so far. */
+  mirrored: boolean;
 }
 
 export type MailboxTakeover =

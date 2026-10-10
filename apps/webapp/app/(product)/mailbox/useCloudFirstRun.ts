@@ -149,7 +149,7 @@ export function useCloudFirstRun(demo: boolean, pairNode?: ReactNode): FirstRunH
     id: string,
     body: {
       imap?: { pass: string }; screening?: { dormancyDays?: number; scope?: "window" | "all_time" };
-      intent?: "join" | "takeover";
+      intent?: "join" | "takeover"; screenBacklog?: true;
     },
   ): Promise<FirstRunOrganizeOutcome> => {
     /* THE OUTCOME IS READ, not discarded. All three replies are 200s: `authorized` is the first
@@ -167,6 +167,11 @@ export function useCloudFirstRun(demo: boolean, pairNode?: ReactNode): FirstRunH
       throw err;
     }
   }, []);
+
+  // What agreeing will screen, read before the press — the walk the organizer runs after it.
+  const countDecision = useCallback(async (
+    id: string, screening: { dormancyDays?: number; scope?: "window" | "all_time" },
+  ) => mailboxApi.organizeCount(id, screening), []);
 
   const complete = useCallback(async () => {
     await consentApi.completeOnboarding();
@@ -207,6 +212,7 @@ export function useCloudFirstRun(demo: boolean, pairNode?: ReactNode): FirstRunH
       probe,
       connect,
       organize,
+      countDecision,
       complete,
       setAiEnabled: writeAi,
       forgetMailbox,
@@ -225,5 +231,5 @@ export function useCloudFirstRun(demo: boolean, pairNode?: ReactNode): FirstRunH
         prompt: (p) => createElement(StepUpPrompt, p),
       },
     } satisfies FirstRunHost;
-  }, [ai, complete, connect, demo, forgetMailbox, operatorAi, organize, pairNode, probe, writeAi]);
+  }, [ai, complete, connect, countDecision, demo, forgetMailbox, operatorAi, organize, pairNode, probe, writeAi]);
 }

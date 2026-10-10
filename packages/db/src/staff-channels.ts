@@ -114,8 +114,10 @@ export const AUDIT_LOG_ACTIONS: readonly string[] = [
   "workflow_step",
   // ── the Screener's held-release press (`packages/services/src/held-release-service.ts`) ───
   "screener.held_release",
-  // ── the Screener's undecided-sender press (`packages/services/src/ohbox-unscreened-service.ts`) ─
+  // ── the undecided-sender press and the agree's own sweep (`packages/core/src/unscreened-set.ts`) ─
   "screener.unscreened_sweep",
+  // ── a person's first agree on a screen that stated the rule, at the consent's instant ──
+  "organizer.agree_screens_backlog",
   // ── a correspondent let through: at ingest (`pipeline.ts`) and by the retro
   //    (`apps/worker/src/screener-correspondent-retro.ts`), which also retires the auto-act's rule ─
   "screener.correspondent_admitted", "screener.correspondent_rule_retired",

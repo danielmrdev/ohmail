@@ -1680,7 +1680,7 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTranspor
   } = useShellOpenState({
     engine, reader, derived, route, t, toast, mutateAndReport, mailState, screener,
     allOhbox, consentView, folders, parked, partition, piles, presented, receipts, setReplyTo,
-    tagGroups, folderMessages, trashRows: trashPage.items,
+    tagGroups, folderMessages, trashRows: trashPage.items, decision: { facts, consent, stage: Boolean(firstRun) && !demo },
   });
 
   /**
@@ -2192,7 +2192,8 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTranspor
     <ListGoneProvider value={listGone}>
     <SendReleaseProvider value={releaseConfirmed}>
     <div className="app-root">
-      <div className="shell">
+      {/* INERT while the stage is open: no press, Tab or assistive action reaches the mail behind it. */}
+      <div className="shell" inert={Boolean(firstRun && route.firstRun && onboardingFacts && consent.known)}>
         {demo && !ribbonGone ? (
           <div className="demo-ribbon">
             <span>

@@ -41,7 +41,7 @@ import {
   MicrosoftTokenProvider, type OAuthTokenProvider, type UpdateSecretPort, type FetchLike,
   type ClassifierPort,
 } from "@trafficflow/core";
-import { makeDrizzleRepo, mailboxProviderAuthservIds, recordSpecialFolders, storedFoldersOf } from "@trafficflow/core/adapters/drizzle-repo";
+import { agreeSweepPass, makeDrizzleRepo, mailboxProviderAuthservIds, recordSpecialFolders, storedFoldersOf } from "@trafficflow/core/adapters/drizzle-repo";
 import {
   ImapAdapter, ImapConnectionClosedError, WORKER_NET_TIMEOUTS, WriteDeclinedError, learnSmtpMaxSize,
   isImapBoundExceeded,
@@ -119,7 +119,7 @@ import {
 } from "./push-wake.js";
 import { driverWriteRaceReason } from "./driver-write-race.js";
 import { makeSmtpSizeDial, recordSmtpMaxSize } from "./smtp-size.js";
-import type { Tx, OrganizerRole, OrganizerState } from "@trafficflow/db";
+import type { LedgerTx, Tx, OrganizerRole, OrganizerState } from "@trafficflow/db";
 import {
   loadEnabledMailboxes, loadRosterMailboxes, loadMailboxCreds, loadMailboxById, bootstrapEnvCreds, BootstrapRefusedError,
   markMailboxFailed, markMailboxReadLimited, markMailboxProviderUnavailable, markMailboxConnected,
@@ -133,7 +133,7 @@ import {
   type EnabledMailbox, type MailboxDisabledReason, type MailboxErrorPhase,
   type MailboxSyncBlockReason, type ParkedAccountsReader,
 } from "./mailboxes.js";
-import { OrganizerProfileSync, syncProfileMirror } from "./profile.js";
+import { OrganizerProfileSync, sweepHeld, syncProfileMirror } from "./profile.js";
 import type { ProfileIo } from "@trafficflow/core/adapters/organizer-profile";
 import {
   readMailboxLease, acquireLeasePermit, releaseMailboxClaim, cloudInstallId, CLOUD_DISPLAY_NAME,
@@ -404,6 +404,12 @@ interface MailboxRuntime {
    * opening read.
    */
   leasePermit: OrganizerWriteAuthority;
+  /**
+   * The stamp the last promotion spent, until the visit's sweep asks whether it was written with a
+   * person's first agree (`agreeSweepPass`). Memory only, read once: a crash before that visit
+   * leaves the letters to the Screener's offer.
+   */
+  agreeStamp?: Date | null;
   /**
    * The lease-relevant columns of this mailbox's row, as the last roster pass read them.
    *
@@ -1481,6 +1487,34 @@ export async function startWorkerWithLock(
     }
 
     /**
+     * THE AGREE'S SWEEP, after a promotion and its hold preflight: `agreeSweepPass` decides whether
+     * the spent stamp was a person's first agree and moves exactly the counted set as intents (the
+     * reconciler moves them this cycle). Never throws: a failure leaves the letters to the Screener's
+     * offer, said here.
+     */
+    async function agreeSweepAfterPromotion(rt: MailboxRuntime, stamp: Date): Promise<void> {
+      try {
+        const clearance = await rt.profile.sweepClearance();
+        const out = await agreeSweepPass(db as unknown as Parameters<typeof agreeSweepPass>[0], {
+          accountId: rt.accountId, mailboxId: rt.mailboxId, stamp, held: sweepHeld(clearance), now: new Date(),
+          knowledgeFor: (tx) => makeDrizzleRepo(tx as unknown as Parameters<typeof makeDrizzleRepo>[0]),
+          ledgerOf: (tx) => tx as unknown as LedgerTx,
+        });
+        log.info("organizer_agree_sweep", {
+          // `moved` letters given to the Screener, `count` their senders — both on the logger's allowlist.
+          mailboxId: rt.mailboxId, accountId: rt.accountId, outcome: out.kind,
+          moved: out.kind === "swept" ? out.total : 0, count: out.kind === "swept" ? out.senders : 0,
+          why: clearance.kind === "unread" ? clearance.why : null,
+        });
+      } catch (err) {
+        log.warn("organizer_agree_sweep_failed", {
+          mailboxId: rt.mailboxId, accountId: rt.accountId, err,
+          reason: "the agree's in-window letters were not given to the Screener; the Screener's offer still names them",
+        });
+      }
+    }
+
+    /**
      * Read the lease for one mailbox and, when it says no, make that durable. Returns `true` iff this
      * process may organize the mailbox right now — since mail 0083 the same question as "is this
      * install the ORGANIZER", and `false` is no longer "stop": it is `role: "reader"`, and the caller
@@ -1506,6 +1540,8 @@ export async function startWorkerWithLock(
         leasePendingNonce: string | null;
         seenClockCorrections: number;
         leasePermit: OrganizerWriteAuthority;
+        /** Written when a promotion spends a stamp; see {@link MailboxRuntime.agreeStamp}. */
+        agreeStamp?: Date | null;
       },
       adapter: MailboxAdapter,
       phase: "attach" | "cycle",
@@ -1807,8 +1843,11 @@ export async function startWorkerWithLock(
              * in `lease`, and the IMAP round trip since is a window a person can press a button
              * in: an unconditional clear here erased a Stop pressed during it, and the mailbox
              * organized on for ever. See `spendOneShot`. */
+            const spent = lease.takeoverAuthorizedAt;
             const promoted = await clearOrganizerStandDown(db, mb.mailboxId, { fence, asRead: lease });
             if (promoted) {
+              // The sweep after the hold preflight asks whether this stamp was a person's first agree.
+              if (spent !== null) nonce.agreeStamp = spent;
               lease.takeoverAuthorizedAt = null;
               lease.disabledReason = null;
               // The row now says `organizer`, so the next cycle issues no second UPDATE — the
@@ -2436,6 +2475,7 @@ export async function startWorkerWithLock(
           seenClockCorrections: clockCorrections(),
           // Until the gate runs there is no permit; the attach's own gate call replaces this.
           leasePermit: { noLease: "not_supplied" } as OrganizerWriteAuthority,
+          agreeStamp: null as Date | null,
         };
         const leaseRow = {
           takeoverAuthorizedAt: mb.takeoverAuthorizedAt, takeoverIntent: mb.takeoverIntent,
@@ -2748,6 +2788,9 @@ export async function startWorkerWithLock(
          * cycle path, which arms its own hold there — the two call sites are the two ways a process can
          * become this mailbox's organizer. */
         if (role === "organizer") await rt.profile.armHoldFromFolder();
+        // A promotion at attach (the press landed while this process was down) owes the same sweep.
+        if (role === "organizer" && leaseState.agreeStamp) await agreeSweepAfterPromotion(rt, leaseState.agreeStamp);
+        leaseState.agreeStamp = null;
 
         // Make the mailbox Screener-shaped, once, before the first drain. Here and not in `cycle()`:
         // it is a once-per-mailbox pass (`mailboxes.kickstart_at`, mail 0025) that must run BEFORE the
@@ -3686,7 +3729,10 @@ export async function startWorkerWithLock(
               reason: "a human asked this install to organize this mailbox and the lease agreed; "
                 + "the folder tree is ensured and this cycle organizes — no relaunch",
             });
+            if (rt.agreeStamp) await agreeSweepAfterPromotion(rt, rt.agreeStamp);
           }
+          // Read once: a stamp spent without a flip (already organizing) owes nothing.
+          rt.agreeStamp = null;
           if (!organize && wasOrganizer) {
             // The profile module's memory of ORGANIZING this mailbox goes with the role. See
             // `forgetOrganizerLife` for what it holds and why keeping it across a handover makes

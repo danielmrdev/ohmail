@@ -170,6 +170,10 @@ const TABLE = {
   phoneStandaloneL2: "One mailbox on this phone.",
   phoneStandaloneL3:
     "Your mail server keeps everything. Nothing here is a copy you could lose.",
+  /* What agreeing does to mail already there — the rule, with no count: this press comes before the
+     phone has read the mailbox. The window is the product default (`DEFAULT_DORMANCY_DAYS`). */
+  phoneStandaloneL4:
+    "Mail from the last 60 days from senders you have not decided about moves to the Screener. Older mail, and mail you have filed, stays where it is.",
   phoneStandaloneGo: "Continue",
   phoneStandaloneBack: "Choose differently",
 

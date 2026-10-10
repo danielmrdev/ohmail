@@ -13,7 +13,8 @@ import { useCallback, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import type {
-  FirstRunHost, FirstRunMailboxInput, FirstRunOrganizeIntent, FirstRunOrganizeOutcome, FirstRunProbeOk,
+  FirstRunDecisionCount, FirstRunHost, FirstRunMailboxInput, FirstRunOrganizeIntent, FirstRunOrganizeOutcome,
+  FirstRunProbeOk,
 } from "../../webapp/app/shell/first-run-host";
 import type { OnboardingAi } from "../../webapp/app/shell/onboarding";
 import { refusedByLocalServer } from "../../webapp/app/shell/local-server-host";
@@ -402,7 +403,7 @@ export function useLocalFirstRun(opts: LocalFirstRunOptions): FirstRunHost | und
     mailboxId: string,
     body: {
       imap?: { pass: string }; screening?: { dormancyDays?: number; scope?: "window" | "all_time" };
-      intent?: FirstRunOrganizeIntent;
+      intent?: FirstRunOrganizeIntent; screenBacklog?: true;
     },
   ): Promise<FirstRunOrganizeOutcome> => {
     /**
@@ -425,12 +426,23 @@ export function useLocalFirstRun(opts: LocalFirstRunOptions): FirstRunHost | und
       body: JSON.stringify({
         ...(body.screening ? { screening: body.screening } : {}),
         ...(body.intent ? { intent: body.intent } : {}),
+        ...(body.screenBacklog ? { screenBacklog: true } : {}),
       }),
     });
     /* 409 is the door's refusal over a live holder this press did not ask to displace. */
     if (res.status === 409) return "held";
     const r = await jsonOf<{ outcome?: string }>(res);
     return r.outcome === "authorized" || r.outcome === "already_organizing" ? "stored" : "gone";
+  }, []);
+
+  /* What agreeing will screen: the shared route, which `localRoutes` mounts with the Screener table. */
+  const countDecision = useCallback(async (
+    mailboxId: string, screening: { dormancyDays?: number; scope?: "window" | "all_time" },
+  ): Promise<FirstRunDecisionCount> => {
+    const q = new URLSearchParams({ mailboxId });
+    if (screening.dormancyDays !== undefined) q.set("dormancyDays", String(screening.dormancyDays));
+    if (screening.scope !== undefined) q.set("scope", screening.scope);
+    return jsonOf<FirstRunDecisionCount>(await bridgeFetch(`/screener/unscreened/count?${q.toString()}`, { method: "GET" }));
   }, []);
 
   const complete = useCallback(async () => {
@@ -469,6 +481,7 @@ export function useLocalFirstRun(opts: LocalFirstRunOptions): FirstRunHost | und
       probe,
       connect,
       organize,
+      countDecision,
       complete,
       setAiEnabled,
       forgetMailbox,
@@ -482,7 +495,7 @@ export function useLocalFirstRun(opts: LocalFirstRunOptions): FirstRunHost | und
       ...(pairNode ? { pairNode } : {}),
     } satisfies FirstRunHost;
   }, [
-    complete, connect, forgetMailbox, local, organize, pairNode, posture, probe, providerForm,
+    complete, connect, countDecision, forgetMailbox, local, organize, pairNode, posture, probe, providerForm,
     setAiEnabled,
   ]);
 }

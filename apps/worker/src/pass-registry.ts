@@ -168,6 +168,16 @@ export const WORKER_PASSES: readonly WorkerPass[] = [
     fence: "leader lock + claim rows; NOT wrapped in asDatabaseFault (a model outage is not a DB fault)",
   },
   {
+    name: "agree_sweep",
+    module: `${CORE}/unscreened-set.ts`, entry: "agreeSweepPass",
+    // The desktop and phone engine call the same function at the head of their first organizing drain.
+    triggers: ["visit", "attach"],
+    cadence: "once, after the promotion that spends the stamp written with a person's first agree from the window step",
+    budget: "OHBOX_UNSCREENED_MESSAGES_MAX letters, the walk's 25 pages",
+    owns: "agreeing screens the in-window mail of never-decided senders, the set the agree screen counted",
+    fence: "the mailbox row FOR UPDATE, then FOR UPDATE OF folder_state; desired-state writes only (the reconciler moves)",
+  },
+  {
     name: "rule_retro",
     module: `${W}/rule-retro.ts`, entry: "ruleRetroPass",
     triggers: ["cycle-tail", "sidecar-drain"],

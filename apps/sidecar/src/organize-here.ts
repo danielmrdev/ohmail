@@ -1,5 +1,5 @@
 import { and, eq, ne, sql } from "drizzle-orm";
-import { accountSettings, mailboxes, standDownMemory, type OrganizerIntent,} from "@trafficflow/db";
+import { accountSettings, auditAction, auditLog, mailboxes, standDownMemory, type OrganizerIntent,} from "@trafficflow/db";
 import { dialect, type Dialect } from "@trafficflow/db/dialect";
 // The product default and the scope union, from the ONE place that owns them — never a second
 // literal `60` and never a hand-written string union. `consent-cutline.ts` re-exports these from
@@ -345,6 +345,8 @@ export async function requestOrganizerTakeover(
     accountId?: string;
     /** See {@link LocalScreeningConsent}. Absent ⇒ the Settings claim-back, which asks nothing. */
     screening?: LocalScreeningConsent;
+    /** The press stated the agree's rule; recorded on a first consent (`MailboxService.organizeHere`). */
+    screenBacklog?: true;
   },
 ): Promise<TakeoverAuthorizationResult> {
   /* -- THE BOUNDS ARE CHECKED BEFORE THE TRANSACTION, AND THEY THROW -------------------------
@@ -471,7 +473,7 @@ export async function requestOrganizerTakeover(
       accountId: row.accountId, now: input.now,
       ...(input.screening ? { dials: { days, scope } } : {}),
     });
-    await tx
+    const updated = await tx
       .update(mailboxes)
       .set({
         // Through the seam, for the two reasons the sibling write above spells out: the bare
@@ -486,7 +488,15 @@ export async function requestOrganizerTakeover(
         // Mail 0121 — the refusal goes with the request it explains.
         releaseRefusal: null,
       })
-      .where(and(eq(mailboxes.id, row.id), ne(mailboxes.status, "disabled")));
+      .where(and(eq(mailboxes.id, row.id), ne(mailboxes.status, "disabled")))
+      .returning({ id: mailboxes.id });
+    // A first consent from a press that stated the agree's rule, at the stamp's own instant.
+    if (updated.length > 0 && input.screenBacklog === true && row.organizeConsentedAt === null) {
+      await tx.insert(auditLog).values({
+        accountId: row.accountId, action: auditAction("organizer.agree_screens_backlog"),
+        payload: { mailboxId: row.id }, createdAt: input.now,
+      });
+    }
   });
 
   // Derived, for the reason the CLI arm above gives — this is the half the Settings button uses.

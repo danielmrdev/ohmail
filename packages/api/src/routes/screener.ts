@@ -1,6 +1,6 @@
 import {
   ServiceError, dismissHeldRelease, heldReleaseSummary, releaseHeld, HELD_RELEASE_GROUPS_MAX,
-  screenUnscreened, unscreenedSummary, OHBOX_UNSCREENED_GROUPS_MAX,
+  screenUnscreened, unscreenedSummary, organizeDecisionCount, OHBOX_UNSCREENED_GROUPS_MAX,
   autoFiledSummary, undoAutoFiled, AUTO_FILED_PAGE_MAX, whyStayed, WHY_STAYED_IDS_MAX,
   type ScreenBody,
 } from "@trafficflow/services/mail";
@@ -182,6 +182,36 @@ export const screenerRoutes: Route[] = [
       // bound must not report the mail behind the cut as offered. `max` travels so a client learns
       // the ceiling by READING it rather than carrying a constant of its own that drifts.
       return jsonResponse({ groups, total, max: OHBOX_UNSCREENED_GROUPS_MAX });
+    },
+  },
+  {
+    /**
+     * WHAT AGREEING WILL MOVE, read before the press — one mailbox, the window the answer would
+     * store, the person's own filing left out; the organizer moves the same set after the press.
+     * A read: no lock, no write, no mailbox opened. `dormancyDays` and `scope` are the window step's
+     * answer and are refused out of range rather than coerced.
+     */
+    method: "GET",
+    pattern: "/screener/unscreened/count",
+    relay: true,
+    cost: "read",
+    handler: async (req, deps) => {
+      const ctx = serviceContext(deps, req);
+      const url = new URL(req.url);
+      const mailboxId = url.searchParams.get("mailboxId") ?? "";
+      if (!/^[0-9a-f-]{36}$/i.test(mailboxId)) {
+        throw new ServiceError("validation_failed", 400, "mailboxId must be a mailbox id");
+      }
+      const daysRaw = url.searchParams.get("dormancyDays");
+      const scopeRaw = url.searchParams.get("scope");
+      const dormancyDays = daysRaw === null ? undefined : Number(daysRaw);
+      if (scopeRaw !== null && scopeRaw !== "window" && scopeRaw !== "all_time") {
+        throw new ServiceError("validation_failed", 400, "scope must be window or all_time");
+      }
+      return jsonResponse(await organizeDecisionCount(ctx, mailboxId, {
+        ...(dormancyDays === undefined ? {} : { dormancyDays }),
+        ...(scopeRaw === null ? {} : { scope: scopeRaw }),
+      }));
     },
   },
   {

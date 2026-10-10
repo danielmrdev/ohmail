@@ -72,9 +72,9 @@ export {
   type AutoFiledItem, type AutoFiledPage, type AutoFiledUndoResult,
 } from "./auto-filed-service.js";
 export {
-  unscreenedSummary, screenUnscreened,
+  unscreenedSummary, screenUnscreened, organizeDecisionCount,
   OHBOX_UNSCREENED_GROUPS_MAX, OHBOX_UNSCREENED_AUDIT_ACTION,
-  type UnscreenedSenderGroup, type UnscreenedSummary, type UnscreenedResult,
+  type UnscreenedSenderGroup, type UnscreenedSummary, type UnscreenedResult, type OrganizeDecisionCount,
 } from "./ohbox-unscreened-service.js";
 export {
   TriageService, triageService,

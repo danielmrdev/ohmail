@@ -91,6 +91,18 @@ export interface FirstRunStepUp {
   prompt: (p: { onVerified: () => void; onCancel: () => void; onDiscarded: () => void }) => ReactNode;
 }
 
+/** What agreeing will screen, as `GET /screener/unscreened/count` answers it. */
+export interface FirstRunDecisionCount {
+  letters: number;
+  senders: number;
+  /** The whole set; above `letters` when the move bound cuts it, so the screen says "the first N of M". */
+  total: number;
+  /** False when the count stopped at its page bound, so `total` is a floor. */
+  complete: boolean;
+  /** False while the first import is still reading the mailbox: the count so far, said as such. */
+  mirrored: boolean;
+}
+
 export interface FirstRunHost {
   /** Which door is asking — it decides which steps exist at all (see {@link OnboardingDoor}). */
   door: OnboardingDoor;
@@ -143,8 +155,19 @@ export interface FirstRunHost {
     body: {
       imap?: { pass: string }; screening?: { dormancyDays?: number; scope?: "window" | "all_time" };
       intent?: FirstRunOrganizeIntent;
+      /** The window step named what agreeing screens; the organizer moves that set after the press. */
+      screenBacklog?: true;
     },
   ) => Promise<FirstRunOrganizeOutcome>;
+
+  /**
+   * WHAT AGREEING WILL SCREEN — `GET /screener/unscreened/count` for this mailbox and the window being
+   * chosen, read before the press from the walk the organizer runs after it. Absent on a door that
+   * cannot ask; the step then names no count and the press asks for no screening of older mail.
+   */
+  countDecision?: (
+    mailboxId: string, screening: { dormancyDays?: number; scope?: "window" | "all_time" },
+  ) => Promise<FirstRunDecisionCount>;
 
   /**
    * LEAVE THE FLOW — `PATCH /consent/settings { onboardingCompleted: true }`.

@@ -106,6 +106,17 @@ export function hasProfileIo(adapter: MailboxAdapter): adapter is MailboxAdapter
   return typeof (adapter as Partial<ProfileCapableAdapter>).profileIo === "function";
 }
 
+/** What {@link OrganizerProfileSync.sweepClearance} read: only `clear` lets the agree's sweep run. */
+export type SweepClearance =
+  | { kind: "clear" }
+  | { kind: "held" }
+  | { kind: "unread"; why: "no_folder" | "read_fault" | "garbled" };
+
+/** The sweep's `held` input for a clearance: anything but a clean read moves nothing. */
+export function sweepHeld(c: SweepClearance): boolean | "unread" {
+  return c.kind === "clear" ? false : c.kind === "held" ? true : "unread";
+}
+
 /**
  * THE SERIALIZER — the organizer's store, read into the document's payload. It moved to
  * `@trafficflow/core/adapters/organizer-profile-store` when the import surface became its
@@ -456,7 +467,7 @@ export class OrganizerProfileSync {
   private evalCache: {
     at: number;
     verdict:
-      | { kind: "closed" }
+      | { kind: "closed"; garbled?: true }
       | { kind: "found"; fingerprint: string; view: ProfileGateView | null }
       | { kind: "newer"; v: number };
   } | null = null;
@@ -471,10 +482,49 @@ export class OrganizerProfileSync {
    * before the first evaluation (round 17).
    */
   async importHoldNow(): Promise<ImportHold | undefined> {
-    const { deps } = this;
-    const log = deps.log ?? ((): void => undefined);
-    if (!hasProfileIo(deps.adapter)) return undefined;
+    if (!hasProfileIo(this.deps.adapter)) return undefined;
     try {
+      return (await this.evaluateHold(false)).hold;
+    } catch {
+      // Before the FIRST successful evaluation, a KNOWN armed hold outranks the (never
+      // computed) answer (round 17): the preflight may have armed the write-side hold before
+      // this evaluation's own reads ever succeeded, and answering "closed" from a blank
+      // fallback while a question is provably open is the takeover re-screen again. Once an
+      // evaluation HAS succeeded, its answer is fresher than the write-side hold — which
+      // releases on its own debounced cadence and may lag a dismissal by a flush interval.
+      if (!this.everEvaluated) {
+        return this.holdFingerprint !== null || this.holdNewerV !== null ? { kind: "unreadable" } : this.lastHoldAnswer;
+      }
+      return this.lastHoldAnswer;
+    }
+  }
+
+  /**
+   * THE AGREE SWEEP'S CLEARANCE: a one-time bulk move fails CLOSED. One FRESH evaluation, the one
+   * {@link importHoldNow} runs, and `clear` only when the folder read cleanly with no question
+   * open; a read fault, a garbled settings document or an adapter that cannot reach the folder is
+   * `unread`, and the letters stay for the Screener's offer. Never throws.
+   */
+  async sweepClearance(): Promise<SweepClearance> {
+    if (!hasProfileIo(this.deps.adapter)) return { kind: "unread", why: "no_folder" };
+    try {
+      const r = await this.evaluateHold(true);
+      if (r.garbled) return { kind: "unread", why: "garbled" };
+      return r.hold === undefined ? { kind: "clear" } : { kind: "held" };
+    } catch {
+      return { kind: "unread", why: "read_fault" };
+    }
+  }
+
+  /**
+   * One evaluation of the folder's question, shared by {@link importHoldNow} and
+   * {@link sweepClearance}; it THROWS on a fault. `fresh` re-reads the folder whatever the cache
+   * holds; `garbled` says the verdict read only corrupt settings messages.
+   */
+  private async evaluateHold(fresh: boolean): Promise<{ hold: ImportHold | undefined; garbled: boolean }> {
+    const { deps } = this;
+    if (!hasProfileIo(deps.adapter)) return { hold: undefined, garbled: false };
+    {
       const now = (deps.now ?? ((): Date => new Date()))().getTime();
       // A CLOSED verdict cached before a hold was armed is stale by construction (round 19):
       // the seed or the preflight read the folder more recently than this cache did. One
@@ -486,14 +536,15 @@ export class OrganizerProfileSync {
       const ttl = this.seeded
         ? (deps.flushIntervalMs ?? DEFAULT_PROFILE_FLUSH_INTERVAL_MS)
         : Math.min(EVAL_TAKEOVER_TTL_MS, deps.flushIntervalMs ?? EVAL_TAKEOVER_TTL_MS);
-      if (this.evalCache === null || now - this.evalCache.at >= ttl) {
+      if (fresh || this.evalCache === null || now - this.evalCache.at >= ttl) {
         const read: ProfileReadResult = await this.readQuestion(deps.adapter.profileIo({ installId: deps.self.installId, mailboxId: deps.mailboxId }));
         // A fresh read that shows the newer-format document GONE drops the write wall its
         // presence raised (round 18): the wall's referent vanished, and holding it would keep
         // the write-behind — and the held-marker surfacing a replacement document needs — off
         // for the life of the attachment.
         if (read.state !== "newer" && this.blockedByNewer) this.blockedByNewer = false;
-        let verdict: NonNullable<OrganizerProfileSync["evalCache"]>["verdict"] = { kind: "closed" };
+        let verdict: NonNullable<OrganizerProfileSync["evalCache"]>["verdict"] = read.state === "unreadable"
+          ? { kind: "closed", garbled: true } : { kind: "closed" };
         if (read.state === "newer") {
           verdict = { kind: "newer", v: read.v };
         } else if (read.state === "found" && read.installId !== deps.self.installId) {
@@ -537,18 +588,7 @@ export class OrganizerProfileSync {
       }
       this.lastHoldAnswer = hold;
       this.everEvaluated = true;
-      return hold;
-    } catch {
-      // Before the FIRST successful evaluation, a KNOWN armed hold outranks the (never
-      // computed) answer (round 17): the preflight may have armed the write-side hold before
-      // this evaluation's own reads ever succeeded, and answering "closed" from a blank
-      // fallback while a question is provably open is the takeover re-screen again. Once an
-      // evaluation HAS succeeded, its answer is fresher than the write-side hold — which
-      // releases on its own debounced cadence and may lag a dismissal by a flush interval.
-      if (!this.everEvaluated) {
-        return this.holdFingerprint !== null || this.holdNewerV !== null ? { kind: "unreadable" } : this.lastHoldAnswer;
-      }
-      return this.lastHoldAnswer;
+      return { hold, garbled: v.kind === "closed" && v.garbled === true };
     }
   }
 
