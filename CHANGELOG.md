@@ -50,6 +50,17 @@ Moving a letter you had already read into News or Receipts no longer clears the 
 here" count, and the phone no longer draws "Seen up to here" above it. On a new device, mail that was
 already in your mailbox when it first synced is not counted as new, whether you read it or not.
 
+### Keys and a resized window keep your place
+<!-- changes: fix-026-keyboard-and-resize-agree.md -->
+
+- After the window narrows to phone width and widens again, the open message, the list cursor and
+  the list agree, and `j` goes on through New.
+- The `?` sheet closes when `j` moves the cursor behind it.
+- After `1` or `g o`, Enter opens the message under the cursor, not the menu item pressed before.
+- Enter on setup's last step opens ohmail, as its badge says.
+- At phone width, ← opens the menu, a letter laid out wider than the screen fits it, and the
+  message's actions sit after the letter at full strength instead of over its last lines.
+
 ### Still to come
 
 Signed installers — a real Apple Developer ID and an Authenticode certificate. See
