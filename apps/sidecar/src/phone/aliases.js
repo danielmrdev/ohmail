@@ -137,10 +137,11 @@ const PACKAGE_ALIASES = {
  * MODULES INSIDE A PACKAGE, substituted only where that package's own file requires them.
  *
  * Keyed by the importer's path inside its package, then by the specifier exactly as that file
- * writes it. nodemailer's entry requires every transport at load and its mailer requires the DKIM
- * signer; this engine constructs one SMTP transport (`smtpTransportOptions` in the IMAP adapter
- * sets no pool, sendmail, stream, JSON or SES option) and never passes `dkim`. Each shim refuses
- * by name if it is ever constructed. About 64 KB leave the artifact.
+ * writes it. A path target is a shim; a bare target is a narrower module of the importer's own
+ * copy of the package. nodemailer's entry requires every transport at load and its mailer the DKIM
+ * signer; this engine constructs one SMTP transport (`smtpTransportOptions` in the IMAP adapter sets
+ * no pool, sendmail, stream, JSON or SES option) and never passes `dkim`. Each shim refuses by name
+ * if it is ever constructed. About 64 KB leave the artifact.
  */
 const PACKAGE_MODULE_SUBSTITUTES = {
   "nodemailer/lib/nodemailer.js": {
@@ -152,6 +153,14 @@ const PACKAGE_MODULE_SUBSTITUTES = {
   },
   "nodemailer/lib/mailer/index.js": {
     "../dkim": path.join(SHIMS, "nodemailer-dkim.js"),
+  },
+  /* dom-serializer 2 (html-to-text's, inside mailparser) imports three escape functions from
+     `entities`, whose index re-exports them from `lib/escape.js`. A require() into that ES graph
+     turns tree-shaking off, so the whole package shipped with its decode and encode tables (about
+     93 KB). A bare target is resolved from the importer, so this is the SAME copy of entities at
+     its narrower exported subpath: the same functions, without the tables nothing here calls. */
+  "dom-serializer/lib/esm/index.js": {
+    "entities": "entities/lib/escape.js",
   },
 };
 

@@ -223,6 +223,7 @@ export function workspaceSourceAliases(repo = REPO) {
  *  6. a package in `aliases.ONE_COPY` is resolved from its anchor's directory, whoever imports it;
  *  7. a row of `aliases.PACKAGE_MODULE_SUBSTITUTES` applies only when the importer IS the named file
  *     inside that package (the path after its last `node_modules/`) and the specifier matches whole;
+ *     a bare target is resolved from the importer's own directory, so it names the same copy;
  *  8. a module RESOLVING to a source file in `aliases.ONE_BUILD` takes its built copy instead, when
  *     that copy exists — decided by the resolved path, never the specifier. Off for the published
  *     resolution (`workspaceSources`), which reaches no built copy at all.
@@ -315,6 +316,16 @@ function substitutions(extraBare = {}, { oneBuild = true } = {}) {
         }
         return r.path;
       };
+      const resolveBeside = async (args, target) => {
+        const r = await build.resolve(target, {
+          resolveDir: args.resolveDir, importer: args.importer, kind: args.kind, pluginData: { viaTable: true },
+        });
+        if (r.errors.length > 0 || !r.path) {
+          throw new Error(`"${target}" does not resolve from ${relative(REPO, args.importer)}, which the ` +
+            `phone engine's table names as the narrower form of its "${args.path}".`);
+        }
+        return r.path;
+      };
       build.onResolve({ filter: /.*/ }, async (args) => {
         /* 0 — OUR OWN RESOLUTION, ON ITS WAY BACK IN. See the banner above `resolveViaEsbuild`:
            without this the first package target loops for ever. */
@@ -374,8 +385,12 @@ function substitutions(extraBare = {}, { oneBuild = true } = {}) {
         const within = inPackage && Object.hasOwn(aliases.PACKAGE_MODULE_SUBSTITUTES, inPackage[1])
           ? aliases.PACKAGE_MODULE_SUBSTITUTES[inPackage[1]] : null;
         if (within && Object.hasOwn(within, args.path)) {
-          applied.push([args.path, within[args.path]]);
-          return { path: within[args.path] };
+          const target = within[args.path];
+          /* A bare target is a module of the IMPORTER'S OWN copy of a package, so it is resolved
+             from the importer's directory: the same package, one subpath narrower. */
+          const resolved = target.startsWith("/") ? target : await resolveBeside(args, target);
+          applied.push([args.path, resolved]);
+          return { path: resolved };
         }
         // 8 — one build of a workspace module: the resolved source file, when its built copy exists.
         if (oneBuild && oneBuildNames.has(basename(args.path).replace(/\.(js|ts)$/, ""))) {
