@@ -13,6 +13,43 @@ See [Status](README.md#status--read-this-first).
 
 ## [Unreleased]
 
+### Mail under a company's name through a mailing list's address waits at the Screener
+<!-- changes: fix-026-list-address-is-not-a-person.md -->
+
+Having written to a mailing list no longer lets mail through that list's address use a company's name: it
+waits at the Screener with a line saying that anyone on the list can write as this address. Allowing it
+admits that company's name from that address only. A delivery report that quotes a message you sent to a
+mailing list in its To or Cc waits at the Screener too.
+
+### Letters arriving together all show within seconds, and a read on the web reaches the mail server within seconds
+<!-- changes: perf-026-cloud-burst-latency.md -->
+
+When several letters arrived close together, the server's organizer showed the first few at once
+and the rest only minutes later, after the mail server already held them. They now all show within seconds. Marking mail
+read or unread on the web now reaches your mail server within seconds instead of at the next
+scheduled visit.
+
+### Live updates
+<!-- changes: fix-026-sse-refused-tab-retries.md -->
+
+- A web tab that was refused live updates asks again once a minute, instead of checking for new mail
+  every few seconds until it is reloaded.
+
+### A short first message is marked read when you scroll up to it
+<!-- changes: fix-026-thread-read-first-letter.md -->
+
+Scrolling a conversation from its first message to its last left a short first message unread. It is
+now marked read once you scroll up to it and stay there for two seconds, as the last messages are at
+the end. On the phone, the messages listed under the open one are headed Later, or The rest, when
+they are not all older than it.
+
+### News and Receipts count only what is new since you were there
+<!-- changes: fix-026-waterline-ignores-a-moved-in-letter.md -->
+
+Moving a letter you had already read into News or Receipts no longer clears the "new since you were
+here" count, and the phone no longer draws "Seen up to here" above it. On a new device, mail that was
+already in your mailbox when it first synced is not counted as new, whether you read it or not.
+
 ### Still to come
 
 Signed installers — a real Apple Developer ID and an Authenticode certificate. See
