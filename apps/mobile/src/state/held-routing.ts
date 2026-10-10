@@ -14,6 +14,7 @@ import {
   presentAt,
   routingIntentsKey,
   routingSubject,
+  senderKey,
   type EngineMutation,
   type EntityReader,
   type Folder,
@@ -164,6 +165,12 @@ export function closeRoutingSession(): void {
 /** Is a press on this subject held open now — the question a Move that decides no rule asks first. */
 export function heldOn(subject: string): boolean {
   return live ? live.pending().some((p) => routingSubject(p) === subject) : false;
+}
+
+/** Is a press about this one sender, other than `except`, held open now — its commit files their letters. */
+export function heldForSender(address: string, except: string): boolean {
+  const key = senderKey(address);
+  return live ? live.pending().some((p) => p.id !== except && p.scope === "sender" && senderKey(p.address) === key) : false;
 }
 
 /** What a hold answered. `sent`: the routing already went, so the caller neither sends nor offers Undo. */

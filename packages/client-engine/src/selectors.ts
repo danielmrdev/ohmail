@@ -1806,10 +1806,19 @@ export function screenerSegments(
   const advice = newestAdviceBySender(reader);
   const inertDomains = inertSharedDomains(reader);
 
+  // Letters each sender has PAST the gate as the lists show them: a waiting row is first contact only
+  // while none is (the phone's sheet says so), and an answer the gate admitted is one.
+  const reached = new Map<string, number>();
   for (const m of reader.list<EngineMessage>("message")) {
     const view = VIEW_OF_FOLDER[m.folder] as OhmailView | undefined;
     const segment = view ? SEGMENT_OF_VIEW[view] : undefined;
-    if (!segment) continue;
+    if (!segment) {
+      if (view === "ohbox" || view === "reads" || view === "receipts") {
+        const past = senderKey(m.from.address);
+        reached.set(past, (reached.get(past) ?? 0) + 1);
+      }
+      continue;
+    }
     const key = senderKey(m.from.address);
     // The account is not one of its own correspondents, so own mail mints no waiting row — the
     // guard the partition applies to its reckoning, applied to the grouping that renders it.
@@ -1910,7 +1919,11 @@ export function screenerSegments(
     }
     // Newest sender first — the same order `messagesIn` gives every other list.
     rows.sort((a, b) => byDateDesc(a.rep, b.rep));
-    for (const r of rows) out[segment].set(r.key, withInertRule(r.dto, inertDomains));
+    for (const r of rows) {
+      const past = segment === "waiting" ? reached.get(r.key) : undefined;
+      const dto = withInertRule(r.dto, inertDomains);
+      out[segment].set(r.key, past === undefined ? dto : { ...dto, reached: past });
+    }
   }
 
   // Fixtures win per sender key. `Map.set` on an existing key keeps its position, so a

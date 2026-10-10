@@ -1179,6 +1179,8 @@ export class HttpAdapter implements EngineAdapter {
       name: typeof sender.name === "string" && sender.name !== "" ? sender.name : null,
       receivedAt: text(r.receivedAt), subject: text(r.subject), snippet: text(r.snippet),
       mailboxId: typeof r.mailboxId === "string" && r.mailboxId !== "" ? r.mailboxId : null,
+      ...(typeof r.checked === "object" && r.checked !== null
+        && (r.checked as { reason?: unknown }).reason === "impersonation" ? { marked: true as const } : {}),
     };
   }
 
@@ -1399,7 +1401,7 @@ export class HttpAdapter implements EngineAdapter {
     switch (m.kind) {
       case "move": {
         const res = await this.request("POST", `/messages/${m.messageId}/move`, {
-          body: { folder: m.folder },
+          body: { folder: m.folder, ...(m.from !== undefined ? { from: m.from } : {}) },
           idempotencyKey: opts.idempotencyKey, ...age,
         });
         if (!res.ok) throw await this.rejectionOf(res);

@@ -2732,9 +2732,9 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTranspor
                 /* Where credits come from is Settings → Subscription, said only where Settings lists
                    it — the same node the nav entry is built from. */
                 subscriptionPane={!demo && Boolean(billingSection)}
-                /* The opt-in fact behind the rows' "a suggestion is coming" — the same read the
-                   hook spends under, so the sentence and the spend cannot disagree. */
-                autoSuggest={consent.autoSuggest}
+                /* The senders a run is buying now: the only licence for the rows' "a suggestion is
+                   coming", on every host this shell runs in. */
+                suggestingFor={suggestions.inFlight}
                 segment={route.screenerSegment}
                 selection={scnSel}
                 onSelect={(segment, id) => setScnSel((s) => ({ ...s, [segment]: id }))}

@@ -2319,7 +2319,7 @@ function waitingRow(item: ScreenerWaitingItemWire, order: number, total: number)
   return {
     id: `sender:${senderKey(item.address)}`, kind: "sender", order, messageId: item.messageId,
     address: item.address, name: item.name, receivedAt: item.receivedAt, subject: item.subject,
-    snippet: item.snippet, mailboxId: item.mailboxId, total,
+    snippet: item.snippet, mailboxId: item.mailboxId, total, ...(item.marked ? { marked: true } : {}),
   };
 }
 

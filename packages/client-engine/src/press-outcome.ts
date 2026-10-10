@@ -2,6 +2,7 @@ import {
   LEGACY_NEWS_FOLDER, canonicalDestination, isOrganizedFolder, retroPassWouldMove,
 } from "@trafficflow/core/destinations";
 import { RESERVED_FOLDER_LEAF, isSentFolderPath } from "@trafficflow/core/folder-name";
+import { authScreens } from "@trafficflow/core/sender-headers";
 import { consentIndex, messagePlacement, ruleTerms } from "./consent-cutline.js";
 import type { EntityReader } from "./store.js";
 import { folderLeaf, type EngineMessage, type Folder, type MailboxProfileEntity, type RuleDTO } from "./types.js";
@@ -147,7 +148,7 @@ export type StayVerdict =
 export function stayVerdict(out: PressOutcome, reader: EntityReader): StayVerdict {
   const of = (c: PressStayCause) => out.away.filter((g) => g.cause === c);
   const movable = (ids: readonly string[]) =>
-    ids.every((id) => reader.get<EngineMessage>("message", id)?.authVerdict !== "fail");
+    ids.every((id) => !authScreens(reader.get<EngineMessage>("message", id)?.authVerdict));
   const ruled = [...of("subject"), ...of("body"), ...of("domain"), ...of("address")];
   const only = ruled.length === 1 ? ruled[0]! : null;
   const t = only?.rule ? ruleTerms(only.rule) : null;

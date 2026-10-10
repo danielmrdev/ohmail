@@ -511,8 +511,8 @@ export const DE: Deck = {
   metaItems: (n: number) => `${n} ${n === 1 ? "Eintrag" : "Einträge"}`,
   mailRowAria: (from: string, subject: string, time: string, unread: boolean) =>
     `${from}. ${subject.trim() === "" ? "" : `${subject}. `}${time}.${unread ? " Ungelesen." : ""}`,
-  senderRowAria: (name: string, address: string, held: number) =>
-    `${name}, ${address}, ${held} zurückgehalten`,
+  senderRowAria: (name: string, address: string, held: number, claim: string) =>
+    `${name}, ${address}, ${held} zurückgehalten${claim ? `, ${claim}` : ""}`,
   deliveredTo: (label: string) => `Zugestellt an ${label}`,
   readsCollapse: "Zuklappen",
   readsReadInFull: "Ganz lesen",
@@ -1525,6 +1525,12 @@ export const DE: Deck = {
   senderGone: "Dieser Absender steht nicht mehr im Screener.",
   senderFirstContact:
     "Erster Kontakt. Von diesem Absender hat es noch nichts in die Ohbox geschafft — es hat hier gewartet.",
+  domainAlsoFiles: (count: number, senders: string): string =>
+    `Sortiert außerdem ${count === 1 ? "1 Brief" : `${count} Briefe`} von anderen bei dieser Domain ein: ${senders}.`,
+  senderPastTheGate: (n: number): string =>
+    n === 1
+      ? "Ein Brief dieses Absenders ist schon in deiner Post. Die Post unten hat hier gewartet."
+      : `${n} Briefe dieses Absenders sind schon in deiner Post. Die Post unten hat hier gewartet.`,
   senderCheckImpersonation: (brand: string, domain: string): string =>
     `Diese Nachricht gibt sich als ${brand} aus, aber ${domain} ist keine Adresse von ${brand}.`,
   senderCheckImpersonationShared: (brand: string, domain: string): string =>
@@ -1608,7 +1614,7 @@ export const DE: Deck = {
   screeningNote: (target: string) =>
     `Wird zur Regel — künftige Post von ${target} wird automatisch dorthin einsortiert. Post, die schon hier ist, bleibt, wo sie ist.`,
   screeningNoteRetro: (target: string) =>
-    `Wird zur Regel — künftige Post von ${target} wird automatisch dorthin einsortiert. Außerdem wendet ohmail die Regel auf die Post an, die es schon für dich einsortiert hat. Nachrichten, die du beantwortet, in einem anderen Mailprogramm einsortiert oder geparkt hast, bleiben unberührt.`,
+    `Wird zur Regel — künftige Post von ${target} wird automatisch dorthin einsortiert. Außerdem wendet ohmail die Regel auf die Post an, die es schon für dich einsortiert hat. Nachrichten, die du beantwortet, selbst hier oder in einem anderen Mailprogramm einsortiert oder geparkt hast, bleiben unberührt.`,
   screeningRetroToggle: "Auch die Post verschieben, die schon im Postfach liegt",
   stayedReplied: (count: number, place: string) =>
     count === 1 ? `1 bleibt in ${place}: Du hast darauf geantwortet.` : `${count} bleiben in ${place}: Du hast darauf geantwortet.`,

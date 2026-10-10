@@ -834,9 +834,9 @@ const TABLE = {
   /** A mail row, spoken. The trailing state is a clause rather than a word glued to a stop. */
   mailRowAria: (from: string, subject: string, time: string, unread: boolean) =>
     `${from}. ${subject.trim() === "" ? "" : `${subject}. `}${time}.${unread ? " Unread." : ""}`,
-  /** A Screener row, spoken — the only word in it is the one describing what is held. */
-  senderRowAria: (name: string, address: string, held: number) =>
-    `${name}, ${address}, ${held} held`,
+  /** A Screener row, spoken — the only word in it is the one describing what is held; a company claim last. */
+  senderRowAria: (name: string, address: string, held: number, claim: string) =>
+    `${name}, ${address}, ${held} held${claim ? `, ${claim}` : ""}`,
   /** Which of the account's addresses a message arrived at — drawn only above one mailbox. */
   deliveredTo: (label: string) => `Delivered to ${label}`,
   /** The News card's expand affordance, as a badge and as a spoken label. */
@@ -2315,6 +2315,14 @@ const TABLE = {
   /** The sender sheet's note for a sender nothing has got past yet. */
   senderFirstContact:
     "First contact. Nothing from this sender has reached the Ohbox — it waited here.",
+  /** A whole-domain decision names, before the press, the other waiting senders whose letters it files. */
+  domainAlsoFiles: (count: number, senders: string): string =>
+    `Also files ${count === 1 ? "1 letter" : `${count} letters`} from others at this domain: ${senders}.`,
+  /** The same note when some of this sender's mail is already past the gate: no longer first contact. */
+  senderPastTheGate: (n: number): string =>
+    n === 1
+      ? "One letter from this sender is already in your mail. The mail below waited here."
+      : `${n} letters from this sender are already in your mail. The mail below waited here.`,
   /**
    * THE IDENTITY FACT, the web's `screener.senderCheck` sentences as functions: the message claims
    * a company this address does not belong to. Rendered outside any AI advice.
@@ -2453,13 +2461,13 @@ const TABLE = {
    * The two sentences the screening sheet can truthfully say, one per answer to the past-mail
    * switch — and the switch gates the dispatch, so the OFF one is a statement about the code. The
    * verb in the ON one is "applies the rule to": the server's pass re-evaluates each message
-   * through the rules, skips anything replied to, filed in another mail app or set aside, and reaches only
+   * through the rules, skips anything replied to, filed by the person here or in another mail app or set aside, and reaches only
    * the mail ohmail itself filed. The phone moves none of it itself (THE-CLIENTS-FIFTY).
    */
   screeningNote: (target: string) =>
     `Becomes a rule — future mail from ${target} files there automatically. Mail already here stays where it is.`,
   screeningNoteRetro: (target: string) =>
-    `Becomes a rule — future mail from ${target} files there automatically, and ohmail applies the rule to the mail it has already filed for you. Messages you have replied to, filed in another mail app or set aside are left alone.`,
+    `Becomes a rule — future mail from ${target} files there automatically, and ohmail applies the rule to the mail it has already filed for you. Messages you have replied to, filed yourself here or in another mail app, or set aside are left alone.`,
   screeningRetroToggle: "Also move the mail already in your mailbox",
   /**
    * WHY SOME OF THE SENDER'S MAIL STAYED once the rule's past-mail pass finished — the web sheet's

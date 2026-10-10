@@ -251,6 +251,11 @@ export interface ScreenerSuggestions {
    */
   standing: SuggestStanding | null;
   /**
+   * The senders a run of this control is buying now, by {@link senderKey}: a row says "a suggestion
+   * is coming" only for one of these. A dry run is not a run.
+   */
+  inFlight: ReadonlySet<string>;
+  /**
    * Put a standing into {@link standing} from somewhere that is not this hook — {@link absorb}'s twin,
    * for a host control that buys through its own copy of this machinery (the desktop's hosted door).
    */
@@ -561,6 +566,12 @@ export function useScreenerSuggestions(opts: {
    * lifted (an access read also lifts the two refusals it describes).
    */
   const [standing, setStanding] = useState<SuggestStanding | null>(null);
+  /**
+   * THE SENDERS A RUN OF THIS CONTROL IS BUYING NOW — the only licence for "a suggestion is coming"
+   * (ruled): an opt-in alone promised it on an account whose runs are all refused.
+   * Keyed like the overlay; a dry run is not a run, since no suggestion comes of it.
+   */
+  const [inFlight, setInFlight] = useState<ReadonlySet<string>>(() => new Set<string>());
   /** The standing as last written, for the access read below, which must not close over state. */
   const standingNow = useRef<SuggestStanding | null>(null);
   /** The ONE writer: this hook's rows, and the host's when the rows are somebody else's. */
@@ -930,9 +941,11 @@ export function useScreenerSuggestions(opts: {
     // comment. This effect fires mid-way through a manual purchase on the ordinary path, and a
     // shared counter made it silently discard that purchase.
     const run = ++io.current.autoRun;
+    flying(setInFlight, set, true);
     void (async () => {
       try {
-        const res = await link.current.wire.suggest(set, { idempotencyKey: newKey() });
+        const res = await link.current.wire.suggest(set, { idempotencyKey: newKey() })
+          .finally(() => flying(setInFlight, set, false));
         if (io.current.autoRun !== run) return;
         merge([
           ...res.suggestions.map((s) => ({ address: s.sender, suggestion: toSuggestion(s) })),
@@ -1230,10 +1243,11 @@ export function useScreenerSuggestions(opts: {
                  and the service then treats the run as unbounded by any quote, which is the
                  honest reading of "no figure was shown". */
               const quotedFor = io.current.quotedChunks[chunkIndex];
+              flying(setInFlight, chunk, true);
               res = await wire.suggest(chunk, {
                 idempotencyKey: newKey(),
                 ...(typeof quotedFor === "number" ? { maxCredits: quotedFor } : {}),
-              });
+              }).finally(() => flying(setInFlight, chunk, false));
             } catch (err) {
               // Stale — a newer press owns the state; paint nothing.
               if (io.current.run !== run) return;
@@ -1389,7 +1403,7 @@ export function useScreenerSuggestions(opts: {
 
   // `merge` is the whole of `absorb`, exposed rather than reimplemented — see the interface.
   return {
-    suggestions, absorb: merge, forSenders, autoOptIn, outstandingDecisions: outstanding, standing,
+    suggestions, absorb: merge, forSenders, autoOptIn, outstandingDecisions: outstanding, standing, inFlight,
     absorbStanding,
   };
 }
@@ -1626,6 +1640,17 @@ export function standingOfRefusal(err: unknown): SuggestStanding | null {
     case "aiUnavailable": return "ai_unavailable";
     default: return "refused";
   }
+}
+
+/** Mark `senders` as being bought, or no longer: {@link ScreenerSuggestions.inFlight}'s one writer. */
+function flying(
+  set: (f: (prev: ReadonlySet<string>) => ReadonlySet<string>) => void, senders: readonly string[], on: boolean,
+): void {
+  set((prev) => {
+    const next = new Set(prev);
+    for (const s of senders) { if (on) next.add(senderKey(s)); else next.delete(senderKey(s)); }
+    return next;
+  });
 }
 
 /** The standing an ANSWERED run leaves: the gate's stop, or none — the quote's own stop was funded. */

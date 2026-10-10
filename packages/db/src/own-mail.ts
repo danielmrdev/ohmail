@@ -4,6 +4,7 @@ import { recordChange, type LedgerTx, type Tx } from "./change-log.js";
 import type { Dialect } from "./dialect/index.js";
 import { CUTLINE_GATE_FOLDER, mailboxCountsAsOwn, mailboxCountsAsOwnSql } from "./screener-cutline.js";
 import { ruleMatchKey, ruleNamesSenderSql } from "./rule-match-sql.js";
+import { authScreensSql } from "./screening-verdicts.js";
 
 /**
  * THE ACCOUNT'S OWN ADDRESSES, AS THE ORGANIZER READS THEM — its mailboxes neither erased nor removed
@@ -72,7 +73,7 @@ export async function ruleKeyIsOwnAddress(
  * correspondent retro's held set, and the held mail whose references the reply arm reads.
  */
 export function notFailedAuthSql(m: typeof messages): SQL {
-  return sql`(${m.authVerdict} is null or ${m.authVerdict} <> 'fail')`;
+  return sql`(not ${authScreensSql(sql`${m.authVerdict}`)})`;
 }
 
 /** Own-address rows released per call — one page, bounded like `GATE_RELEASE_BATCH`. */

@@ -1161,12 +1161,12 @@ async function planFromRaw(change: Change, deps: PlanDeps): Promise<ChangePlan> 
        any other company's name there stays a claim, which anybody holding one of the ids can forge. */
     const ownProvidersReport = decision.identity !== undefined
       && decision.identity.brand === providerBrand(trustedAuthservIds);
-    const ownOrganisationReport = ownBounce && authVerdict !== "fail"
+    const ownOrganisationReport = ownBounce && !authScreens(authVerdict)
       && decision.identity !== undefined && isProviderBrand(decision.identity.brand)
       && await fromOwnDomain(
         repo, accountId, normalized.from.address, ownAddresses, awayReplyBounce ? dsn!.originalMessageIds : [],
       );
-    const liftable = authVerdict !== "fail"
+    const liftable = !authScreens(authVerdict)
       && (decision.identity === undefined || ownProvidersReport || ownOrganisationReport);
     /** A corroborated bounce the account has expressed no opinion about. */
     const admitBounce = ownBounce && decision.matchedRuleId === null
@@ -1702,6 +1702,9 @@ export async function commitChange(plan: ChangePlan, deps: CommitDeps): Promise<
       // The `?? "external"` is the branch `change.passive` and the import hold take, and it is
       // pinned by a control of its own rather than left to this operator.
       lastSetBy: p.passive ? (p.adoption ?? "external") : "us",
+      // AN ANSWER THE GATE ADMITTED IS DECIDED FOR THIS LETTER: a later letter from the address waits
+      // at the gate without pulling it back, and no decision about the sender moves it.
+      ...(p.correspondentAdmission || p.bounceAdmission ? { decidedAt: new Date() } : {}),
     };
     await repo.upsertFolderState(stored.id, initial);
 

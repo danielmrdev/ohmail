@@ -14,6 +14,7 @@ import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   FOLDER_OF_VIEW,
+  cardReach,
   inverseMutations,
   oneRowPerKey,
   physicalFolderOf,
@@ -32,6 +33,7 @@ import {
   pressVerdict,
   PRESS_THREW,
   tallyVerdicts,
+  type CardReach,
   type EngineMessage,
   type EngineMutation,
   type EntityReader,
@@ -326,6 +328,11 @@ export interface ScreenerState {
    */
   bodyStall: (messageId: string) => HeldBodyStall | null;
   decide: (sender: ScreenerSenderDTO, dest: DecisionDestination, opts: DecideOptions) => void;
+  /**
+   * What a card press files beyond its own letters, before it is made: at domain scope every other
+   * waiting sender at that domain and how many of their letters move. The press moves that set.
+   */
+  reachOf: (sender: ScreenerSenderDTO, scope: DecisionScope) => CardReach;
   applyAll: (scopeOf: (s: ScreenerSenderDTO) => DecisionScope) => void;
   markAllSpam: (scopeOf: (s: ScreenerSenderDTO) => DecisionScope) => void;
   allowScreened: (sender: ScreenerSenderDTO, dest: "ohbox" | "reads") => void;
@@ -761,6 +768,25 @@ export function useScreenerState(
   const heldMessageIds = (sender: ScreenerSenderDTO): string[] =>
     sender.derived ? sender.held.map((h) => h.id) : [];
 
+  /** What a card press files ({@link cardReach}): its own row, then every other row still undecided on screen, off the RAW mirror. */
+  const reachOf = (sender: ScreenerSenderDTO, scope: DecisionScope): CardReach => {
+    const own = senderKey(sender.from.address);
+    const rows = [
+      { address: sender.from.address, heldIds: heldMessageIds(sender) },
+      ...undecided.filter((x) => senderKey(x.from.address) !== own)
+        .map((x) => ({ address: x.from.address, heldIds: heldMessageIds(x) })),
+    ];
+    return cardReach(engine.read(), rows, sender.from.address, scope);
+  };
+
+  /** A sender with a decision of its own in flight here — pressed, restored from the journal, or with the organizer. */
+  const decidedHere = (address: string, except: string): boolean => {
+    const k = senderKey(address);
+    for (const [pid, e] of s.pending) if (pid !== except && senderKey(e.sender.from.address) === k) return true;
+    if ((restoredIntents.current ?? []).some((r) => r.id !== except && senderKey(r.from.address) === k)) return true;
+    return outstandingFor(address) !== undefined;
+  };
+
   /**
    * Move a sender's whole bag and COUNT WHAT BECAME OF IT. This was `for (…) void
    * engine.mutate(…)` — the release family's whole bug: a refused move rolled the overlay back
@@ -1024,6 +1050,10 @@ export function useScreenerState(
     heldIds: entry.sender.derived === true && entry.read ? heldMessageIds(entry.sender) : [],
     from: { name: entry.sender.from.name ?? null, address: entry.sender.from.address },
     ...(entry.applyRetro !== undefined ? { applyRetro: entry.applyRetro } : {}),
+    // A card press: the INBOX letters its scope shows, the domain's other senders' included (`reachOf`).
+    ...(entry.applyRetro === undefined && entry.sender.derived === true
+      ? { inboxIds: reachOf(entry.sender, entry.scope).inboxIds }
+      : {}),
   });
 
   const commit = (id: string) => {
@@ -1063,6 +1093,24 @@ export function useScreenerState(
     const derived = d.derived;
     const heldIds = d.heldIds;
     const done = () => disarmScreenerIntent(id);
+    /* THE CARD FILES WHAT IT SHOWS: no rule of this press reaches mail already
+       filed elsewhere, and the INBOX letters the card listed move by id beside the decision. A sheet
+       press keeps its own past-mail answer, and a record from before the field the server's default. */
+    const card = d.applyRetro === undefined && d.inboxIds !== undefined;
+    const retroOf = card ? false : d.applyRetro;
+    const own = senderKey(d.from.address);
+    const stillInInbox = (m: string): boolean => {
+      const x = engine.read().get<EngineMessage>("message", m);
+      if (x?.folder !== "INBOX" || x.placeDecided === true) return false;
+      // Another sender's letter whose own decision is in flight here is that decision's to file.
+      return senderKey(x.from.address) === own || !decidedHere(x.from.address, id);
+    };
+    // An Ohbox decision files them where they are: they are already there, and nothing moves.
+    const cardTo = FOLDER_OF_VIEW[d.dest as ScreenDest];
+    const cardFiled = card ? [...new Set(d.inboxIds ?? [])].filter(stillInInbox) : [];
+    const cardMoves: Array<Extract<EngineMutation, { kind: "move" }>> = cardTo === FOLDER_OF_VIEW.ohbox
+      ? []
+      : cardFiled.map((m) => ({ kind: "move" as const, messageId: m, folder: cardTo, from: FOLDER_OF_VIEW.ohbox }));
 
     // Where is the representative, actually? Read the RAW mirror. The queue
     // is built from the projected reader, in which an active-undecided
@@ -1121,12 +1169,14 @@ export function useScreenerState(
         dest: d.dest as ScreenDest,
         ...(decision === "yes" ? { read: d.read } : {}),
         scope: d.scope,
-        ...(d.applyRetro !== undefined ? { applyRetro: d.applyRetro } : {}),
+        ...(retroOf !== undefined ? { applyRetro: retroOf } : {}),
       }).then((res) => {
         done();
         // A wait keeps the sender out as an answer does: the decision still stands.
         settleOnward(pressVerdict(res).kind !== "refused");
         if (res.status === "rolled_back") { refuse(d, res.error); return; }
+        // The card's INBOX letters, by id, once the decision stands: refused or replaced, none moves.
+        if (res.status !== "superseded") for (const mv of cardMoves) void engine.mutate(mv);
         /* The organizer took it, and will carry it out later. `pendingWith`
          * is present only where the server queued the decision instead of
          * applying it: nothing moved, no rule written, the mail still in
@@ -1143,16 +1193,15 @@ export function useScreenerState(
       // physically in the INBOX, presented in the Screener because they are
       // active and undecided — the decide cannot touch it, so a screen-IN
       // takes the sender sheet's own ladder: `rule_create` (destination
-      // INBOX for an Ohbox decision) with `applyRetro`, plus capped `move`s
-      // for anything not already in place; once the rule lands, `placeOf`
-      // presents the whole bag in the Ohbox with zero server moves. Fed
-      // from the RAW-reader `senderScreening`, and the mutations are
+      // INBOX for an Ohbox decision). A card press asks no past-mail
+      // answer and moves the INBOX letters it showed by id.
+      // Fed from the RAW-reader `senderScreening`, and the mutations are
       // AWAITED so the toast is the one the server earned — never the
       // unawaited "Ruled" over nothing this bug was.
       const sender = senderScreening(engine.read(), id);
       if (sender) {
         const dest = d.dest;
-        const plan = planScreeningChange(sender, dest, d.scope, true, d.applyRetro);
+        const plan = planScreeningChange(sender, dest, d.scope, true, retroOf);
         // The toast's subject, not the rule's — the rule was already written from `plan`.
         const who = d.scope === "domain" ? displayDomain(sender.domain) : displayAddress(sender.address);
         const place = PLACE_LABEL[dest] ?? dest;
@@ -1161,11 +1210,11 @@ export function useScreenerState(
         const subject = sender.scopes[d.scope].messages;
         const before = shownAt(subject, dest);
         let refused: Parameters<typeof organizerRefusalOf>[0] = undefined;
-        // A rule press moves nothing itself: the server pass owns the backlog (`movesAtLanding`).
-        void dispatchScreeningChange(plan, [], (m) => engine.mutate(m).then((r) => {
+        // A card press moves the INBOX letters it showed; a sheet's backlog is the server pass's.
+        void dispatchScreeningChange(plan, cardMoves, (m) => engine.mutate(m).then((r) => {
           if (r.status === "rolled_back" && refused === undefined) refused = r.error;
           return r;
-        })).then((key) => {
+        }), card ? cardFiled.length : 0, card).then((key) => {
           done();
           // Replaced by a newer press about this sender: that press says the sentence.
           if (key === null) return;
@@ -2220,6 +2269,7 @@ export function useScreenerState(
     heldRelease,
     unscreened,
     waiting: visibleWaiting,
+    reachOf,
     waitingCount,
     waitingSource: segments.source === "store" ? "store" : engine.screenerWaitingAvailable() ? "device" : "local",
     queueAnswered: firstPage !== null,

@@ -224,6 +224,12 @@ export interface MessageDTO {
    * older than the column, an older server), which a client renders as nothing.
    */
   senderCheck?: SenderCheckDTO | null;
+  /**
+   * THIS LETTER'S PLACE IS DECIDED (`folder_state.decided_at`, mail 0145): a person placed it — a
+   * press here, a move adopted from another client — or the gate admitted it as an answer to the
+   * person's own writing. ABSENT where no such decision stands, and from an older server.
+   */
+  placeDecided?: true;
 }
 
 /** The identity fact as every surface reads it — one sentence per field, outside any AI advice. */

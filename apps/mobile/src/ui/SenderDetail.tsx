@@ -23,6 +23,7 @@ import {
   type ScreenerSeg,
 } from "../state/model";
 import { relayMarkFor, senderSheetLine } from "../state/relay";
+import { domainScopeOffered } from "../state/live";
 import { useBodies, useWorld } from "../state/world";
 import { Badge, Button, Panel, Screen, Scroller, Tap, Txt } from "./base";
 import { BodyPages } from "./BodyPages";
@@ -93,6 +94,12 @@ export function SenderDetail({
   }
 
   const target = row.scope === "domain" ? `@${domainOf(row.address)}` : row.address;
+  /* A WHOLE-DOMAIN PRESS NAMES WHAT ELSE IT FILES before it is made: the other waiting senders at the
+     domain and how many of their letters move — the set the press then moves. */
+  const reach = seg === "waiting" && row.scope === "domain" ? w.actions.reachOf(row, w.screener.waiting) : null;
+  const also = reach !== null && reach.others.length > 0
+    ? Copy.domainAlsoFiles(reach.others.reduce((n, o) => n + o.count, 0), reach.others.map((o) => `${o.address} (${o.count})`).join(", "))
+    : null;
   /* On a mailbox another install organizes: where a decision goes, and what became of it. */
   const organizer = w.mailboxes.organizer;
   const relay = relayMarkFor(row.address, w.screener.relayed, organizer?.name ?? null);
@@ -142,7 +149,7 @@ export function SenderDetail({
                 <Icon name="spark" size={13} color={t.c.accentInk} />
               </View>
               <Txt variant="note" tone="ink2" style={{ flex: 1 }}>
-                {Copy.senderFirstContact}
+                {row.reached > 0 ? Copy.senderPastTheGate(row.reached) : Copy.senderFirstContact}
                 {/* ONE key, not four fragments joined by JSX. The destination used to be emitted
                     here and the copy after it, which fixes English word order for every language;
                     the German came out saying that Ohbox suggests the AI. The emphasis that was
@@ -254,11 +261,13 @@ export function SenderDetail({
       {seg === "waiting" ? (
         <DecisionBar
           scope={row.scope}
+          domainOffered={domainScopeOffered(row.address)}
           target={target}
+          also={also}
           suggested={row.ai?.dest ?? null}
           onScope={(scope) => w.actions.setScope(row, scope)}
           onDecide={(dest, read) => {
-            w.actions.decide(row, dest, read);
+            w.actions.decide(row, dest, read, w.screener.waiting);
             onClose?.();
           }}
         />
@@ -282,13 +291,19 @@ export function SenderDetail({
 
 function DecisionBar({
   scope,
+  domainOffered,
   target,
+  also,
   suggested,
   onScope,
   onDecide,
 }: {
   scope: "sender" | "domain";
+  /** False for a shared provider: the bar offers no whole-domain scope there, as on the web. */
+  domainOffered: boolean;
   target: string;
+  /** What a whole-domain press files beyond this sender, said before the press; `null` for nothing. */
+  also: string | null;
   suggested: Destination | null;
   onScope: (s: "sender" | "domain") => void;
   onDecide: (dest: Destination, read: boolean) => void;
@@ -315,7 +330,7 @@ function DecisionBar({
       onFileRead={() => onDecide(dest, true)}
     />
   ));
-  const scopeControl = (
+  const scopeControl = !domainOffered ? null : (
     <View
       onLayout={(e) => measure("scope", e.nativeEvent.layout.width)}
       style={scopeInRow ? { alignSelf: "center" } : { alignSelf: "flex-start", marginTop: shape.row === "scroll" ? 8 : 12, marginLeft: shape.row === "scroll" ? DECISION_ROW_PAD : 0 }}
@@ -378,6 +393,11 @@ function DecisionBar({
       {shape.explainer ? (
         <Txt variant="hint" tone="ink3" style={{ marginTop: 10 }}>
           {Copy.decideRule(target)}
+        </Txt>
+      ) : null}
+      {also !== null ? (
+        <Txt variant="hint" tone="ink2" style={{ marginTop: 8 }} testID="decide-domain-also">
+          {also}
         </Txt>
       ) : null}
     </View>

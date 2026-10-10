@@ -204,7 +204,9 @@ function ScreenerBody() {
 
 function WaitingRow({ row, mark, onPress }: { row: ScreenerRow; mark: RelayMark | null; onPress: () => void }) {
   const t = useTheme();
-  const aria = Copy.senderRowAria(row.name, row.address, row.held.length);
+  // THE IDENTITY FACT, drawn and spoken on the row as on the web's, not only once the row is opened.
+  const claim = row.checked ? Copy.senderCheckChip(row.checked.brand) : null;
+  const aria = Copy.senderRowAria(row.name, row.address, row.held.length, claim ?? "");
   return (
     <TapRow
       onPress={onPress}
@@ -257,6 +259,7 @@ function WaitingRow({ row, mark, onPress }: { row: ScreenerRow; mark: RelayMark 
             {row.newestSubject}
           </Txt>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 7 }}>
+            {claim ? <Badge icon="shield">{claim}</Badge> : null}
             {row.ai ? (
               <Badge icon="spark" tone="accent">
                 {Copy.aiSuggests(destDone(row.ai.dest), row.ai.confidence)}

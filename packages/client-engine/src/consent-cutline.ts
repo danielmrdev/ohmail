@@ -726,10 +726,17 @@ export function consentPartition(reader: EntityReader, opts: ConsentOptions = {}
      * a rule nothing carried out (a Move press that left the backlog, a reader's store, a mailbox
      * nothing organizes) shows nothing. An admission changes the sender's STANDING — decided: never
      * queued, never cut to History — and never a letter's place. One projection stays: a DENY
-     * rule's mail, the person's own answer, on the screened-out shelf.
+     * rule's mail, the person's own answer, on the screened-out shelf — never a letter whose place
+     * is decided, which the arm below keeps first.
      */
     const placed = placedDestination(index, m, reader);
-    if (placed !== null || decided !== null) {
+    if (m.folder === "INBOX" && m.placeDecided === true) {
+      // A LETTER WHOSE PLACE IS DECIDED STAYS WHERE IT IS: the person's own move, or the gate's
+      // admission of an answer to their writing. A later letter from the address waits at the gate
+      // and never pulls this one back, a screen-out of its author never shelves it, and it is
+      // neither queued, cut nor counted; `cutlineCounts` leaves the same row out of its residences.
+      placeOf.set(m.id, m.folder);
+    } else if (placed !== null || decided !== null) {
       placeOf.set(m.id, placed !== null && effectForDestination(placed) === "deny" ? placed : m.folder);
       if (m.folder === "ohmail/Screener" && !active) retiredDecided.add(key);
       // A claim the gate holds makes a decided sender waiting again (mail 0147): the queue lists

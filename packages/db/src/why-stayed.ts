@@ -8,8 +8,9 @@ import { weAnsweredThisSenderWhere } from "./we-answered.js";
  * WHY A MESSAGE STAYED WHEN ITS SENDER'S RULE MOVED THE REST — the leave-alone set of the rule's
  * backlog pass (`apps/worker/src/rule-retro.ts`), asked of named messages by the same facts: a
  * failed authentication check, a triage state, a reply, a filing made in another mail app. `null`
- * for a message none of them describes (another rule's, or the pass's other bounds); the sheet
- * then names no reason rather than a wrong one. The order picks one class where several hold.
+ * for a message none of them describes (another rule's, the pass's other bounds, or a placement
+ * the person decided here, which has no class yet); the sheet then names no reason rather than a
+ * wrong one. The order picks one class where several hold.
  */
 export type StayedWhy = "failed-checks" | "set-aside" | "replied" | "filed-elsewhere";
 

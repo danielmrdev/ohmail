@@ -1,4 +1,5 @@
 import { canonicalDestination, isOrganizedFolder, retroPassWouldMove } from "@trafficflow/core/destinations";
+import { heldMovesOnPress } from "@trafficflow/core/sender-headers";
 import { outrankCoveringDomains } from "./address-rank.js";
 import {
   consentIndex, consentPartition, domainOfAddress, mailboxProfiles, messagePlacement, outranks, ruleMatchKey,
@@ -11,6 +12,46 @@ import { oneRowPerKey, pressOverTwins, ruleTwins, twinWinner } from "./rule-twin
 import { rulesList, senderKey } from "./selectors.js";
 import type { EntityReader } from "./store.js";
 import { FOLDER_OF_VIEW, type EngineMessage, type EngineMutation, type Folder, type RuleDTO } from "./types.js";
+
+/** What a card press files beyond its own sender, before it is made — {@link cardReach}. */
+export interface CardReach {
+  /** The other senders whose letters move, each with how many: the whole-domain card names them. */
+  others: Array<{ address: string; count: number }>;
+  /** Every INBOX letter in scope, which the press moves by id beside the decision. */
+  inboxIds: string[];
+}
+
+/**
+ * WHAT A SCREENER CARD'S PRESS FILES: the waiting letters its scope covers among `rows` (the card's
+ * own sender, and at domain scope every waiting sender at that domain), from the RAW mirror. An INBOX
+ * letter moves by id, never one whose place is decided (`placeDecided`); a held one is counted as the
+ * server's press moves it (`heldMovesOnPress`, pinned to the server's rule), a put-back letter too.
+ */
+export function cardReach(
+  reader: EntityReader, rows: ReadonlyArray<{ address: string; heldIds: readonly string[] }>,
+  pressed: string, scope: "sender" | "domain",
+): CardReach {
+  const key = senderKey(pressed);
+  const domain = domainOfAddress(key);
+  const out: CardReach = { others: [], inboxIds: [] };
+  for (const row of rows) {
+    const at = senderKey(row.address);
+    if (scope === "domain" ? domainOfAddress(at) !== domain : at !== key) continue;
+    let count = 0;
+    for (const id of row.heldIds) {
+      const m = reader.get<EngineMessage>("message", id);
+      if (m === undefined) continue;
+      if (m.folder === "INBOX") {
+        if (m.placeDecided !== true) { out.inboxIds.push(id); count++; }
+        continue;
+      }
+      const check = m.senderCheck === null ? "none" : m.senderCheck === undefined ? "unchecked" : "claim";
+      if (m.folder === FOLDER_OF_VIEW.screener && heldMovesOnPress({ check, from: m.from.address, auth: m.authVerdict }, key)) count++;
+    }
+    if (at !== key && count > 0) out.others.push({ address: row.address, count });
+  }
+  return out;
+}
 
 /**
  * A READER WITH SOME EFFECTS APPLIED — the optimistic overlay's own rule (last effect per type and

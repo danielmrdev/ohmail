@@ -12,13 +12,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useTranslations } from "next-intl";
 import type {
   BodyState,
+  CardReach,
   ListSurface,
   ScreenerHeldMail,
   ScreenerSenderDTO,
   UnsubscribeHeaderState,
   UnsubscribeResult,
 } from "@ohmail/client-engine";
-import { countWhen, listSurface, mirrorCountInput, saysEmpty, waitingSurfaceInput, type WaitingWhy } from "@ohmail/client-engine";
+import { countWhen, listSurface, mirrorCountInput, saysEmpty, senderKey, waitingSurfaceInput, type WaitingWhy } from "@ohmail/client-engine";
 import {
   AddressText,
   AskWell,
@@ -589,12 +590,15 @@ function NotOrganizingYetNote({ notYet }: { notYet: NotOrganizingYet }) {
   );
 }
 
+/** No run in flight: the default {@link ScreenerViewProps.suggestingFor}. */
+const NO_RUN: ReadonlySet<string> = new Set<string>();
+
 export function ScreenerView({
   state,
   suggest,
   suggestNode,
   noSuggestionStanding = null,
-  autoSuggest = false,
+  suggestingFor = NO_RUN,
   subscriptionPane = false,
   segment,
   selection,
@@ -644,12 +648,11 @@ export function ScreenerView({
    */
   subscriptionPane?: boolean;
   /**
-   * HAS THIS ACCOUNT OPTED IN to automatic suggestions — the fact that turns a row's "no
-   * suggestion yet" into "a suggestion is coming", so the cadence the opt-in bought is stated
-   * where it is felt. Absent on every host with no such setting (the demo, the desktop shell)
-   * and absent reads as NO, the same rule the hook itself applies.
+   * THE SENDERS A SUGGESTION RUN IS BUYING NOW (`ScreenerSuggestions.inFlight`) — the only fact that
+   * turns a row's "no suggestion yet" into "a suggestion is coming": the opt-in alone
+   * promised it on an account whose runs are all refused. Absent reads as none.
    */
-  autoSuggest?: boolean;
+  suggestingFor?: ReadonlySet<string>;
   /**
    * WHAT THE ACCOUNT'S AI ALLOWANCE IS DOING — one line under whichever control is offered above. Injected for the
    * same reason both controls are: the answer is a billing read, and this file is compiled into a binary that has no
@@ -1806,7 +1809,8 @@ export function ScreenerView({
             role={state.role}
             mailboxLabel={mailboxLabelFor(current as ScreenerSenderDTO)}
             standing={noSuggestionStanding}
-            autoSuggest={autoSuggest}
+            reach={scopeOf(current as ScreenerSenderDTO) === "domain" ? state.reachOf(current as ScreenerSenderDTO, "domain") : null}
+            inFlight={suggestingFor.has(senderKey((current as ScreenerSenderDTO).from.address))}
             subscriptionPane={subscriptionPane}
             {...(decisionFor(current as ScreenerSenderDTO) !== undefined
               ? { decision: decisionFor(current as ScreenerSenderDTO)! }
@@ -2467,7 +2471,8 @@ function WaitingPreview({
   decision,
   mailboxLabel,
   standing,
-  autoSuggest,
+  reach,
+  inFlight,
   subscriptionPane,
 }: {
   sender: ScreenerSenderDTO;
@@ -2505,8 +2510,10 @@ function WaitingPreview({
   mailboxLabel: string | null;
   /** See `ScreenerViewProps.noSuggestionStanding` — the row's sentence is derived from it. */
   standing: SuggestStanding | null;
-  /** See `ScreenerViewProps.autoSuggest` — the opt-in fact behind the "coming" sentence. */
-  autoSuggest: boolean;
+  /** A run is buying this sender's suggestion now (`ScreenerViewProps.suggestingFor`): "coming". */
+  inFlight: boolean;
+  /** At domain scope, the other waiting senders whose letters the press files too (`state.reachOf`). */
+  reach: CardReach | null;
   /** See `ScreenerViewProps.subscriptionPane`. */
   subscriptionPane: boolean;
 }) {
@@ -2561,6 +2568,16 @@ function WaitingPreview({
             onDecide={onDecide}
             onBack={onBack}
           />
+          {/* A WHOLE-DOMAIN PRESS NAMES WHAT ELSE IT FILES before it is made: every other waiting
+              sender at the domain and how many of their letters move, the set the press moves. */}
+          {!sharedDomain && reach !== null && reach.others.length > 0 ? (
+            <div className="scn-caption" data-domain-reach={reach.others.length}>
+              {t("domainAlsoFiles", {
+                count: reach.others.reduce((n, o) => n + o.count, 0),
+                senders: reach.others.map((o) => `${displayAddress(o.address)} (${o.count})`).join(", "),
+              })}
+            </div>
+          ) : null}
         </>
       )}
       <div className="scn-mails">
@@ -2698,8 +2715,8 @@ function WaitingPreview({
              sees automatically, and false on an account whose spend is refused — whose sentence names
              the refusal's reason. `data-why` is the state a test reads, so the assertion is not on a
              sentence's wording. */
-          <div className="scn-why scn-why-none" data-why={noSuggestionReason(sender, standing, autoSuggest)}>
-            <span>{t(noSuggestionKey(noSuggestionReason(sender, standing, autoSuggest), standing, subscriptionPane))}</span>
+          <div className="scn-why scn-why-none" data-why={noSuggestionReason(sender, standing, inFlight)}>
+            <span>{t(noSuggestionKey(noSuggestionReason(sender, standing, inFlight), standing, subscriptionPane))}</span>
           </div>
         )}
         {sender.held.length > 1 ? (

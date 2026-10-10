@@ -241,6 +241,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export interface MoveBody {
   folder: string;
+  /** Applied only while the letter is still here; otherwise refused `stale_press` (a card's move). */
+  from?: string;
 }
 
 /** Idempotency handle the route threads in when an `Idempotency-Key` is present. */
@@ -1352,6 +1354,7 @@ export class MessageService {
     opts: { idempotency?: MoveIdempotency | null; putBackAutoFiling?: boolean } = {},
   ): Promise<MoveResult | MoveRequestResult> {
     const folder = this.validFolder(body.folder);
+    const from = body.from === undefined ? null : this.validFolder(body.from);
 
     /* WHICH MAILBOX NOW OWES A MOVE — captured inside the transaction and rung AFTER it commits.
        `null` when this request wrote no desired folder, so the organizer is not woken for work
@@ -1376,6 +1379,12 @@ export class MessageService {
       }).from(messages)
         .where(and(eq(messages.id, id), eq(messages.accountId, ctx.accountId))).limit(1);
       if (!msg) throw new ServiceError("not_found", 404, "message not found");
+      /* A CONDITIONAL MOVE (a Screener card's, by id) applies only while the letter is still where
+         the card counted it: a person's placement since then stands, here or in another mail app. */
+      if (from !== null) {
+        const at = await this.placement(tx, id, msg.nativeLocator);
+        if ((at.desired ?? at.observed) !== from) return this.stalePress(tx, ctx, id);
+      }
       /**
        * A reader moves nothing here — it ASKS (mail 0083, then 0094). This door writes
        * `desired_folder` with `last_set_by='us'`, and the reconciler turns that into a physical

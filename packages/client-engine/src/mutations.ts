@@ -1,5 +1,6 @@
 import { canonicalDestination } from "@trafficflow/core/folder-name";
 import { replySubject } from "@trafficflow/core/reply-subject";
+import { heldMovesOnPress } from "@trafficflow/core/sender-headers";
 import { outrankCoveringDomains } from "./address-rank.js";
 import { domainOfAddress } from "./consent-cutline.js";
 import { ruleKeyOf, twinWinner } from "./rule-twins.js";
@@ -321,17 +322,26 @@ function derivedScreenerEffects(
   const denyRead = destination === FOLDER_OF_VIEW.screened || destination === FOLDER_OF_VIEW.spam
     ? { unread: false, lastReadAt: iso }
     : {};
-  const effects: MutationEffect[] = reader
-    .list<EngineMessage>("message")
-    .filter((x) => x.folder === FOLDER_OF_VIEW.screener && senderKey(x.from.address) === key)
-    .map((msg) => ({
-      type: "message",
-      id: msg.id,
-      entity: { ...msg, folder: destination, ...denyRead, updatedAt: iso } satisfies EngineMessage,
-      move: { from: msg.folder, to: destination },
-    }));
-
   const scope = m.scope ?? "sender";
+  /* THE SERVER'S BAG, LETTER BY LETTER: the scope's held letters, each moved only where the server's
+     press moves it (`heldMovesOnPress`, core's copy of `screener-apply.ts`'s rule). A domain press
+     leaves another address's claim, and a letter nobody checked, at the gate; that sender stays. */
+  const inScope = (address: string): boolean =>
+    scope === "domain" ? domainOfAddress(senderKey(address)) === domainOfAddress(key) : senderKey(address) === key;
+  const gate = reader.list<EngineMessage>("message")
+    .filter((x) => x.folder === FOLDER_OF_VIEW.screener && inScope(x.from.address));
+  const moves = (x: EngineMessage): boolean => heldMovesOnPress({
+    check: x.senderCheck === null ? "none" : x.senderCheck === undefined ? "unchecked" : "claim",
+    from: x.from.address, auth: x.authVerdict,
+  }, key);
+  const kept = new Set(gate.filter((x) => !moves(x)).map((x) => senderKey(x.from.address)));
+  const effects: MutationEffect[] = gate.filter(moves).map((msg) => ({
+    type: "message",
+    id: msg.id,
+    entity: { ...msg, folder: destination, ...denyRead, updatedAt: iso } satisfies EngineMessage,
+    move: { from: msg.folder, to: destination },
+  }));
+
   // The decide lifts an address rule over its domain's (`screener-apply.ts#liftOverDomain`), and
   // stamps the backlog when past mail is asked for; the overlay writes what the server will.
   const lifted = scope === "sender"
@@ -362,13 +372,15 @@ function derivedScreenerEffects(
     } });
     for (const twin of under) if (twin.id !== acting.id) effects.push({ type: "rule", id: twin.id, entity: null });
   }
-  // The subject leaves the store's queue page too, so the count drops at the press.
+  // The subject leaves the store's queue page too, so the count drops at the press — except a sender
+  // at the domain the server keeps waiting: a claim of theirs the press leaves (the page's `marked`,
+  // over every held letter of theirs) or a letter of theirs this overlay left at the gate.
   for (const row of reader.list<ScreenerWaitingDTO>(SCREENER_WAITING_TYPE)) {
     if (row.kind !== "sender") continue;
     const rowKey = senderKey(row.address);
-    if (scope === "domain" ? domainOfAddress(rowKey) === match : rowKey === key) {
-      effects.push({ type: SCREENER_WAITING_TYPE, id: row.id, entity: null });
-    }
+    const leaves = rowKey === key || (scope === "domain" && domainOfAddress(rowKey) === match
+      && row.marked !== true && !kept.has(rowKey));
+    if (leaves) effects.push({ type: SCREENER_WAITING_TYPE, id: row.id, entity: null });
   }
   return effects;
 }

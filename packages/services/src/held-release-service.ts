@@ -1,7 +1,8 @@
 import { and, desc, eq, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import {
-  AccountErasedError, accountSettings, applyScreenerDecision, auditAction, auditLog, changeLog,
-  contactOnlyHeldWhere, destinationIsDecisionSql, folderState, lockAccountRuleKeys, mailboxes, messages, personSkipSql,
+  AccountErasedError, accountSettings, applyScreenerDecision, auditAction, auditLog, authScreensSql, changeLog,
+  contactOnlyHeldWhere, CUTLINE_ALLOW_DESTINATIONS, destinationIsDecisionSql, folderState, lockAccountRuleKeys,
+  mailboxes, messages, personSkipSql,
   recordRuleDelta, ruleNamesSenderSql, rules as rulesTbl, seqBounds, type LedgerTx, type Tx,
 } from "@trafficflow/db";
 import { dialect } from "@trafficflow/db/dialect";
@@ -164,7 +165,9 @@ function heldAtGate(d: ReturnType<typeof dialect>, accountId: string) {
  * in flight, one the person is replying to or deferred, a claim the person skip does not take.
  */
 function contactLineBag(d: ReturnType<typeof dialect>, accountId: string, ownAddresses: readonly string[]): SQL {
-  return and(heldAtGate(d, accountId), ...contactOnlyHeldWhere(d, { ownAddresses }))!;
+  // A letter the person placed at the gate by hand (`decided_at`, adopted from another client) is theirs:
+  // the contact line neither offers nor moves it.
+  return and(heldAtGate(d, accountId), isNull(folderState.decidedAt), ...contactOnlyHeldWhere(d, { ownAddresses }))!;
 }
 
 /** The named senders' rows in {@link contactLineBag} the identity check never reached, checked by id. */
@@ -214,6 +217,15 @@ function decidedRule(accountId: string) {
 const ruleClaimsSender = (d: ReturnType<typeof dialect>) =>
   ruleNamesSenderSql(d, { kind: rulesTbl.kind, match: rulesTbl.match, destination: rulesTbl.destination }, sql`lower(${messages.fromAddress})`);
 
+/**
+ * THE PASS MOVES IT: under a rule that ADMITS, the router keeps a letter whose stored authentication
+ * verdict the gate screens on (`rules.ts#evaluateRules`), so the group neither counts nor offers it
+ * A denying rule moves it whatever the verdict.
+ */
+const releaseMoves = (): SQL => sql`not (${rulesTbl.destination} in (${sql.join(
+  CUTLINE_ALLOW_DESTINATIONS.map((f) => sql`${f}`), sql`, `,
+)}) and ${authScreensSql(sql`${messages.authVerdict}`)})`;
+
 /** The screen's rows: every group with mail stuck behind it, largest first. */
 export async function heldReleaseGroups(
   db: Tx, accountId: string,
@@ -228,7 +240,7 @@ export async function heldReleaseGroups(
     .from(rulesTbl)
     .innerJoin(messages, and(eq(messages.accountId, rulesTbl.accountId), ruleClaimsSender(d)))
     .innerJoin(folderState, eq(folderState.messageId, messages.id))
-    .where(and(decidedRule(accountId), heldAtGate(d, accountId)))
+    .where(and(decidedRule(accountId), heldAtGate(d, accountId), releaseMoves()))
     .groupBy(rulesTbl.id, rulesTbl.kind, rulesTbl.match, rulesTbl.destination)
     .orderBy(sql`count(${messages.id}) desc`, rulesTbl.id)
     .limit(HELD_RELEASE_GROUPS_MAX);
@@ -279,7 +291,7 @@ export async function heldReleaseTotal(
     .from(rulesTbl)
     .innerJoin(messages, and(eq(messages.accountId, rulesTbl.accountId), ruleClaimsSender(d)))
     .innerJoin(folderState, eq(folderState.messageId, messages.id))
-    .where(and(decidedRule(accountId), heldAtGate(d, accountId), inArray(rulesTbl.id, ids)));
+    .where(and(decidedRule(accountId), heldAtGate(d, accountId), releaseMoves(), inArray(rulesTbl.id, ids)));
   return Number(row?.n ?? 0);
 }
 
@@ -303,7 +315,7 @@ async function heldReleaseJoinedSince(
     const [joined] = await db.select({ one: sql`1` }).from(changeLog)
       .innerJoin(messages, and(eq(messages.id, changeLog.entityId), eq(messages.accountId, changeLog.accountId)))
       .innerJoin(folderState, eq(folderState.messageId, messages.id))
-      .where(and(placedAtGate, heldAtGate(d, accountId), inArray(sql`lower(${messages.fromAddress})`, addresses)))
+      .where(and(placedAtGate, heldAtGate(d, accountId), isNull(folderState.decidedAt), inArray(sql`lower(${messages.fromAddress})`, addresses)))
       .limit(1);
     if (joined !== undefined) return true;
   }
@@ -314,7 +326,7 @@ async function heldReleaseJoinedSince(
     .innerJoin(messages, and(eq(messages.id, changeLog.entityId), eq(messages.accountId, changeLog.accountId)))
     .innerJoin(folderState, eq(folderState.messageId, messages.id))
     .innerJoin(rulesTbl, and(eq(rulesTbl.accountId, messages.accountId), ruleClaimsSender(d)))
-    .where(and(placedAtGate, decidedRule(accountId), heldAtGate(d, accountId), inArray(rulesTbl.id, ids)))
+    .where(and(placedAtGate, decidedRule(accountId), heldAtGate(d, accountId), releaseMoves(), inArray(rulesTbl.id, ids)))
     .limit(1);
   if (placed !== undefined) return true;
   // scoped-by: `since` pins eq(changeLog.accountId, accountId)
@@ -342,7 +354,7 @@ async function heldReleaseNewest(
     .from(rulesTbl)
     .innerJoin(messages, and(eq(messages.accountId, rulesTbl.accountId), ruleClaimsSender(d)))
     .innerJoin(folderState, eq(folderState.messageId, messages.id))
-    .where(and(decidedRule(accountId), heldAtGate(d, accountId), inArray(rulesTbl.id, ids)))
+    .where(and(decidedRule(accountId), heldAtGate(d, accountId), releaseMoves(), inArray(rulesTbl.id, ids)))
     .orderBy(desc(folderState.updatedAt))
     .limit(1);
   const decided = await db

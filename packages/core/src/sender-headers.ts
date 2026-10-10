@@ -31,6 +31,25 @@ export function authScreens(auth: AuthVerdict | null | undefined): boolean {
   return auth != null && SCREENING_AUTH_VERDICTS.includes(auth);
 }
 
+/** A held letter's identity fact as a press reads it: checked clean, a company claim, or never checked. */
+export type HeldCheck = "none" | "claim" | "unchecked";
+
+/**
+ * DOES A PERSON'S PRESS MOVE THIS HELD LETTER — the Screener decision's rule, which the server's
+ * `screener-apply.ts#heldRowMovesOnPress` copies (pinned equal by a test): a letter checked clean
+ * moves; a claim, or a letter nobody checked, moves only on a press made on its own address; a
+ * press marking `none` moves no letter the gate screens on authentication. The optimistic overlay
+ * asks this, so a decision hides exactly the letters the server will move.
+ */
+export function heldMovesOnPress(
+  row: { check: HeldCheck; from: string; auth: AuthVerdict | null | undefined },
+  pressed: string, marked: "pressed" | "none" = "pressed",
+): boolean {
+  if (marked === "none" && authScreens(row.auth)) return false;
+  if (row.check === "none") return true;
+  return marked === "pressed" && row.from.trim().toLowerCase() === pressed.trim().toLowerCase();
+}
+
 /** How an address came to be on a conversation. `sender_named` is a claim, never evidence. */
 export type CounterpartyEvidence = "we_wrote" | "they_wrote" | "sender_named";
 
@@ -94,7 +113,7 @@ export function counterpartyEvidence(
        it corroborates nothing and the address drops to the claim it is. ONLY an explicit `fail`
        demotes — `pass` is never a precondition here (`pipeline.ts` states that rule), so a
        provider that publishes nothing, or was never asked, is admitted exactly as before. */
-    claim(m.from, m.authVerdict === "fail" ? "sender_named" : "they_wrote");
+    claim(m.from, authScreens(m.authVerdict) ? "sender_named" : "they_wrote");
     for (const r of m.recipients) claim(r, "sender_named");
   }
   return out;

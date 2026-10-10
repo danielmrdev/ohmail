@@ -1694,15 +1694,16 @@ export class DrizzleRepo implements WorkerRepo, RoutingPort {
    */
   async upsertFolderState(messageId: string, s: FolderStateRow): Promise<void> {
     const reconcileStatus = reconcileStatusFor(s);
+    const decided = s.decidedAt !== undefined ? { decidedAt: s.decidedAt } : {};
     await this.db.insert(folderState).values({
       messageId, desiredFolder: s.desiredFolder, observedFolder: s.observedFolder,
-      lastSetBy: s.lastSetBy, reconcileStatus, conflict: false,
+      lastSetBy: s.lastSetBy, reconcileStatus, conflict: false, ...decided,
     }).onConflictDoUpdate({
       target: folderState.messageId,
       set: {
         desiredFolder: s.desiredFolder, observedFolder: s.observedFolder, lastSetBy: s.lastSetBy,
         reconcileStatus, conflict: false, updatedAt: new Date(),
-        attempts: 0, nextAttemptAt: null,
+        attempts: 0, nextAttemptAt: null, ...decided,
       },
     });
   }

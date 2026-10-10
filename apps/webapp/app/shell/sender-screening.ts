@@ -772,6 +772,10 @@ export async function dispatchScreeningChange(
   /** The press's moves, dispatched after the rules and the decide — {@link movesAtLanding}'s. */
   pressMoves: readonly PressMove[],
   mutate: (m: EngineMutation) => Promise<{ status: MutationStatus; error?: { code: string | null } }>,
+  /** The letters the press files, moved or already there (a card's Ohbox letters need no move). */
+  filed: number = pressMoves.length,
+  /** A card's moves wait for the rule's or the decide's answer, and go only when it stands. */
+  gated = false,
 ): Promise<ScreeningToastKey | null> {
   const rules = plan.ruleMutations.map((m) => mutate(m));
   /* …AND THE DECIDE, in the plan's own order: a refused decision is the answer the sentence owes.
@@ -783,15 +787,16 @@ export async function dispatchScreeningChange(
     if (plan.ruleMutations.includes(m)) continue;
     decides.push(mutate(m));
   }
-  const moves = pressMoves.map((m) => mutate(m));
+  const early = gated ? [] : pressMoves.map((m) => mutate(m));
   const answers = await Promise.all([...rules, ...decides]);
-  await Promise.allSettled(moves);
-  // Our own address, where nothing moved: a press that moved mail keeps the sentence saying so.
-  if (pressMoves.length === 0 && refusedAsOwnAddress(answers)) return "toastOwnAddress";
   const worst = worstStatus(answers);
+  const late = gated && worst !== "rolled_back" && worst !== "superseded" ? pressMoves.map((m) => mutate(m)) : [];
+  await Promise.allSettled([...early, ...late]);
+  // Our own address, where nothing moved: a press that moved mail keeps the sentence saying so.
+  if (early.length + late.length === 0 && refusedAsOwnAddress(answers)) return "toastOwnAddress";
   // Replaced by a newer press about this sender: that press says the sentence, this one none.
   if (worst === "superseded") return null;
-  return screeningToast(plan, worst, pressMoves.length);
+  return screeningToast(plan, worst, filed);
 }
 
 /**

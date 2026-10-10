@@ -197,6 +197,11 @@ async function release(
     if (rows.length === 0) return 0;
     for (const r of rows) {
       await upsertDesired(tx, r, OHBOX, now);
+      // An answer released for itself alone is decided for that letter, as the ingest's reply arm
+      // stamps it: a later letter from the address never pulls it back.
+      if (cleared !== null) {
+        await tx.update(folderState).set({ decidedAt: now }).where(eq(folderState.messageId, r.messageId));
+      }
       await recordChange(ledger(tx), {
         accountId, entityType: "message", entityId: r.messageId, op: "move",
         meta: { from: SCREENER_FOLDER, to: OHBOX },

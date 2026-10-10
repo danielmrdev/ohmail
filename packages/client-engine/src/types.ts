@@ -427,6 +427,12 @@ export interface EngineMessage extends EngineMessageExtras {
   senderCheck?: {
     reason: "impersonation"; brand: string; domainShared: boolean; by?: "ingest" | "backfill"; list?: boolean;
   } | null;
+  /**
+   * THIS LETTER'S PLACE IS DECIDED (`MessageDTO.placeDecided`): a person placed it, or the gate
+   * admitted it as an answer to the person's own writing. The partition keeps such a letter in
+   * the INBOX where it is, whatever its sender's standing. Absent: no such decision is known.
+   */
+  placeDecided?: true;
 }
 
 /**
@@ -895,6 +901,11 @@ export interface ScreenerSenderDTO {
    */
   checked?: { reason: "impersonation"; brand: string; domainShared: boolean; domain: string; list?: true };
   /**
+   * HOW MANY LETTERS OF THIS SENDER THE LISTS SHOW PAST THE GATE — in the Ohbox, News or Receipts.
+   * A waiting row is first contact only while this is absent: an answer the gate admitted is there.
+   */
+  reached?: number;
+  /**
    * An enabled allow rule names this sender's domain, and the domain is a shared provider's: the
    * rule admits nobody, so the sender waits as a stranger the rule seemed to cover. Said on the row.
    */
@@ -1110,7 +1121,12 @@ export const VIEW_OF_FOLDER: Record<Folder | typeof LEGACY_NEWS_FOLDER, OhmailVi
  * served in-place (fixtures).
  */
 export type EngineMutation =
-  | { kind: "move"; messageId: string; folder: Folder }
+  /**
+   * MOVE. `from`: applied only while the letter is still in that folder — a Screener card's move by
+   * id, so a press replayed after the person filed the letter elsewhere leaves it there (the server
+   * answers `stale_press`, read as superseded). Absent: unconditional, every other move.
+   */
+  | { kind: "move"; messageId: string; folder: Folder; from?: Folder }
   /**
    * DELETE — the message rides to the provider's native `\Trash` on the server (never an
    * expunge) and leaves the mirror's living views everywhere (`DELETE /messages/:id`, mail
@@ -1925,6 +1941,8 @@ export interface ScreenerWaitingSenderDTO {
   mailboxId: string | null;
   /** The page's `total`, on every row for {@link HeldReleaseGroupDTO.total}'s reason. */
   total: number;
+  /** A held letter of this sender claims a company (the page's `checked`): another address's press keeps them waiting. */
+  marked?: true;
 }
 
 /**

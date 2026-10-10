@@ -55,6 +55,12 @@ export interface ScreenerIntent {
   from: { name: string | null; address: string };
   /** The sender sheet's past-mail answer, when the decision came from the sheet. Optional on disk. */
   applyRetro?: boolean;
+  /**
+   * A CARD PRESS'S INBOX LETTERS: the card shows them, so the decision files exactly them, by id, and
+   * no rule reaches mail already filed elsewhere. Absent on a sheet press and on a
+   * record written before the field, which keep the server's default.
+   */
+  inboxIds?: string[];
 }
 
 /**
@@ -88,6 +94,7 @@ function isIntent(x: unknown): x is ScreenerIntent {
     && typeof r.at === "number"
     && typeof r.derived === "boolean"
     && Array.isArray(r.heldIds) && r.heldIds.every((h) => typeof h === "string")
+    && (r.inboxIds === undefined || (Array.isArray(r.inboxIds) && r.inboxIds.every((h) => typeof h === "string")))
     && typeof r.from === "object" && r.from !== null
     && typeof (r.from as Record<string, unknown>).address === "string";
 }
@@ -130,11 +137,11 @@ function save(rows: ScreenerIntent[]): DurableWrite {
  */
 export function armScreenerIntent(intent: ScreenerIntent): DurableWrite {
   const rows = load().filter((r) => r.id !== intent.id);
-  rows.push(
-    intent.heldIds.length <= INTENT_HELD_IDS_MAX
-      ? intent
-      : { ...intent, heldIds: intent.heldIds.slice(0, INTENT_HELD_IDS_MAX) },
-  );
+  rows.push({
+    ...intent,
+    heldIds: intent.heldIds.slice(0, INTENT_HELD_IDS_MAX),
+    ...(intent.inboxIds ? { inboxIds: intent.inboxIds.slice(0, INTENT_HELD_IDS_MAX) } : {}),
+  });
   return save(rows);
 }
 

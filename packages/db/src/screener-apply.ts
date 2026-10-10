@@ -10,6 +10,7 @@ import { recordLearningSignal } from "./learning-signal.js";
 import { upsertDesiredSeenMany } from "./flag-intent.js";
 import { ruleMatchKey, ruleMatchKeySql, sharedProviderAllowRefusal, SharedProviderDomainError } from "./rule-match-sql.js";
 import { keptProvenance, lockAccountRuleKeys, writeRuleUnderKey, type RuleRowWrite } from "./rule-key.js";
+import { storedAuthScreens } from "./screening-verdicts.js";
 
 /**
  * `@trafficflow/core/rule-order#RULE_PRIORITY_MAX`, copied: this package does not import core.
@@ -406,6 +407,20 @@ function domainIs(tx: Tx, domain: string): SQL {
 /** Ids per read-back of the rows a press checked first. */
 const HELD_CHECK_READ_BATCH = 500;
 
+/**
+ * DOES A PERSON'S PRESS MOVE THIS HELD ROW — `@trafficflow/core/sender-headers#heldMovesOnPress`,
+ * copied for the header's reason and pinned equal by `screener-press-moves-one-rule.test.ts`
+ * (services). The client's optimistic overlay asks core's, so the two cannot hide different rows.
+ */
+export function heldRowMovesOnPress(
+  r: Pick<AppliedScreenerRow, "senderCheck" | "fromAddress" | "authVerdict">,
+  pressed: string, marked: "pressed" | "none" = "pressed",
+): boolean {
+  if (marked === "none" && storedAuthScreens(r.authVerdict)) return false;
+  if (r.senderCheck === "none") return true;
+  return marked === "pressed" && r.fromAddress.trim().toLowerCase() === pressed.trim().toLowerCase();
+}
+
 export interface ApplyScreenerDecisionInput {
   accountId: string;
   scope: "sender" | "domain";
@@ -689,12 +704,8 @@ export async function applyScreenerDecision(
   }
 
   // A claim, or a row nobody checked, moves only on a press made on its own address.
-  const movable = (r: AppliedScreenerRow): boolean => {
-    if (marked === "none" && r.authVerdict === "fail") return false;
-    if (passAdmits) return r.senderCheck === "none";
-    if (r.senderCheck === "none") return true;
-    return marked === "pressed" && r.fromAddress.toLowerCase() === pressed;
-  };
+  const movable = (r: AppliedScreenerRow): boolean =>
+    passAdmits ? r.senderCheck === "none" : heldRowMovesOnPress(r, address, marked);
   const moved = await rerouteHeldBag(tx, accountId, heldMail.filter(movable), appliedFolder, now);
   if (moved.lastSeq !== null) lastSeq = moved.lastSeq;
   const { rerouted, heldElsewhere } = moved;
@@ -704,7 +715,7 @@ export async function applyScreenerDecision(
      moved nor consented, and its brand cannot admit the next forgery. Another brand still waits; a
      claim that failed authentication consents nothing. */
   if (consents) {
-    const brands = rerouted.filter((r) => r.authVerdict !== "fail").map((r) => r.senderCheckBrand ?? "");
+    const brands = rerouted.filter((r) => !storedAuthScreens(r.authVerdict)).map((r) => r.senderCheckBrand ?? "");
     if (brands.some((b) => b !== "")) await consentListBrands(tx, accountId, pressed, brands);
   }
 

@@ -41,6 +41,7 @@ import {
   storedRuleDestination,
   scheduledSendsList,
   draftsList,
+  cardReach,
   draftBodyKnown,
   SENDING_STALE_AFTER_MS,
   HELD_SEND_RECHECK_MS,
@@ -90,6 +91,7 @@ import {
   type StayedWhy,
   inverseMutations,
   routingSubject,
+  type CardReach,
   type DecideIntent,
   type RoutingIntent,
   applySendAndDone,
@@ -141,7 +143,7 @@ import { ACCESS_REFUSED_CODE } from "../net/access-lock";
 import { folderLeafOf, folderUnreadCounts } from "./folders";
 /* Move/Junk: the mail now, the sender's routing after the window. See the module. */
 import {
-  heldOn, holdRouting, holdScreenRouting, restartRouting, takeRoutingReversal, undoRouting, undoRoutingPress,
+  heldForSender, heldOn, holdRouting, holdScreenRouting, restartRouting, takeRoutingReversal, undoRouting, undoRoutingPress,
   type RoutingReplay, type ScreenCommitAnswer,
 } from "./held-routing";
 import type { ScreeningAnswer } from "../net/consent";
@@ -1491,6 +1493,8 @@ export interface ScreenerRow {
   checked?: { brand: string; domainShared: boolean; domain: string; list?: true };
   /** An allow rule for everyone at this sender's shared provider names them and admits nobody. */
   inertRule?: { domain: string };
+  /** Letters of this sender already past the gate (`ScreenerSenderDTO.reached`); 0 = first contact. */
+  reached: number;
   /** Every held message, oldest first — all of it, always, never a collapsed count. */
   held: ScreenerHeld[];
   /** screened rows only. */
@@ -1538,6 +1542,11 @@ function aiOfDto(ai: ScreenerSenderDTO["ai"]): ScreenerRow["ai"] {
     : null;
 }
 
+/** WHOLE-DOMAIN SCOPE IS NEVER OFFERED FOR A SHARED PROVIDER — a decision about everyone at a provider people share — as on the web. */
+export function domainScopeOffered(address: string): boolean {
+  return !isSharedProviderDomain(domainOf(address).toLowerCase());
+}
+
 function rowOf(dto: ScreenerSenderDTO, scope: Scope | undefined): ScreenerRow {
   const held: ScreenerHeld[] = dto.held.map((h) => ({
     id: h.id,
@@ -1561,7 +1570,7 @@ function rowOf(dto: ScreenerSenderDTO, scope: Scope | undefined): ScreenerRow {
     time: dto.time,
     newestSubject: held[held.length - 1]?.subject ?? "",
     dull: dto.dull === true,
-    scope: scope ?? dto.scope,
+    scope: domainScopeOffered(dto.from.address) ? scope ?? dto.scope : "sender",
     ai,
     ...(dto.checked ? {
       checked: {
@@ -1570,6 +1579,7 @@ function rowOf(dto: ScreenerSenderDTO, scope: Scope | undefined): ScreenerRow {
       },
     } : {}),
     ...(dto.inertRule ? { inertRule: { domain: dto.inertRule.domain } } : {}),
+    reached: dto.reached ?? 0,
     held,
     screenedOn: dto.screenedOn ?? "",
     detection: "",
@@ -2310,6 +2320,7 @@ export async function dispatchHeldRouting(
   engine: OhmailEngine, mutations: readonly EngineMutation[], intent: AnyRoutingIntent,
   hooks: { answered: (answers: readonly (MutationResult | null)[]) => boolean; refused: () => void },
 ): Promise<boolean | "nothing"> {
+  if (intent.v === 3) return dispatchDecideCommit(engine, mutations, hooks);
   const own = intent.v === 1
     ? engine.pendingMutations().find((p) => p.key === intent.id && p.mutation.kind === "move")?.mutation
     : undefined;
@@ -2328,28 +2339,83 @@ export async function dispatchHeldRouting(
   return made;
 }
 
+/**
+ * A HELD DECISION'S COMMIT: the decide (or its rules) and the read batch first, the card's moves by id
+ * only once the decision was neither refused nor replaced. The verdict is the decision's own: a move
+ * the server skips because the letter was filed elsewhere since is no failure of it.
+ */
+async function dispatchDecideCommit(
+  engine: OhmailEngine, mutations: readonly EngineMutation[],
+  hooks: { answered: (answers: readonly (MutationResult | null)[]) => boolean; refused: () => void },
+): Promise<boolean | "nothing"> {
+  const lead = mutations.filter((mu) => mu.kind !== "move");
+  const leadAnswers = await Promise.all(lead.map((mu) => engine.mutate(mu).catch(() => null)));
+  const refused = leadAnswers.some((r) => r === null || r?.status === "rolled_back");
+  const silent = leadAnswers.length > 0 && leadAnswers.every((r) => r?.status === "superseded");
+  const moves = refused || silent ? [] : mutations.filter((mu) => mu.kind === "move");
+  const moved = await Promise.all(moves.map((mu) => engine.mutate(mu).catch(() => null)));
+  let li = 0;
+  let mi = 0;
+  const answers = mutations.map((mu) => (mu.kind === "move" ? (moved[mi++] ?? null) : (leadAnswers[li++] ?? null)));
+  const made = mutations.length === 0 || silent ? "nothing" as const : true;
+  if (hooks.answered(answers)) return refused ? false : made;
+  if (refused) { hooks.refused(); return false; }
+  return made;
+}
+
 /** Screen out and Spam are the endpoint's `no`; the three places a sender may write to are `yes`. */
 const decisionOf = (dest: ScreenDest): "yes" | "no" => (dest === "screened" || dest === "spam" ? "no" : "yes");
 
 /**
+ * The card's letters the RAW mirror holds in the INBOX, each once and none whose place is decided,
+ * moved by id ONLY while still in the INBOX (`from`: the server skips one filed elsewhere since). An
+ * Ohbox decision plans none: they are already there.
+ */
+function cardInboxMoves(reader: EntityReader, ids: readonly string[], dest: ScreenDest): EngineMutation[] {
+  if (FOLDER_OF_VIEW[dest] === FOLDER_OF_VIEW.ohbox) return [];
+  return [...new Set(ids)].filter((id) => {
+    const m = reader.get<EngineMessage>("message", id);
+    return m?.folder === "INBOX" && m.placeDecided !== true;
+  }).map((id) => ({ kind: "move" as const, messageId: id, folder: FOLDER_OF_VIEW[dest], from: FOLDER_OF_VIEW.ohbox }));
+}
+
+/** Another sender's letters the card named, less those whose own held press now files them. */
+function alsoStill(reader: EntityReader, ids: readonly string[], except: string): string[] {
+  return ids.filter((id) => {
+    const m = reader.get<EngineMessage>("message", id);
+    return m !== undefined && !heldForSender(m.from.address, except);
+  });
+}
+
+/** The card's row first, then every other waiting row, as {@link cardReach} reads them. */
+function reachRows(row: ScreenerRow, peers: readonly ScreenerRow[]): Array<{ address: string; heldIds: string[] }> {
+  const own = senderKey(row.address);
+  return [row, ...peers.filter((p) => senderKey(p.address) !== own)]
+    .map((r) => ({ address: r.address, heldIds: r.held.map((h) => h.id) }));
+}
+
+/**
  * WHAT A HELD SCREENER DECISION COMMITS, re-read at the close and never replayed from the record:
  * a representative still held at the gate, or one only the store holds, is decided with
- * `screener_decide`; one past the gate is ruled through the twins ladder with the past-mail answer
- * and moves nothing (THE-CLIENTS-FIFTY). A let-in's "&read" batch rides behind it.
+ * `screener_decide`; one past the gate is ruled through the twins ladder. Neither reaches mail
+ * already filed elsewhere: the card's INBOX letters move by id. A let-in's "&read" batch rides behind.
  */
 export function planDecideCommit(reader: EntityReader, intent: DecideIntent): EngineMutation[] {
   const rep = reader.get<EngineMessage>("message", intent.seedId);
   const decision = decisionOf(intent.dest);
   const address = intent.address.trim().toLowerCase();
+  /* THE CARD FILES WHAT IT SHOWS: no rule of this press reaches mail already
+     filed elsewhere, and the INBOX letters the card listed move by id beside the decision. */
   const out: EngineMutation[] = rep === undefined || physicalFolderOf(rep) === FOLDER_OF_VIEW.screener
     ? [{
       kind: "screener_decide", senderId: intent.seedId, decision, dest: intent.dest,
-      ...(decision === "yes" ? { read: intent.read } : {}), scope: intent.scope,
+      ...(decision === "yes" ? { read: intent.read } : {}), scope: intent.scope, applyRetro: false,
     }]
     : pressOverTwins(
       rulesList(reader), intent.scope, intent.scope === "domain" ? domainOf(address).toLowerCase() : address,
-      FOLDER_OF_VIEW[intent.dest], true,
+      FOLDER_OF_VIEW[intent.dest], false,
     ).writes;
+  out.push(...cardInboxMoves(reader, [...intent.messageIds, ...alsoStill(reader, intent.alsoIds ?? [], intent.id)], intent.dest));
   if (intent.read && decision === "yes") {
     for (let i = 0; i < intent.messageIds.length; i += MARK_SEEN_CHUNK) {
       out.push({ kind: "mark_seen", messageIds: intent.messageIds.slice(i, i + MARK_SEEN_CHUNK), unread: false });
@@ -3023,8 +3089,13 @@ export interface LiveWorldActions {
   sweepFeed(view: FeedView, passedIds: string[]): Promise<boolean>;
   /** Leaving the stream commits the waterline above the newest swept row. */
   leaveFeed(view: FeedView): Promise<boolean>;
-  /** A waiting sender's decision — the five destinations, "&read", sender/domain scope. */
-  decide(row: ScreenerRow, dest: Destination, read: boolean, scope: Scope): Promise<boolean>;
+  /**
+   * A waiting sender's decision — the five destinations, "&read", sender/domain scope. `peers`, the
+   * waiting rows on screen: a whole-domain press files their letters at that domain too.
+   */
+  decide(row: ScreenerRow, dest: Destination, read: boolean, scope: Scope, peers?: readonly ScreenerRow[]): Promise<boolean>;
+  /** What that press files beyond the row's own letters, before it is made ({@link cardReach}). */
+  reachOf(row: ScreenerRow, peers: readonly ScreenerRow[], scope: Scope): CardReach;
   /** Allow / Not-spam: release the held bag to a place, REWRITING the holding rules. */
   release(row: ScreenerRow, dest: Place, segment: "screened" | "spam"): Promise<boolean>;
   /** The message screen's triage: Answer Later / Park / Resurface. */
@@ -3693,14 +3764,23 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
    * only where it differs — refused, sent to the organizer, or recorded for another install.
    * Nothing to hold it by (no session, a record that did not land): {@link decideNow}.
    */
-  const decide = async (row: ScreenerRow, dest: Destination, read: boolean, scope: Scope): Promise<boolean> => {
+  const reachOf = (row: ScreenerRow, peers: readonly ScreenerRow[], scope: Scope): CardReach =>
+    cardReach(engine.read(), reachRows(row, peers), row.address, scope);
+
+  const decide = async (
+    row: ScreenerRow, dest: Destination, read: boolean, pressed: Scope, peers: readonly ScreenerRow[] = [],
+  ): Promise<boolean> => {
+    const scope: Scope = domainScopeOffered(row.address) ? pressed : "sender";
     const rep = engine.read().get<EngineMessage>("message", row.id);
     const decision = decisionOf(dest as ScreenDest);
     const target = scope === "domain" ? `@${domainOf(row.address)}` : row.address;
+    // A whole-domain card files the other waiting senders' INBOX letters it named, too.
+    const own = new Set(row.held.map((h) => h.id));
+    const also = scope === "domain" ? reachOf(row, peers, scope).inboxIds.filter((id) => !own.has(id)) : [];
     const intent: DecideIntent = {
       v: 3, verb: "decide", id: deps.uuid ? deps.uuid() : `${row.id}:${now().getTime()}`, seedId: row.id,
       address: row.address, scope, dest: dest as ScreenDest, read: read && decision === "yes",
-      messageIds: row.held.map((h) => h.id), at: now().getTime(),
+      messageIds: row.held.map((h) => h.id), ...(also.length > 0 ? { alsoIds: also } : {}), at: now().getTime(),
     };
     const decidedSaid = refuse("liveDecided", destDone(dest), target);
     const atGate = rep === undefined || physicalFolderOf(rep) === FOLDER_OF_VIEW.screener;
@@ -3709,7 +3789,7 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
     const hold = deps.leaveWaiting?.({ address: row.address, scope });
     const opened = await holdScreenRouting(intent, (a) => {
       // The read batch stays unwatched, as it always was: only the decision's own writes answer.
-      const own = a.mutations.flatMap((m, i) => (m.kind === "mark_seen" ? [] : [a.answers[i] ?? null]));
+      const own = a.mutations.flatMap((m, i) => (m.kind === "mark_seen" || m.kind === "move" ? [] : [a.answers[i] ?? null]));
       const v = oneVerdict(own.map((r) => (r ? pressVerdict(r) : PRESS_THREW)));
       if (v.kind === "applied") deps.forgetWaiting?.({ address: row.address, scope });
       hold?.();
@@ -3730,7 +3810,7 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
     });
     // Sent by the window itself (its record refused): the answer above speaks for the press.
     if (opened.sent) return true;
-    if (!opened.held) { hold?.(); return decideNow(row, dest, read, scope); }
+    if (!opened.held) { hold?.(); return decideNow(row, dest, read, scope, also); }
     spoke = true;
     const subject = routingSubject(intent);
     toast(pressSaid, {
@@ -3748,7 +3828,9 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
   };
 
   /** The same decision with no window to hold it: sent now, and the sentence waits for the answer. */
-  const decideNow = async (row: ScreenerRow, dest: Destination, read: boolean, scope: Scope): Promise<boolean> => {
+  const decideNow = async (
+    row: ScreenerRow, dest: Destination, read: boolean, scope: Scope, also: readonly string[] = [],
+  ): Promise<boolean> => {
     const raw = engine.read();
     const rep = raw.get<EngineMessage>("message", row.id);
     // Demote-stays-unread: filing to Screen out or Spam never carries a read verb.
@@ -3785,6 +3867,7 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
         dest: dest as ScreenDest,
         ...(decision === "yes" ? { read: readFlag } : {}),
         scope,
+        applyRetro: false,
       }).then(
         (r) => {
           queuedWith = r.pendingWith ?? null;
@@ -3793,14 +3876,14 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
         () => PRESS_THREW,
       );
     } else {
-      /* PAST THE GATE — the web's ladder (`screener-state.ts` → `planScreeningChange`) and this
-         file's own sender sheet: the twins decide through `pressOverTwins`, which always leaves a
-         rule in force with the past-mail answer, so the backlog is the server pass's and this
-         press moves none of it (THE-CLIENTS-FIFTY): only the pass sees a reply or a hand filing. */
+      /* PAST THE GATE — the web's ladder (`screener-state.ts` → `planScreeningChange`): the twins
+         decide through `pressOverTwins` with no past-mail answer, and the card's INBOX letters move
+         by id below: the card files what it shows and nothing filed elsewhere. */
       const match = scope === "domain" ? domainOf(row.address).toLowerCase() : row.address.trim().toLowerCase();
-      const { writes } = pressOverTwins(rulesList(raw), scope, match, FOLDER_OF_VIEW[dest as ScreenDest], true);
+      const { writes } = pressOverTwins(rulesList(raw), scope, match, FOLDER_OF_VIEW[dest as ScreenDest], false);
       landed = Promise.all(writes.map((w) => watched(engine.mutate(w)))).then(oneVerdict);
     }
+    const cardMoves = cardInboxMoves(raw, [...row.held.map((h) => h.id), ...alsoStill(raw, also, "")], dest as ScreenDest);
     // "&read" stays a separate batch, exactly as the wire has it: `POST /screener/:id`
     // carries no read field, so the seen half is the same `PATCH /messages` everyone uses.
     // Deliberately unwatched (the webapp's one deliberate `void mutate`): the DECISION has
@@ -3819,6 +3902,8 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
        shape of the defect rather than a smaller version of it. The wait is one round trip on a
        press that already blocks on nothing else. */
     const v = await landed;
+    // The card's moves follow the decision's answer: refused or replaced, no letter moves by id.
+    if (v.kind === "applied" || v.kind === "queued") for (const mv of cardMoves) void engine.mutate(mv);
     /* ══ AND THE SHELF FOLLOWS THE DECIDE, NOT THE NEXT DRAIN ══════════════════════════════
        Confirmed only — a queued press has not occurred and a refused one changed nothing, and
        retiring a row for either would be the same false state pointing the other way. Before
@@ -5364,7 +5449,7 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
     openMessage, leaveMessage, hydrateMessage, forwardFetch, hydrateHeld, holdFiles, releaseFiles, loadInlineImages,
     watchLists, openAttachmentBytes,
     releaseAttachments,
-    sweepFeed, leaveFeed, decide, release, setPile,
+    sweepFeed, leaveFeed, decide, reachOf, release, setPile,
     pileToggle, resurfaceToggle, resurfaceAt, resurfaceNow, resurfaceDone, markSeen, markGlanced, markAllSeen, move,
     deleteMessage, trashList, trashRestore,
     sendReply, sendForward, sendNew, sendAndDoneOffered, withdrawSend, cancelSchedule, tagToggle, tagCreate, screenSender,
@@ -5411,7 +5496,10 @@ export interface WorldActions {
   /** A screen's hold on the file lists it shows — see {@link LiveWorldActions.holdFiles}. */
   holdFiles(ids: string[]): void;
   releaseFiles(ids: string[]): void;
-  decide(row: ScreenerRow, dest: Destination, read: boolean): void;
+  /** `peers`: the waiting rows on screen, whose letters at the domain a whole-domain press files too. */
+  decide(row: ScreenerRow, dest: Destination, read: boolean, peers?: readonly ScreenerRow[]): void;
+  /** What a press on `row` files beyond its own letters, at the row's scope, before it is made. */
+  reachOf(row: ScreenerRow, peers: readonly ScreenerRow[]): CardReach;
   setScope(row: ScreenerRow, scope: Scope): void;
   /** Allow (screened) / Not spam (spam): release the whole held bag to a place. */
   allow(row: ScreenerRow, dest: Place): void;
@@ -5535,7 +5623,8 @@ export function stableActions(current: () => WorldActions): WorldActions {
     hydrateHeld: (ids) => current().hydrateHeld(ids),
     holdFiles: (ids) => current().holdFiles(ids),
     releaseFiles: (ids) => current().releaseFiles(ids),
-    decide: (row, dest, read) => current().decide(row, dest, read),
+    decide: (row, dest, read, peers) => current().decide(row, dest, read, peers),
+    reachOf: (row, peers) => current().reachOf(row, peers),
     setScope: (row, scope) => current().setScope(row, scope),
     allow: (row, dest) => current().allow(row, dest),
     notSpam: (row, dest) => current().notSpam(row, dest),

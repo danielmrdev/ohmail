@@ -349,6 +349,8 @@ export function messageRowToDTO(
     authVerdict: asAuthVerdict(m.authVerdict),
     // The identity fact, spread-in: a NULL column (never checked) leaves the key ABSENT.
     ...senderCheckOf(m.senderCheck, m.senderCheckBrand, m.fromAddress, m.senderCheckBy, listAddress === true),
+    // A placement somebody decided — a person, or the gate's admission of an answer — keeps the key.
+    ...(fs?.decidedAt != null ? { placeDecided: true as const } : {}),
     // Spread-in rather than a plain `autoReplyByUs:` so an un-asked caller yields a DTO with the
     // key ABSENT, not present-and-undefined. The two are the same in TypeScript and different
     // over JSON, and "this server does not know" must look exactly like "this server predates

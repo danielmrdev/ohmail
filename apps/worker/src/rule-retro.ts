@@ -582,14 +582,13 @@ function aLiveMailboxIsOutsideTheWalk(accountId: string) {
 }
 
 /**
- * ONE page of mail a rule may reconsider — LOCKED FOR UPDATE, oldest id first. Written fresh, not
- * copied from `sensitive-rescreen.ts#selectCandidates` (which excludes senders with an enabled
- * `rules` row — here the rule being applied). Candidates: the rule's {@link matchPredicate}
- * (narrowing; the router decides), `folder_state.desired_folder <> rule.destination` (the
- * idempotency), mailbox not `disabled`. Five user-intent exclusions: `folder_state.last_set_by` in
- * `'us'`/`'peer'` only (`reconcileFolders` skips `!== "us"`); no non-`none` `message_states`; no
- * `drafts` reply; no DECIDED `approvals` (`status <> 'pending'`); no same-thread own-address reply.
- * READ is NOT excluded. `FOR UPDATE OF folder_state` (not `message_bodies`); `rule-retro.pg.test.ts`.
+ * ONE page of mail a rule may reconsider — LOCKED FOR UPDATE, oldest id first; written fresh, not
+ * copied from `sensitive-rescreen.ts#selectCandidates`. Candidates: the rule's {@link matchPredicate}
+ * (the router decides), `folder_state.desired_folder <> rule.destination`, mailbox not `disabled`.
+ * User-intent exclusions: `last_set_by` in `'us'`/`'peer'` only (`reconcileFolders` skips `!== "us"`);
+ * no non-`none` `message_states`; no `drafts` reply; no DECIDED `approvals`; no same-thread
+ * own-address reply; outside a release run, no placement somebody decided away from the gate
+ * (`folder_state.decided_at`). READ is NOT excluded. `FOR UPDATE OF folder_state`; `rule-retro.pg.test.ts`.
  */
 async function selectCandidates(
   t: Tx,
@@ -682,6 +681,11 @@ async function selectCandidates(
       fromAddress: messages.fromAddress as unknown as SQL,
       ownAddresses: opts.ownAddresses,
     })}`);
+    /* 7 — A PLACE SOMEBODY DECIDED (`decided_at`): the person's own filing, here or adopted from
+       another client, and an answer the gate admitted for itself alone. A rule about the sender never
+       moves it. A letter put back at the gate waits for a decision about its sender, and a rule the
+       person made is that decision (the act's own rule leaves it: 6 below). */
+    filters.push(sql`(${folderState.decidedAt} is null or ${folderState.desiredFolder} = ${SCREENER_GATE})`);
   }
   // 6 — THE ACT ON SUGGESTIONS' RULE LEAVES WHAT THE PERSON PUT BACK (mail 0138): it re-walks the
   // sender's backlog, and a filing the person undid is not an automatic decision's to make again.

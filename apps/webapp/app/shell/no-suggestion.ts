@@ -13,10 +13,9 @@ export type NoSuggestionReason =
   /** Nobody has asked about this sender yet, and asking would work. The only "yet". */
   | "pending"
   /**
-   * The account OPTED IN to automatic suggestions and nothing stands in their way, so one is on
-   * its way without anybody pressing anything — the worker buys on ingest and its cycle, and the
-   * open Screener re-reads what was bought. Its own state rather than a reworded `pending`,
-   * because the two make different promises: `pending` offers a press, this names a cadence.
+   * A RUN IS BUYING A SUGGESTION FOR THIS SENDER RIGHT NOW, so one is on its way. Only that licenses
+   * the promise: an opt-in alone said it on an account whose every run is
+   * refused, and on a surface whose own run had not been made. `pending` offers a press instead.
    */
   | "coming"
   /**
@@ -94,17 +93,16 @@ export function noSuggestionKey(
  * Which of the four this row is. Read only where the row carries no `ai` at all — a `noAnswer`
  * is a nearer, more specific fact. `noAi` is read FIRST: it says why nothing arrived
  * automatically, the question a row never in a run is asking. The standing spend refusal
- * OUTRANKS the opt-in — an account that opted in and then ran out is not owed a "coming" the
- * next run cannot keep. `autoSuggest` is the opt-in fact, absent on every surface with no
- * server behind it, and absent must read as NO.
+ * OUTRANKS a run in flight. `inFlight` is whether a run of this surface is buying this sender
+ * now ({@link ScreenerSuggestions.inFlight}); absent reads as NO.
  */
 export function noSuggestionReason(
   sender: { noAi?: true },
   standing: SuggestStanding | null,
-  autoSuggest?: boolean,
+  inFlight?: boolean,
 ): NoSuggestionReason {
   if (sender.noAi) return "no_auto_ai";
   if (standing !== null) return "unavailable";
-  if (autoSuggest === true) return "coming";
+  if (inFlight === true) return "coming";
   return "pending";
 }

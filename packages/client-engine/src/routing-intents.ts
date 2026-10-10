@@ -90,6 +90,11 @@ export interface DecideIntent {
   read: boolean;
   /** The held ids — the overlay's set and the read batch's. */
   messageIds: string[];
+  /**
+   * A whole-domain card's other waiting senders' letters at that domain, which its press files too
+   * (`cardReach`). Absent at sender scope and on a record from before the field.
+   */
+  alsoIds?: string[];
   at: number;
 }
 
@@ -234,6 +239,7 @@ export function isDecideIntent(x: unknown): x is DecideIntent {
     && Object.prototype.hasOwnProperty.call(FOLDER_OF_VIEW, r.dest)
     && typeof r.read === "boolean"
     && Array.isArray(r.messageIds) && r.messageIds.every((m) => typeof m === "string")
+    && (r.alsoIds === undefined || (Array.isArray(r.alsoIds) && r.alsoIds.every((m) => typeof m === "string")))
     && typeof r.at === "number" && Number.isFinite(r.at);
 }
 

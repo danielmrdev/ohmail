@@ -246,6 +246,8 @@ export interface ScreenerWaitingItemWire {
   subject: string;
   snippet: string;
   mailboxId: string | null;
+  /** The page's `checked`: a held letter of this sender claims a company its address is not. */
+  marked?: true;
 }
 
 /** One page of the queue. `total` is stated on the first page only; `null` where none was. */

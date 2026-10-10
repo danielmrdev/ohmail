@@ -885,6 +885,8 @@ export {
   readerWithEffects,
   ruleFingerprint,
   rulesInPlay,
+  cardReach,
+  type CardReach,
   type ConflictCause,
   type ConflictGroup,
   type PressException,

@@ -177,7 +177,11 @@ export async function cutlineCounts(
              -- Does this sender have ANY mail still sitting where no decision has been made?
              -- Activity is measured over all six presented folders (above); membership in the
              -- undecided counts is not. See UNDECIDED_RESIDENCES.
-             ${anyOf(sql`fs.desired_folder in ${undecidedResidences}`)} as undecided_residence,
+             -- A letter in the INBOX whose place somebody decided (decided_at: a person's move, or
+             -- the gate admitting an answer to their writing) sits where a decision put it: the
+             -- partition's twin keeps it out of the queue and out of these counts alike.
+             ${anyOf(sql`fs.desired_folder in ${undecidedResidences}
+               and not (fs.desired_folder = 'INBOX' and fs.decided_at is not null)`)} as undecided_residence,
              -- A held claim that keeps its sender waiting, per row: the queue's own term
              -- (heldClaimWaitsSql, read by senderHasHeldClaimSql), so the count and the list agree,
              -- the person skip and its authentication half included.
