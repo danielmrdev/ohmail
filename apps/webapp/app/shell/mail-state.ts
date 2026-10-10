@@ -368,6 +368,7 @@ type OrganizerRow = Parameters<typeof readerStandDown>[0] & {
   organizerEventAt?: string | null;
   organizerEventSeenAt?: string | null;
   takeoverAuthorizedAt?: string | null;
+  gapLetters?: number | null;
 };
 
 /**
@@ -634,6 +635,23 @@ export function organizerNotices(facts: ReadonlyArray<OrganizerRow> | null): Org
     });
   }
   return out.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+}
+
+/**
+ * THE GAP OFFERS STANDING (mail 0151): per live mailbox this install organizes, the letters that
+ * arrived while no device was organizing it and that the person's rules would file. The server
+ * sends the count only while the offer waits for an answer; nothing moves until the person presses.
+ */
+export interface GapOffer {
+  id: string;
+  address: string;
+  count: number;
+}
+
+export function gapOffers(facts: ReadonlyArray<OrganizerRow> | null): GapOffer[] {
+  return (facts ?? []).flatMap((m) => m.status !== "disabled" && m.organizerRole !== "reader"
+    && typeof m.gapLetters === "number" && m.gapLetters > 0
+    ? [{ id: m.id ?? "", address: m.address ?? "", count: m.gapLetters }] : []);
 }
 
 /** Which kind one row is in, or `null` for a row with nothing to announce. */

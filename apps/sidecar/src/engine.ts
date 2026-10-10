@@ -189,6 +189,9 @@ import { bubbleUpPass } from "@trafficflow/worker/bubble-up";
    store is the authority and no worker will walk the backlog, so without it a Screener decision
    re-presented the old mail while the mailbox kept it where it was. */
 import { ruleRetroPass } from "@trafficflow/worker/rule-retro";
+/* MAIL FROM A GAP, the worker's pass for the same reason: on this door no worker rules the mail
+   that arrived while nothing organized the mailbox. */
+import { gapCatchupPass } from "@trafficflow/worker/gap-catchup";
 import { screenerAutoSuggestPass } from "@trafficflow/worker/screener-auto-suggest";
 import {
   screenerActConsentFrom, screenerAutoActPass, type ScreenerAutoActSettings,
@@ -1894,8 +1897,17 @@ export function withPullKick(
   routes: readonly Route[],
   runtimesFor: () => Iterable<{ ring(): void }>,
   runtimeFor: (mailboxId: string) => { ring(): void } | undefined = () => undefined,
+  onGapPress: (mailboxId: string) => void = () => undefined,
 ): Route[] {
   return routes.map((r) => {
+    /* THE GAP PRESS (mail 0151) RINGS ITS OWN MAILBOX: the organizer's next drain files the set. */
+    if (r.method === "POST" && r.pattern === "/mailboxes/:id/gap-letters") {
+      return { ...r, handler: async (req, deps, params) => {
+        const res = await r.handler(req, deps, params);
+        if (res.status === 202) { onGapPress(params.id ?? ""); runtimeFor(params.id ?? "")?.ring(); }
+        return res;
+      } };
+    }
     if (r.method !== "POST" || r.pattern !== "/sync/pull") return r;
     return {
       ...r,
@@ -2136,7 +2148,7 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
          the closure is only ever CALLED from a request handler, long after it exists. Local
          composition only — the hosted door proxies its resync to a worker and has no runtime
          here to force. */
-      ...withPullKick(withImportHandover(withForcedRedial(localRoutes, (id) => runtimes.get(id), log), (id) => runtimes.get(id)), () => runtimes.all(), (id) => runtimes.get(id)),
+      ...withPullKick(withImportHandover(withForcedRedial(localRoutes, (id) => runtimes.get(id), log), (id) => runtimes.get(id)), () => runtimes.all(), (id) => runtimes.get(id), (id) => gapOwed.add(id)),
       ...localAiRoutes(ai),
       ...localAutoSuggestRoutes({ db, accountId: world.accountId, ai, now }),
       // Which addresses this machine could serve same-network access on — the LAN ceremony's
@@ -2155,7 +2167,7 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
      * pairing mint) are structurally absent from it.
      */
     const hostApp: App | null = hostMode
-      ? createApp(withPullKick(withImportHandover(desktopHostRoutes, (id) => runtimes.get(id)), () => runtimes.all(), (id) => runtimes.get(id))) : null;
+      ? createApp(withPullKick(withImportHandover(desktopHostRoutes, (id) => runtimes.get(id)), () => runtimes.all(), (id) => runtimes.get(id), (id) => gapOwed.add(id))) : null;
     /**
      * The static half of the same door — the browser client the QR sends a phone to. Probed NOW,
      * awaited, so `host_assets_missing` lands in the boot log where somebody debugging an
@@ -2409,6 +2421,18 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
      * run in flight. There is one account, so nothing here is per-mailbox fair.
      */
     let accountPass: Promise<void> | null = null;
+    /**
+     * THE MAILBOXES WHOSE ORGANIZING TENURE HAS HAD A QUIET DRAIN — the gap catch-up's licence.
+     * Process-local: added when a drain this install ran as the organizer ended with nothing new,
+     * removed by any pass that does not organize (a stand-down, a hand-back). Never inside the gate
+     * and never on observed folders the new tenure has not brought up to date.
+     */
+    const gapCatchupReady = new Set<string>();
+    /**
+     * THE MAILBOXES THE GAP PASS OWES A RUN, so a settled drain asks the store nothing: each attach
+     * once, a look that opens a window, and a recorded press. A pass that ran leaves nothing owed.
+     */
+    const gapOwed = new Set<string>();
     const onceForTheAccount = async (fn: () => Promise<void>): Promise<void> => {
       if (accountPass) { await accountPass; return; }
       const run = fn().finally(() => { accountPass = null; });
@@ -2632,6 +2656,34 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
           reason: "no rule was marked applied and no cursor advanced past uncommitted work, so " +
             "the next drain resumes; mail already desired is carried by the reconciler",
         });
+      }
+    };
+
+    /**
+     * MAIL FROM A GAP — the worker's `gapCatchupPass`, for the mailboxes this install organizes
+     * whose tenure has had a quiet drain ({@link gapCatchupReady}). It COUNTS the offer the person
+     * answers, and files only on their press (`POST /mailboxes/:id/gap-letters` rings this drain).
+     * A failure leaves the window standing, so the next drain resumes.
+     */
+    const gapCatchupDue = async (): Promise<void> => {
+      const ready = runtimes.all()
+        .filter((rt) => rt.organizer.organizing && gapCatchupReady.has(rt.mailboxId) && gapOwed.has(rt.mailboxId))
+        .map((rt) => rt.mailboxId);
+      if (ready.length === 0) return;
+      try {
+        /* THE TRUST IS READ BEFORE THE WALK, for `retroDue`'s reason: one connection on this door. */
+        const trust = new Map<string, ReadonlySet<string>>();
+        for (const id of ready) trust.set(id, await mailboxProviderAuthservIds(db, id));
+        const { offered, moved, completed } = await gapCatchupPass(db as unknown as Tx, {
+          accountId: world.accountId,
+          mailboxIds: ready,
+          trustedAuthservIdsFor: async (_tx, mailboxId) => trust.get(mailboxId) ?? new Set<string>(),
+          ...(config.logger === undefined ? {} : { log: config.logger }),
+        }, now());
+        for (const id of ready) gapOwed.delete(id);
+        if (offered + moved + completed > 0) log("gap_catchup_pass", { offered, moved, applied: completed });
+      } catch (err) {
+        log("gap_catchup_failed", { err, reason: "the gap offer was not counted or filed; the next drain resumes it" });
       }
     };
 
@@ -2988,6 +3040,7 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
     /** The launch's one warm-up search (`search-warmup.ts`), armed by the first settled drain. */
     let searchWarmup: SearchWarmup | null = null;
     const attachLocal = async (mb: LocalRosterRow, isSeed: boolean): Promise<LocalMailboxRuntime> => {
+      gapOwed.add(mb.id);
       /**
        * What this mailbox dials. `config.imap` — the `OHMAIL_IMAP_*` the shell set — is now the SEED's only,
        * and only until that mailbox's credential records what a probe proved; every other mailbox dials from
@@ -4702,6 +4755,14 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
       } = { kind: null, name: null, since: null, state: null, capabilities: null, installId: null };
       /** Has a peek or the gate's lease read ANSWERED since attach — `LocalMailboxRuntime.holderLooked`. */
       let holderLooked = false;
+      /**
+       * WHAT THIS READER LAST WROTE OF THE GAP WINDOW (`gap_since`): open, closed, or `null` for not
+       * since attach or since it last organized, so the next look writes once either way. Its own
+       * flag because the peek's change test reads an empty folder as equal to the NULL seed.
+       */
+      let gapOpen: boolean | null = null;
+      /** The role the last gated pass ran under — what `noteIdleOutcome` licenses the catch-up on. */
+      let lastPassOrganizing = false;
 
       /**
        * An install that is not the organizer looks, and still does not claim. Two arms reach
@@ -4831,7 +4892,21 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
             && holderSeen.installId === holderInstallId
             && (holderSeen.since ? holderSeen.since.getTime() : null)
               === (since ? since.getTime() : null);
-          if (same) return;
+          /* THE WINDOW IS THE GAP THIS READER IS LOOKING AT NOW. A look that finds no live holder
+             opens it once (`coalesce`, the store's own clock, the clock `created_at` is written
+             with); a look that finds one CLOSES it with any offer made from it. Asked apart from
+             `same`: an empty folder compares equal to the NULL seed. */
+          const gapWrite = state === "held"
+            ? (gapOpen === false ? null : { gapSince: null, gapLetters: null, gapPressedAt: null })
+            : (gapOpen === true ? null : { gapSince: sql`coalesce(${mailboxes.gapSince}, ${dialect(db).now()})` });
+          if (same) {
+            if (gapWrite !== null) {
+              await db.update(mailboxes).set(gapWrite).where(eq(mailboxes.id, mb.id));
+              gapOpen = state !== "held";
+              if (gapOpen) gapOwed.add(mb.id);
+            }
+            return;
+          }
           /* AN OCCUPANCY FLIP IS AN EVENT; A RENAME OR A NEW TENURE IS NOT. The hosted twin's
              argument verbatim: `held` ⇄ `stopped` (and either direction to or from "we have not
              looked") is what the reader's two sentences are about, while a peer restarting shifts
@@ -4849,8 +4924,10 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
               // Mail 0092 — the sixth, on the same read as the kind: the two must never disagree.
               organizedByInstallId: holderInstallId,
               ...(stateChanged ? { organizerEventAt: now() } : {}),
+              ...gapWrite,
             })
             .where(eq(mailboxes.id, mb.id));
+          if (gapWrite !== null) { gapOpen = state !== "held"; if (gapOpen) gapOwed.add(mb.id); }
           holderSeen.kind = kind; holderSeen.name = name;
           holderSeen.since = since; holderSeen.state = state;
           holderSeen.capabilities = capabilities; holderSeen.installId = holderInstallId;
@@ -5671,8 +5748,10 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
                 and ${mailboxes.organizedByName} is not distinct from ${sdName}
                 and ${mailboxes.organizerState} is not distinct from ${outcome.state ?? null}
                 then ${mailboxes.organizerEventAt} else ${dialect(db).ts(now())} end`,
+              gapSince: null, gapLetters: null, gapPressedAt: null,
             })
             .where(eq(mailboxes.id, mb.id));
+            // The three gap columns: another install's claim won, a held look, so the window closes.
             // A reader now: a surface presents this mailbox by the organizer's cached document.
             await recordMailboxProfileChange(tx as unknown as LedgerTx, world.accountId, mb.id);
             return exported;
@@ -5999,6 +6078,9 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
         /* A RULE'S RETRO WALK, before the cycles for the same reason: the moves it desires are
            reconciled by the cycles of THIS drain. Organizer only, literal, on one line. */
         if (organizing) await onceForTheAccount(retroDue);
+        /* MAIL FROM A GAP, once a quiet drain of this tenure has brought the observed folders up to
+           date; this drain's cycles reconcile what it desires. Organizer only, literal, on one line. */
+        if (organizing) await onceForTheAccount(gapCatchupDue);
         // Due appointments next, ahead of the cycles: a scheduled send has a clock and must not
         // wait out a backlog drain nor be skipped by an inbound cycle's throw (its SMTP dial fails
         // independently and the pass re-arms the row). ORGANIZER ONLY, per `SyncDeps.role`: a
@@ -6492,6 +6574,12 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
             throw err;
           }
           if (stopped) return 0;
+          /* THE GAP FOLLOWS THE ROLE THIS PASS RUNS UNDER: organizing re-arms the next gap's note, and
+             a pass that does not organize withdraws the catch-up's licence until a new tenure has a
+             quiet drain of its own (`noteIdleOutcome`). */
+          lastPassOrganizing = organizing;
+          if (organizing) gapOpen = null;
+          else gapCatchupReady.delete(mb.id);
           /* Create the `ohmail/*` tree at the moment this install becomes the organizer. `start()`
            * calls `ensureFolders` behind its own `permitted` gate, which was the ONLY call; a
            * MID-LIFE promotion — now the ordinary path, since a fresh install comes up a reader and
@@ -6712,6 +6800,9 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
         const after = await changeLogMark();
         const quiet = before !== null && after !== null && before === after;
         if (!quiet) { idlePollMs = pollIntervalMs; return; }
+        /* A QUIET DRAIN UNDER THE ORGANIZER'S ROLE: the tenure's observed folders are up to date, so
+           the gap catch-up may run at the next drain's head. */
+        if (lastPassOrganizing) gapCatchupReady.add(mb.id);
         if (!restMayBeTaken) return;
         const next = nextIdlePollMs(idlePollMs, pollIntervalMs, idlePollCeilingMs);
         if (next === idlePollMs) return;

@@ -236,10 +236,10 @@ export interface InsertMessageInput {
  * `"us"` — THIS install decided; required by every unpressed mover, and the durable record of
  * which install organized. `"external"` — the USER placed it by hand; the reconciler and all four
  * retro passes leave it alone, permanently. `"peer"` — ANOTHER install of this account placed it,
- * in a folder ohmail organizes, observed by a READER; reachable only by `rule-retro`, on a press.
- * No migration and no CHECK: the column is `text NOT NULL` — which is why an unrecognised value
- * must never map onto `"us"`: the fail-safe direction is to leave a row alone, not hand it to a
- * mover.
+ * in a folder ohmail organizes, observed by a READER; reachable only on a person's press:
+ * `rule-retro`'s, and the gap offer's (`gap-catchup.ts`), which shows the count first.
+ * No migration and no CHECK: the column is `text NOT NULL`, so an unrecognised value must never
+ * map onto `"us"`: the fail-safe direction is to leave a row alone, not hand it to a mover.
  */
 export type FolderAttribution = "us" | "external" | "peer";
 

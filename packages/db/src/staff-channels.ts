@@ -101,7 +101,7 @@ export const AUDIT_LOG_ACTIONS: readonly string[] = [
   "reconcile.flags.voided", "reconcile.flags.failed",
   "sync.message_skipped", "sweep.junk_filed",
   // ── the worker's own passes ──────────────────────────────────────────────────────────────
-  "ohbox_tidy_move", "redacted_body_restore", "rule_retro_move", "screener_auto_apply_move",
+  "ohbox_tidy_move", "redacted_body_restore", "rule_retro_move", "screener_auto_apply_move", "gap_catchup_move",
   "sensitive_fp_backfill",
   // ── services-side passes and migrations ──────────────────────────────────────────────────
   "sensitive_rescreen", "sensitive_rescreen_move",

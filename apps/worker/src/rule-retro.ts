@@ -609,12 +609,13 @@ async function selectCandidates(
     sql`${folderState.desiredFolder} in ${sql`(${sql.join(
       ORGANIZED_FOLDERS.map((f) => sql`${f}`), sql`, `,
     )})`}`,
-    /* THE ONE PASS THAT ADMITS `'peer'` FOR ANY SENDER, AND ONLY ON A PRESS (own mail: the release).
+    /* ONE OF TWO PASSES THAT ADMIT `'peer'`, BOTH ONLY ON A PRESS (own mail: the release).
      * `'peer'` is a placement by ANOTHER install of this account in a folder ohmail organizes,
      * recorded by a READER (`pipeline.ts#readerAdoption`). It was once `'external'` ("hands off, for
-     * ever"), which stranded mail behind a decision already made. Safe HERE and nowhere else because
-     * this pass alone is gated on a PRESS (`retro_requested_at`): `ohbox-tidy` and `screener-auto` run
-     * unbidden and stay `'us'`-only, or a promotion would re-file another install's placements in bulk.
+     * ever"), which stranded mail behind a decision already made. Safe because it is gated on a
+     * PRESS (`retro_requested_at`), as `gap-catchup` is on the person's File after its count:
+     * `ohbox-tidy` and `screener-auto` run unbidden and stay `'us'`-only, or a promotion would
+     * re-file another install's placements in bulk.
      * `'external'` is still excluded — a person dragging a message into INBOX in Apple Mail arrives
      * looking identical, and their hand still wins. The five user-intent exclusions below still apply.
      */

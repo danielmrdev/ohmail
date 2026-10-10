@@ -922,6 +922,13 @@ export const DE: Deck = {
     "Als ohmail zuletzt in den Hintergrund ging, konnte es das Postfach nicht rechtzeitig "
     + `zurückgeben, deshalb konnte eine andere Maschine es bis zu ${minutes} Minuten nicht übernehmen.`,
   organizerNotificationsSettings: "Benachrichtigungen einstellen",
+  gapLetters: (count: number, address: string) => count === 1
+    ? `1 Brief ist in ${address} angekommen, während kein Gerät das Postfach organisiert hat. Nach deinen Regeln ablegen?`
+    : `${count} Briefe sind in ${address} angekommen, während kein Gerät das Postfach organisiert hat. Nach deinen Regeln ablegen?`,
+  gapFile: "Ablegen",
+  gapLeave: "Liegen lassen",
+  gapChanged: "Die Briefe haben sich seit dem Zählen geändert. Die neue Zahl steht oben.",
+  gapFailed: "Keine Antwort möglich — versuch es nochmal.",
 
   /* ------------------------------------------------------------- new mail */
 

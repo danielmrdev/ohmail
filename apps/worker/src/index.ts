@@ -94,6 +94,7 @@ import { threadJoinHealPass, type ThreadJoinHealCursor } from "./thread-join-hea
 import { inboundQuietPass } from "./inbound-quiet.js";
 import { makeAwayReplySweep } from "./away-reply-sweep.js";
 import { ruleRetroPass } from "./rule-retro.js";
+import { gapCatchupPass } from "./gap-catchup.js";
 import { gateReleasePass } from "./gate-release.js";
 import { senderCheckRetirement } from "./sender-check-backfill.js";
 import { listAddressBackfillPass } from "./list-address-backfill.js";
@@ -469,6 +470,8 @@ interface MailboxRuntime {
     /** Mail 0092 — the sixth. Tracked here because the compare, not the write, is what decides
         whether a stale id is ever corrected; see the note on the compare in `refreshReaderHolder`. */
     installId: string | null;
+    /** What this reader last wrote of the gap window (`gap_since`): open, closed, or unknown. */
+    gapOpen?: boolean;
   };
   /**
    * Mail 0083. What this process IS to this mailbox right now — and it is MUTABLE, unlike almost
@@ -1366,6 +1369,8 @@ export async function startWorkerWithLock(
       current: {
         kind: string | null; name: string | null; since: Date | null; state: string | null;
         capabilities: string | null; installId: string | null;
+        /** What this reader last wrote of the gap window (`gap_since`); undefined = not since attach. */
+        gapOpen?: boolean;
       },
     ): Promise<void> {
       const peek = (adapter as Partial<LeasePeekCapableAdapter>).leasePeekIo;
@@ -1430,9 +1435,20 @@ export async function startWorkerWithLock(
            agreed, so this returned before the write on every cycle. NULL fails closed in the
            release arm, so the hand-back stayed refused on precisely the mailboxes it was for.
            Any holder column added after this one belongs on the roster and in this line. */
+        /* THE WINDOW IS THE GAP THIS READER IS LOOKING AT NOW: a look that finds no live holder
+           opens it once, a look that finds one closes it with its offer. Asked apart from the
+           compare below, which reads an empty folder as equal to a row saying nobody holds it. */
+        const gap = state === "held" ? (current.gapOpen === false ? undefined : "close" as const)
+          : (current.gapOpen === true ? undefined : "open" as const);
         if (current.kind === kind && current.name === name && current.state === state
           && current.capabilities === capabilities && current.installId === installId
-          && (current.since ? current.since.getTime() : null) === (since ? since.getTime() : null)) return;
+          && (current.since ? current.since.getTime() : null) === (since ? since.getTime() : null)) {
+          if (gap !== undefined && await refreshOrganizerHolder(db, mb.mailboxId, {
+            kind, installId, displayName: name, claimedAt: since, state,
+            capabilities: top?.capabilities ?? null,
+          }, { fence, stateChanged: false, gap })) current.gapOpen = gap === "open";
+          return;
+        }
         /* Only an occupancy flip is an event (0.14.1). This function writes whenever ANY of the four
          * columns moved, and most of those movements are not news: a peer restarting shifts
          * `organized_since`, a machine being renamed shifts `organized_by_name`, and telling somebody
@@ -1442,10 +1458,11 @@ export async function startWorkerWithLock(
          * ARE what the two reader sentences are about: somebody is organizing this, or somebody
          * stopped and you can claim it. */
         const stateChanged = current.state !== state;
-        await refreshOrganizerHolder(db, mb.mailboxId, {
+        const landed = await refreshOrganizerHolder(db, mb.mailboxId, {
           kind, installId, displayName: name, claimedAt: since, state,
           capabilities: top?.capabilities ?? null,
-        }, { fence, stateChanged });
+        }, { fence, stateChanged, ...(gap !== undefined ? { gap } : {}) });
+        if (gap !== undefined && landed) current.gapOpen = gap === "open";
         log.info("organizer_holder_refreshed", {
           mailboxId: mb.mailboxId, accountId: mb.accountId,
           organizerState: state, heldBy: name,
@@ -3641,6 +3658,8 @@ export async function startWorkerWithLock(
            * tree, so `ensureFolders` runs here, the one line of the attach a promotion catches up on. */
           const wasOrganizer = rt.role === "organizer";
           rt.role = organize ? "organizer" : "reader";
+          // Organizing leaves the window to the pass: the next reader look writes it once either way.
+          if (organize) rt.holderSeen.gapOpen = undefined;
           if (organize && !wasOrganizer) {
             // BEFORE the cycle, so this very pass files into a tree that exists. It is idempotent
             // (the adapter creates only what is missing) and it is the first write this process is
@@ -4793,13 +4812,14 @@ export async function startWorkerWithLock(
         // one indexed query, and a user who clicked a destination is waiting for their mail to move.
         run: async (accountId) => {
           try {
-            const { moved, completed, capped } = await ruleRetroPass(
+            // The pass talks only to our database, so its throw is named as the database's.
+            const { moved, completed, capped } = await asDatabaseFault("cycle.ruleRetroPass", () => ruleRetroPass(
               db as unknown as Tx,
               // Per-MAILBOX trust, off the credential row's own IMAP host, because one
               // account's mailboxes can sit at different providers. The pass caches per mailbox.
               { accountId, log, trustedAuthservIdsFor: mailboxProviderAuthservIds },
               new Date(),
-            );
+            ));
             if (moved > 0 || completed > 0) {
               log.info("rule_retro_pass", { accountId, moved, completed, capped });
             }
@@ -4807,11 +4827,40 @@ export async function startWorkerWithLock(
             // that turn is the next free lane, not the next pass (the tail yields to a wake).
             if (moved > 0) wakeAccount(accountId);
           } catch (err) {
+            noteIfSharedDatabaseFault(err);
             log.error("rule_retro_failed", {
               accountId, err,
               reason: "no rule was marked applied and no cursor advanced past uncommitted work, " +
                 "so the next cycle resumes from `retro_cursor`; mail already moved is desired " +
                 "state the reconciler converges independently of this pass",
+            });
+          }
+        },
+      },
+      gap_catchup: {
+        // MAIL FROM A GAP: what arrived while nothing organized a mailbox this install now
+        // organizes, COUNTED for the person and filed by their rules only on their press. After the
+        // visit, so the observed folders are this tenure's. Desired state only.
+        run: async (accountId) => {
+          try {
+            // Our database only, so its throw is named as the database's: a refused connection is a
+            // bare `ECONNREFUSED`, which reads as the shard's only when tagged.
+            const { offered, moved, completed } = await asDatabaseFault("cycle.gapCatchupPass", () => gapCatchupPass(
+              db as unknown as Tx,
+              { accountId, log, trustedAuthservIdsFor: mailboxProviderAuthservIds },
+              new Date(),
+            ));
+            if (offered + moved + completed > 0) {
+              log.info("gap_catchup_pass", { accountId, offered, moved, completed });
+            }
+          } catch (err) {
+            // The mailbox's verdict may be swallowed here, the shard's may not: a database cut that
+            // lands in this stage still reaches `/health` and the quarantine's exemption.
+            noteIfSharedDatabaseFault(err);
+            log.error("gap_catchup_failed", {
+              accountId, err,
+              reason: "the letters that arrived while nothing organized this mailbox were not counted or "
+                + "filed this cycle; the window stays open and the next cycle resumes it",
             });
           }
         },

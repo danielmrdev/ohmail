@@ -33,7 +33,7 @@ export const CLASSIFY_DESTINATIONS: Destination[] = [
  * call so it can be cached (a `system` block with `cache_control:{type:"ephemeral"}`);
  * the volatile per-message fields go in the user turn, after the cache breakpoint.
  */
-export const TAXONOMY_PREFIX = [
+export const TAXONOMY_PREFIX = /* @__PURE__ */ [
   "You are the routing classifier for ohmail. Given one email's sender,",
   "subject, a short redacted snippet, and a headers digest, choose exactly one",
   "destination folder from this fixed taxonomy:",
@@ -80,7 +80,7 @@ export const TAXONOMY_PREFIX = [
  * travel in the USER turn, never this prefix: the prefix is cached across accounts, so one
  * account's sentence would be served to another's request.
  */
-export const SCREEN_DESTINATIONS: Destination[] = DESTINATIONS.filter(isDecidedDestination);
+export const SCREEN_DESTINATIONS: Destination[] = /* @__PURE__ */ DESTINATIONS.filter(isDecidedDestination);
 
 /**
  * The screening instruction — cacheable, account-independent; each outcome's criteria are written
@@ -92,7 +92,7 @@ export const SCREEN_DESTINATIONS: Destination[] = DESTINATIONS.filter(isDecidedD
  * qualified by PURPOSE, not deleted. Recorded costs: one receipt in three files to Reads; a
  * paying vendor's promo with no in-message evidence is Quarantine.
  */
-export const SCREENING_PREFIX = [
+export const SCREENING_PREFIX = /* @__PURE__ */ [
   "You are helping someone screen a first-contact sender for ohmail. This sender is waiting at",
   "the gate: their mail is held, and the person has to decide what happens to it. Your job is to",
   "recommend that decision. Choose exactly one:",

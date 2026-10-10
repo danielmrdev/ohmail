@@ -156,6 +156,7 @@ export const RELAY_ALLOWLIST: readonly RelaySpec[] = [
   { method: "POST", pattern: "/kb" },
   { method: "POST", pattern: "/mailboxes" },
   { method: "POST", pattern: "/mailboxes/:id/inbound-quiet/dismiss" },
+  { method: "POST", pattern: "/mailboxes/:id/gap-letters" },
   { method: "POST", pattern: "/mailboxes/:id/organize" },
   { method: "POST", pattern: "/mailboxes/:id/organizer-notice/dismiss" },
   { method: "POST", pattern: "/mailboxes/:id/profile-import" },

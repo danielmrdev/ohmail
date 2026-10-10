@@ -75,6 +75,7 @@ import {
 import { DesktopDevices } from "./DesktopDevices.js";
 import { awayOverBridge } from "./local-away.js";
 import { organizerNoticeOverBridge } from "./local-organizer-notice.js";
+import { gapLettersOverBridge } from "./local-gap-letters.js";
 import { profileImportOverBridge } from "./local-profile-import.js";
 import { localImageWire } from "./local-images.js";
 import { consentOverBridge, consentOverBridgeStandalone } from "./local-consent.js";
@@ -1435,6 +1436,7 @@ export function DesktopGate() {
            locally on the standalone one, forwarded to the account on the hosted one. The
            window presses the same path either way, so there is nothing to branch on. */
         organizerNoticeTransport={organizerNoticeOverBridge}
+        gapLettersTransport={gapLettersOverBridge}
         /* SETTINGS FOUND ON A MAILBOX — the profile-import card, on BOTH doors, and this is the
            desktop-standalone tier gaining the flow's flagship case: a mailbox that arrives
            carrying another ohmail's settings (leave Cloud, install the app) is asked before

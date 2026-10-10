@@ -630,6 +630,13 @@ export interface MailboxDTO {
   organizerEventAt: ISODateTime | null;
   organizerEventSeenAt: ISODateTime | null;
   /**
+   * Mail 0151 — the letters that arrived while no device was organizing this mailbox and that the
+   * person's rules would file, counted after this install began organizing it. Non-null only while
+   * the offer waits for the person's answer (`POST /mailboxes/:id/gap-letters`); nothing moves
+   * without that press. Absent on an older API, which reads as no offer.
+   */
+  gapLetters?: number | null;
+  /**
    * Can the holder of this mailbox accept a decision from a reader? (0.14.1) `true` only where a
    * reader's press has somewhere to go: the holder is still renewing AND its claim advertises the
    * request capability; `false` everywhere else. On the wire because the client must withhold a

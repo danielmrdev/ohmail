@@ -16,7 +16,7 @@ import type { DraftInput, DraftResult } from "./draft-port.js";
  * per-message incoming + retrieved context go in the user turn, after the cache
  * breakpoint.
  */
-export const DRAFT_PREFIX = [
+export const DRAFT_PREFIX = /* @__PURE__ */ [
   "You are the reply drafter for ohmail. You write a grounded, ready-to-review",
   "email reply on the owner's behalf. You are given the incoming message (sender, subject,",
   "and a short redacted snippet) plus retrieved context: knowledge-base entries and the",

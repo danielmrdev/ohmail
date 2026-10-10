@@ -21,6 +21,18 @@ export interface OrganizerStrip {
   readonly start: boolean;
 }
 
+/**
+ * THE GAP OFFERS (mail 0151): the mailboxes this phone organizes whose rows carry a count of
+ * letters that arrived while no device was organizing them. Shown with File and Leave; nothing
+ * moves until the person presses one.
+ */
+export function gapOffersOf(
+  rows: readonly { id: string; address: string; organizerRole: string | null; gapLetters?: number | null }[],
+): { id: string; address: string; count: number }[] {
+  return rows.flatMap((r) => r.organizerRole === "organizer" && typeof r.gapLetters === "number" && r.gapLetters > 0
+    ? [{ id: r.id, address: r.address, count: r.gapLetters }] : []);
+}
+
 export function organizerStripOf(
   claim: PhoneClaim,
   facts: {

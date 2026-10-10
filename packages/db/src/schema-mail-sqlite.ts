@@ -435,6 +435,10 @@ export const mailboxes = sqliteTable("mailboxes", {
   sentFolder: text("sent_folder"),
   /** Mail 0135 — when the wall released this mailbox; see the pg twin. No device writes it. LAST for 0111's reason. */
   organizerParkedAt: integer("organizer_parked_at", { mode: "timestamp_ms" }),
+  /** The gap window and its offer; see the pg twins. LAST for 0111's reason. */
+  gapSince: integer("gap_since", { mode: "timestamp_ms" }),
+  gapLetters: integer("gap_letters"),
+  gapPressedAt: integer("gap_pressed_at", { mode: "timestamp_ms" }),
 }, (t) => ({
   ixIdAccount: uniqueIndex("mailboxes_id_account_uq").on(t.id, t.accountId),
   // ONE ACTIVE MAILBOX PER ADDRESS (mail 0021). PARTIAL, because `delete` is a soft delete to

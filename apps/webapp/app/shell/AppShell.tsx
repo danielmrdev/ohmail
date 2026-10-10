@@ -191,7 +191,7 @@ import { MailStateProvider, useMailState, type FreshnessProbe, type MailboxProbe
    what changed about who organizes these mailboxes that nobody has acknowledged? Settings →
    Mailboxes renders its own state line from the same `readerStandDown` underneath. */
 import {
-  notOrganizingYetOf, organizerNotices, otherOrganizerOf, readerMoveRefusal, rosterStateOf, screenerMode,
+  gapOffers, notOrganizingYetOf, organizerNotices, otherOrganizerOf, readerMoveRefusal, rosterStateOf, screenerMode,
 } from "./mail-state";
 /* Every press that changes mail leaves through here. See the module. */
 import { useShellDispatch } from "./shell-dispatch";
@@ -208,6 +208,7 @@ import { useShellKeys, frKeyOf, TRIAGE_PILE_OF_RAIL } from "./shell-keys";
 import { useStableCallback } from "./stable-callback";
 /* The once-per-change line above the Ohbox, and the shape of the press that ends it. */
 import { OrganizerNotice, type OrganizerNoticeTransport } from "./OrganizerNotice";
+import { GapLettersNotice, type GapLettersTransport } from "./GapLettersNotice";
 /* The OS-answer seam, threaded to `SettingsView` for the hosts that must inject one. */
 import type { NotificationHost } from "./notification-settings";
 import { ViewBoundary } from "./ViewBoundary";
@@ -552,6 +553,7 @@ export function AppShell({
   onConfirmed,
   mailboxFacts,
   organizerNoticeTransport,
+  gapLettersTransport,
   mirrorFreshness,
   hostConnection,
   sessionRefused,
@@ -628,6 +630,12 @@ export function AppShell({
    * state line and the controls on every door regardless.
    */
   organizerNoticeTransport?: OrganizerNoticeTransport;
+  /**
+   * How the person's answer to a gap offer (mail 0151) reaches the row: the organizer notice's
+   * seam, one route (`POST /mailboxes/:id/gap-letters`) on two transports. Absent withholds the
+   * offer, since an offer nobody can answer would stand for ever; nothing moves without it.
+   */
+  gapLettersTransport?: GapLettersTransport;
   /**
    * "How old is the mail this window renders?", answered by the HOST's own mirror — the
    * desktop's seam and nobody else's, `mailboxFacts`'s shape for `mailboxFacts`'s reason. The
@@ -949,6 +957,7 @@ export function AppShell({
           <ShellInner
             mailboxFacts={mailboxFacts}
             organizerNoticeTransport={organizerNoticeTransport}
+            gapLettersTransport={gapLettersTransport}
             hostConnection={hostConnection}
             sessionRefused={sessionRefused === true}
             sendSurfaceMaxTotalBytes={sendSurfaceMaxTotalBytes}
@@ -1031,11 +1040,13 @@ function MailStateHost({ probe, freshnessProbe, children }: { probe?: MailboxPro
   );
 }
 
-function ShellInner({ mailboxFacts, organizerNoticeTransport, hostConnection, sessionRefused, sendSurfaceMaxTotalBytes, accountSection, mailboxSection, aiSection, billingSection, accountNotice, invitesSection, securitySection, aboutSection, desktopSection, devicesSection, defaultMailSection, notificationHost, screeningSection, actRulesUnmarked, screenerSuggest, awayTransport, awayIsLocal, awayOnHost, profileImportTransport, consentTransport, imageWire, imagesFromComputer, olderBodyWire, junkWire, trashWire, suggestWire, firstRun, mailtoDraft, onMailtoDraftSeeded, onUnread }: {
+function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTransport, hostConnection, sessionRefused, sendSurfaceMaxTotalBytes, accountSection, mailboxSection, aiSection, billingSection, accountNotice, invitesSection, securitySection, aboutSection, desktopSection, devicesSection, defaultMailSection, notificationHost, screeningSection, actRulesUnmarked, screenerSuggest, awayTransport, awayIsLocal, awayOnHost, profileImportTransport, consentTransport, imageWire, imagesFromComputer, olderBodyWire, junkWire, trashWire, suggestWire, firstRun, mailtoDraft, onMailtoDraftSeeded, onUnread }: {
   /** The pull settle watch's read — the same probe `MailStateHost` above provides the strip. */
   mailboxFacts?: MailboxProbe;
   /** See `AppShell`'s prop of this name — absent withholds the organizer notice. */
   organizerNoticeTransport?: OrganizerNoticeTransport;
+  /** See `AppShell`'s prop of this name — absent withholds the gap offer. */
+  gapLettersTransport?: GapLettersTransport;
   /** See `AppShell`'s prop of this name — present only on a paired desktop with something wrong. */
   hostConnection?: HostConnection;
   /** See `AppShell`'s prop of this name — the strip yields while the host's sign-in card is up. */
@@ -1473,6 +1484,13 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, hostConnection, se
   });
   // Withheld where no door can write the stamp (the demo; no transport): it would stand for ever.
   const noticeOn = !demo && organizerNoticeTransport !== undefined && organizerChanges.length > 0;
+  /* THE GAP OFFERS (mail 0151): asked of the same polled rows, answered through the injected door,
+     and the rows read again either way, so a refused count is replaced by the server's new one. */
+  const gapOfferList = useMemo(() => gapOffers(facts), [facts]);
+  const answerGapLetters: GapLettersTransport = useStableCallback(async (id: string, a: { file: boolean; count: number }) => {
+    try { return await gapLettersTransport?.(id, a); } finally { refreshFacts(); }
+  });
+  const gapOn = !demo && gapLettersTransport !== undefined && gapOfferList.length > 0;
   const screenerShownAt = useStableCallback((subject: readonly EngineMessage[], dest: ScreeningDest) =>
     screeningShown(engine.read(), subject, dest, { consent: demo ? null : consent, now: nowAt(), ownAddresses, firstImportDoneAt }));
   const screener = useScreenerState(
@@ -2268,6 +2286,7 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, hostConnection, se
         {noticeOn ? (
           <OrganizerNotice notices={organizerChanges} onAcknowledge={acknowledgeOrganizerNotice} variant="shell" />
         ) : null}
+        {gapOn ? <GapLettersNotice offers={gapOfferList} onAnswer={answerGapLetters} variant="shell" /> : null}
 
         {/* WHAT THE SERVICE SAYS ABOUT THIS ACCOUNT — the same slot and the same argument as the
             two strips above, and the same absence rule: nothing at all where the host supplied
@@ -2374,8 +2393,13 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, hostConnection, se
             dock={railDock}
             /* The organizer notice's rail form — `undefined` when there is nothing to say, so the
                foot keeps no empty band; the topbar twin above carries it under 1024px. */
-            notice={noticeOn
-              ? <OrganizerNotice notices={organizerChanges} onAcknowledge={acknowledgeOrganizerNotice} variant="rail" />
+            notice={noticeOn || gapOn
+              ? (
+                <>
+                  {noticeOn ? <OrganizerNotice notices={organizerChanges} onAcknowledge={acknowledgeOrganizerNotice} variant="rail" /> : null}
+                  {gapOn ? <GapLettersNotice offers={gapOfferList} onAnswer={answerGapLetters} variant="rail" /> : null}
+                </>
+              )
               : undefined}
             /* THE MAILBOX'S OWN LINE, at the foot of the rail and above the dock. The same
                component and the same derivation as the strip below the topbar — one of the two

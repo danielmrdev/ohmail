@@ -209,6 +209,7 @@ export const ALLOWED_FIELDS: readonly string[] = [
   // three can carry mail: each is produced by `apps/worker/src/request-drain.ts` as a counter it
   // incremented itself, never read off a record.
   "applied", "refused", "expired",
+  "offered", // gap_catchup_pass
   // ── the settings tidy of `ohmail/_meta` (`profile_tidy_planned`, `profile_tidied`), WITH its call sites ──
   //
   // Counts of ohmail's own settings messages by what the tidy decides about each, the mode it ran

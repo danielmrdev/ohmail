@@ -780,8 +780,8 @@ function bodySnippet(normalized: NormalizedMessage): string {
  * would turn a promotion into a bulk re-filing. `'external'`: the USER placed it, in a folder of
  * their own. `'peer'`: another install of this account placed it, in a folder ohmail organizes —
  * before it existed a reader wrote `'external'` here, and mail behind a decision already made
- * stayed frozen at the gate. Only `rule-retro` (on a press) and the own-mail release (own mail at
- * the gate) move a `'peer'` row. Decided by the WRITER: only the code that knows it is a reader can
+ * stayed frozen at the gate. Only `rule-retro` (on a press), the gap offer (on a press, after the
+ * count) and the own-mail release (own mail at the gate) move a `'peer'` row. Decided by the WRITER: only the code that knows it is a reader can
  * tell adoption from a person's drag. The `?? "external"` default is pinned by its own control.
  */
 function readerAdoption(arrivalFolder: string): { adoption?: "peer" } {

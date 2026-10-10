@@ -13,6 +13,7 @@ export const TAIL_SECTION_PLAN = [
   // Before the correspondent retro, which asks these rows before it releases a claim (mail 0150).
   { name: "list_address_backfill", passes: ["list_address_backfill"] },
   { name: "rule_retro", passes: ["rule_retro"] },
+  { name: "gap_catchup", passes: ["gap_catchup"] },
   { name: "ohbox_tidy", passes: ["ohbox_tidy"] },
   { name: "thread_join_heal", passes: ["thread_join_heal"] },
   { name: "inbound_quiet", passes: ["inbound_quiet"] },

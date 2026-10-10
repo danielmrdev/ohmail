@@ -57,6 +57,12 @@ export interface PhoneMailbox {
    */
   organizeConsentedAt: string | null;
   /**
+   * THE GAP OFFER (mail 0151) — `MailboxDTO.gapLetters`: letters that arrived while no device was
+   * organizing this mailbox and that the person's rules would file. A positive count only while it
+   * waits for their answer; absent or `null` otherwise. Nothing moves without the press.
+   */
+  gapLetters?: number | null;
+  /**
    * WHEN THE CLOSED ACCOUNT'S PARK RELEASED IT (mail 0135) — `MailboxDTO.organizerParkedAt`. While
    * set, the mailbox is paused, not free and not stopped: the paired server resumes it on its own.
    * `null` where it is not paused and where a server older than the column answered.
@@ -204,6 +210,7 @@ export async function readMailboxes(session: ConnectedSession): Promise<PhoneMai
             : null,
         organizerParkedAt:
           typeof r.organizerParkedAt === "string" && r.organizerParkedAt !== "" ? r.organizerParkedAt : null,
+        ...(Number.isInteger(r.gapLetters) && (r.gapLetters as number) > 0 ? { gapLetters: r.gapLetters as number } : {}),
         organizedBy: holderOf(r.organizedBy),
         /* The server's own comparison, taken only as `true` — anything else, including a server
            that predates the field, is "not the answering install's", the safe direction. */
@@ -258,6 +265,27 @@ export async function releaseMailbox(
     );
     if (res.status === 202) return "requested";
     return res.status === 200 ? "already" : "refused";
+  } catch {
+    return "refused";
+  }
+}
+
+/**
+ * THE ANSWER TO A GAP OFFER (mail 0151) — `POST /mailboxes/:id/gap-letters`, `{ file, count }`.
+ * 202 is the filing asked for (the organizer's next drain files that set); 200 is the offer left;
+ * 409 is a count that moved since it was shown, and the next mailbox read carries the new one.
+ */
+export async function answerGapLetters(
+  session: ConnectedSession,
+  mailboxId: string,
+  answer: { file: boolean; count: number },
+): Promise<"pressed" | "left" | "changed" | "refused"> {
+  try {
+    const res = await session.fetch(
+      `${requestBase(session)}/mailboxes/${encodeURIComponent(mailboxId)}/gap-letters`,
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(answer) },
+    );
+    return res.status === 202 ? "pressed" : res.status === 200 ? "left" : res.status === 409 ? "changed" : "refused";
   } catch {
     return "refused";
   }

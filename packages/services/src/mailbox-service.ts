@@ -1896,6 +1896,28 @@ export class MailboxService {
   }
 
   /**
+   * The person's answer to the gap offer (mail 0151). "File" stamps `gap_pressed_at` only while
+   * the row offers exactly the count they were shown, on a mailbox this install organizes; the
+   * organizer's next pass files that set or offers the new count. A stale count writes nothing and
+   * answers `changed`. "Leave" closes the window and moves nothing. Under the row's lock.
+   */
+  async answerGapLetters(
+    ctx: ServiceContext, id: string, answer: { file: boolean; count: unknown },
+  ): Promise<{ outcome: "pressed" | "left" | "changed"; mailbox: MailboxDTO }> {
+    const outcome = await asTx(ctx).transaction(async (tx) => {
+      const m = await this.ownedRowOn(tx, ctx, id, { forUpdate: true }); // 404 if not owned
+      // A replay of a press that landed answers as it did, writing nothing.
+      if (answer.file && m.gapPressedAt !== null && m.gapSince !== null && m.gapLetters === answer.count) return "pressed" as const;
+      if (answer.file && (gapOffer(m) === null || gapOffer(m) !== answer.count)) return "changed" as const;
+      await tx.update(mailboxes)
+        .set(answer.file ? { gapPressedAt: ctx.now() } : { gapSince: null, gapLetters: null, gapPressedAt: null })
+        .where(and(eq(mailboxes.id, id), eq(mailboxes.accountId, ctx.accountId)));
+      return answer.file ? "pressed" as const : "left" as const;
+    });
+    return { outcome, mailbox: await this.toDTO(ctx, await this.ownedRow(ctx, id)) };
+  }
+
+  /**
    * Stop organizing this mailbox here, and keep my mail (mail 0088) — the mirror of {@link
    * organizeHere}. IT AUTHORIZES A CEASING, IT DOES NOT PERFORM ONE: the claim lives in the
    * customer's IMAP folder, and IMAP writes belong to the process holding the connection — this
@@ -3025,6 +3047,7 @@ export class MailboxService {
        */
       organizerEventAt: m.organizerEventAt ? m.organizerEventAt.toISOString() : null,
       organizerEventSeenAt: m.organizerEventSeenAt ? m.organizerEventSeenAt.toISOString() : null,
+      gapLetters: gapOffer(m),
       /**
        * Would a reader's decision be accepted here — the request door's rule, projected so a
        * client can withhold a control before the press. `state === "held" && hasCapability(...)`,
@@ -3106,6 +3129,11 @@ export class MailboxService {
  * same, another mailbox never does, and the install id (kept off the wire, `dto/types.ts`) is not
  * in it. `null` for a claim that recorded no install id.
  */
+/** The gap offer standing on a row: its count while this install organizes and nobody has answered. */
+function gapOffer(m: MailboxRow): number | null {
+  return m.organizerRole === "organizer" && m.gapSince !== null && m.gapPressedAt === null ? m.gapLetters : null;
+}
+
 function holderRef(mailboxId: string, installId: string | null): string | null {
   if (installId === null || installId === "") return null;
   return createHash("sha256").update(JSON.stringify(["holder", mailboxId, installId]), "utf8")

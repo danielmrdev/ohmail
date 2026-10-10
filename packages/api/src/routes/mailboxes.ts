@@ -255,6 +255,20 @@ export const mailboxRoutes: Route[] = [
   },
   {
     method: "POST",
+    pattern: "/mailboxes/:id/gap-letters",
+    relay: true,
+    // `work`, no step-up: one stamp the organizer's next pass files (202); a stale count is 409.
+    cost: "work",
+    replay: "state",
+    handler: async (req, deps, params) => {
+      const body = await readBody<Record<string, unknown>>(req);
+      const r = await mailbox(deps).answerGapLetters(serviceContext(deps, req), params.id!,
+        { file: body.file === true, count: body.count });
+      return jsonResponse(r, { status: r.outcome === "pressed" ? 202 : r.outcome === "changed" ? 409 : 200 });
+    },
+  },
+  {
+    method: "POST",
     pattern: "/mailboxes/:id/release",
     relay: true,
     /**

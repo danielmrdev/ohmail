@@ -1206,6 +1206,8 @@ export async function markMailboxStoodDown(
       and ${mailboxes.organizedByName} is not distinct from ${holderName}
       and ${mailboxes.organizerState} is not distinct from ${state}
       then ${mailboxes.organizerEventAt} else ${dialect(db as unknown as Tx).ts(opts.now ?? new Date())} end`,
+    // Another install's claim won: a held look, so the gap window and its offer close (mail 0151).
+    gapSince: null, gapLetters: null, gapPressedAt: null,
   }).where(lifecycleWhere(mailboxId, opts.fence)).returning({ id: mailboxes.id, accountId: mailboxes.accountId }),
   // The handover, then the arrangement's doorbell: a reader serves the organizer's document for
   // this mailbox from here on, and a surface learns it from the delta, not at its next boot.
@@ -1555,7 +1557,11 @@ export async function deleteParkedPushRows(db: WorkerDb, accountIds: readonly st
  */
 export async function refreshOrganizerHolder(
   db: WorkerDb, mailboxId: string, by: StandDownHolder,
-  opts: { fence?: LeaderFence; now?: Date; stateChanged?: boolean } = {},
+  opts: {
+    fence?: LeaderFence; now?: Date; stateChanged?: boolean;
+    /** The gap window this look writes: `open` found no live holder, `close` found one (mail 0151). */
+    gap?: "open" | "close";
+  } = {},
 ): Promise<boolean> {
   return applyFenced(db, mailboxId, opts.fence, (w) => w.update(mailboxes)
     .set({
@@ -1581,6 +1587,10 @@ export async function refreshOrganizerHolder(
        * a holder appearing or vanishing). The caller decides, because the caller holds the previous
        * value — this function takes no read of its own, or that would be a second round trip per cycle. */
       ...(opts.stateChanged ? { organizerEventAt: opts.now ?? new Date() } : {}),
+      /* THE GAP THIS READER IS LOOKING AT NOW: `coalesce`, so the earliest instant nothing organized
+         stands; a held look closes it with the offer made from it. */
+      ...(opts.gap === "open" ? { gapSince: sql`coalesce(${mailboxes.gapSince}, now())` } : {}),
+      ...(opts.gap === "close" ? { gapSince: null, gapLetters: null, gapPressedAt: null } : {}),
     })
     .where(lifecycleWhere(mailboxId, opts.fence))
     .returning({ id: mailboxes.id }));

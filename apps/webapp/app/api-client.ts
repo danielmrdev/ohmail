@@ -1943,6 +1943,10 @@ export const mailboxes = {
   dismissOrganizerNotice: (id: string) =>
     api<MailboxDTO>(`/mailboxes/${id}/organizer-notice/dismiss`, { method: "POST", body: {} }),
 
+  /** The person's answer to the gap offer (mail 0151): file the counted letters, or leave them. */
+  answerGapLetters: (id: string, answer: { file: boolean; count: number }) =>
+    api<{ outcome: string; mailbox: MailboxDTO }>(`/mailboxes/${id}/gap-letters`, { method: "POST", body: answer }),
+
   /**
    * BEGIN the Microsoft consent ceremony. Returns the URL to navigate to at TOP LEVEL. It is a URL and not a redirect
    * this call follows, and that is not a style choice: a `fetch` cannot follow a cross-origin redirect AND change the

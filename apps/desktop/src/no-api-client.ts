@@ -403,6 +403,13 @@ export const mailboxes: {
     takeover: (id: string) => Promise<MailboxTakeover>;
     release: (id: string) => Promise<MailboxRelease>;
     dismissOrganizerNotice: (id: string) => Promise<MailboxDTO>;
+    answerGapLetters: (id: string, answer: {
+        file: boolean;
+        count: number;
+    }) => Promise<{
+        outcome: string;
+        mailbox: MailboxDTO;
+    }>;
     oauthStart: (b?: {
         mailboxId?: string;
         returnTo?: string;

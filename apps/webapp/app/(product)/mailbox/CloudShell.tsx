@@ -285,6 +285,7 @@ export function CloudShell({ demo }: { demo: boolean }) {
            this is handed over unconditionally. `mailboxFacts` above is NOT: it is a read, and a
            read is withheld rather than gated downstream. */
         organizerNoticeTransport={(id) => mailboxApi.dismissOrganizerNotice(id)}
+        gapLettersTransport={(id, answer) => mailboxApi.answerGapLetters(id, answer)}
         /* What a send from this window rides — the staging bucket's
            per-object ceiling. Declaring nothing meant the 3 MB constant,
            true while attachment bytes rode the send request base64;

@@ -1440,6 +1440,14 @@ const TABLE = {
     + `machine could not take it for up to ${minutes} minutes.`,
   /** The only remaining act: Android never shows the prompt again after a refusal. */
   organizerNotificationsSettings: "Open notification settings",
+  /* The gap offer (mail 0151): counted by the person's rules, and nothing moves without the press. */
+  gapLetters: (count: number, address: string) => count === 1
+    ? `1 letter arrived in ${address} while no device was organizing it. File it by your rules?`
+    : `${count} letters arrived in ${address} while no device was organizing it. File them by your rules?`,
+  gapFile: "File",
+  gapLeave: "Leave",
+  gapChanged: "The letters changed since they were counted. The new count is shown.",
+  gapFailed: "Couldn't answer — try again.",
 
   /* ------------------------------------------------------------- new mail */
 

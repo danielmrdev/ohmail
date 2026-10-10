@@ -250,6 +250,17 @@ export const mailboxes = pgTable("mailboxes", {
    * this column too.
    */
   organizerParkedAt: timestamp("organizer_parked_at", { withTimezone: true }),
+  /**
+   * WHEN THIS INSTALL, READING, FIRST SAW NOBODY ORGANIZING THE MAILBOX — the start of the gap it
+   * is looking at now, on the store's own clock (`coalesce`, so the earliest instant stands). A
+   * look that finds a live holder clears it and so does a stand-down: the window is only ever the
+   * current gap. `apps/worker/src/gap-catchup.ts` counts it and files it only on a press.
+   */
+  gapSince: timestamp("gap_since", { withTimezone: true }),
+  /** The letters in that window the person's rules would file, counted once; shown, never acted on alone. */
+  gapLetters: integer("gap_letters"),
+  /** The person pressed "File them" for the count in {@link gapLetters}; the next pass files that set or re-offers. */
+  gapPressedAt: timestamp("gap_pressed_at", { withTimezone: true }),
   // Mail 0065 — the provider's OWN Junk and Trash folders, as discovered at connect. Canonical
   // `/`-delimited paths, resolved by `ImapAdapter.findSpecialFolders` (SPECIAL-USE first, then
   // the name belts) and re-written on every connect, so a mailbox that gains or renames the
