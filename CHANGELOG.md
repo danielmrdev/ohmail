@@ -61,6 +61,62 @@ already in your mailbox when it first synced is not counted as new, whether you 
 - At phone width, ← opens the menu, a letter laid out wider than the screen fits it, and the
   message's actions sit after the letter at full strength instead of over its last lines.
 
+### Restarting the desktop app keeps it organizing your mailbox
+<!-- changes: fix-026-organizer-handback.md -->
+
+An update's restart, a recovered window and turning hosting on or off no longer hand your mailbox to
+a phone that happens to be open; quitting still lets it go.
+
+### A phone organizes a mailbox only where you agreed to it
+<!-- changes: fix-026-organizer-handback.md -->
+
+An open phone no longer takes over a mailbox it never organized; an agreement you give while another
+device is organizing is kept, and the phone asks you once that device lets go.
+
+### Letters that arrive while nothing organizes are offered for filing
+<!-- changes: fix-026-organizer-handback.md -->
+
+When no device was organizing a mailbox, new letters used to stay in the inbox for good. The next
+device to organize it now counts the ones your rules would file and asks before moving any.
+
+### Search on ohmail Cloud answers faster after a pause
+<!-- changes: perf-026-cloud-search.md -->
+
+A search no longer reads every account's newest unindexed words before it answers, a part of a word
+that few messages hold is read off the index instead of walking the newest mail, and a search made
+within two minutes of the last one reuses its connection to the database. On the desktop paired with
+ohmail Cloud, the first key of a search opens the way to your account while you type.
+
+### Search finds ß and ss alike, and says what it found
+<!-- changes: perf-026-cloud-search.md -->
+
+`Strassenbahn` finds `Straßenbahn` and the other way round, on the web, the desktop and the phone.
+Messages found by a close word are counted as such, never as matched. The time on the result line
+is how long you waited for the answer to appear. An empty result says so once, and says that a long
+message is searched in its first 65,536 characters.
+
+### Changing your statistics choice on the website
+<!-- changes: web-026-consent-change-is-where-you-press.md -->
+
+The footer's Change and the privacy page's "change your choice" now open the Accept and Decline choice at the
+bottom of the window, wherever you are on the page, with the keyboard focus on Decline. Escape closes it and puts
+the focus back.
+
+### The phone keeps its editor on a draft sent or deleted on another device
+<!-- changes: fix-026-phone-sent-elsewhere-draft-says-so.md -->
+
+0.25.20 said the phone handled a draft sent from another device like the web. It did not: the phone closed
+the editor and said the draft could not be edited here. The phone now matches the web: the editor stays and
+says the draft was sent or deleted on another device, anything you type after that is saved as a new draft,
+and Send offers to send it as a new letter.
+
+### Changing the text size keeps the open screen on both phones
+<!-- changes: fix-026-phone-text-size-changes-live.md -->
+
+Changing the system text size or display size while ohmail is open re-lays the open screen at the
+new size: an open message stays open, the composer keeps its text, and nothing is cut or left
+oversized.
+
 ### Still to come
 
 Signed installers — a real Apple Developer ID and an Authenticode certificate. See
