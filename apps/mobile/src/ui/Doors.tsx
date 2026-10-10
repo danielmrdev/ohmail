@@ -370,6 +370,7 @@ function AddressField({
             example. What https is for is said in `doorSelfCert`, and the refusal for a
             badly-shaped address spells the full form. */}
         <TextInput
+          maxFontSizeMultiplier={t.textCap}
           value={value}
           onChangeText={onChange}
           editable={!locked}

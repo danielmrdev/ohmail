@@ -98,7 +98,7 @@ import { copiesShown, copiesToKeep, copiesToSend, type TypedCopies } from "./com
 import { ComposeCopies } from "./ComposeCopies";
 import type { MailtoPrefill } from "./mailto";
 import { Segmented } from "./Segmented";
-import { Sheet, SheetBackdrop, SheetRow, useSheetPanelBounds } from "./Sheet";
+import { Sheet, SheetBackdrop, SheetRow, useModalKey, useSheetPanelBounds } from "./Sheet";
 import { composeBodyMin, notesPinned, pinnedNotesMax } from "./compose-fit";
 import { SurfaceBoundary } from "./ErrorBoundary";
 import { sendPressAct } from "./send-press";
@@ -756,6 +756,7 @@ function TagSheet({ m, tags, onClose }: { m: WorldMail; tags: WorldTag[]; onClos
   return (
     <Sheet open onClose={onClose} label={Copy.actionTag}>
       <TextInput
+        maxFontSizeMultiplier={t.textCap}
         value={query}
         onChangeText={setQuery}
         placeholder={Copy.tagPlaceholder}
@@ -1115,6 +1116,7 @@ export function ComposeSheet({
   const insets = useSafeAreaInsets();
   const heightClass = usePosture().heightClass;
   const windowHeight = useWindowDimensions().height;
+  const modalKey = useModalKey();
   const letterScroll = useRef<null | ScrollView>(null);
   const [notesHeight, setNotesHeight] = useState<number | null>(null);
   const [attachRow, setAttachRow] = useState({ row: 0, files: 0, photos: 0, hint: 0 });
@@ -1601,7 +1603,7 @@ export function ComposeSheet({
   );
 
   return (
-    <Modal transparent animationType={t.reduceMotion ? "none" : "slide"} visible onRequestClose={closeComposer}>
+    <Modal key={modalKey} transparent animationType={t.reduceMotion ? "none" : "slide"} visible onRequestClose={closeComposer}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1, justifyContent: "flex-end", paddingBottom: keyboardLift }}
@@ -1665,6 +1667,7 @@ export function ComposeSheet({
                 {Copy.forwardTo}
               </Txt>
               <TextInput
+                maxFontSizeMultiplier={t.textCap}
                 value={to}
                 onChangeText={editWhileIdle(phase, setTo)}
                 editable={phase === "idle"}
@@ -1698,6 +1701,7 @@ export function ComposeSheet({
                 {Copy.composeSubject}
               </Txt>
               <TextInput
+                maxFontSizeMultiplier={t.textCap}
                 value={subject}
                 onChangeText={editWhileIdle(phase, setSubject)}
                 editable={phase === "idle"}
@@ -1722,6 +1726,7 @@ export function ComposeSheet({
               press, and an editable field over a sending/queued/unverified state would
               display words the wire will not carry. */}
           <TextInput
+            maxFontSizeMultiplier={t.textCap}
             value={body}
             onChangeText={editWhileIdle(phase, setBody)}
             editable={phase === "idle"}
@@ -1788,6 +1793,7 @@ export function ComposeSheet({
                   bury Send under the keyboard (codex round 1). Capped, it scrolls inside the
                   block — the webapp's own 8-row ceiling, in points. */}
               <TextInput
+                maxFontSizeMultiplier={t.textCap}
                 value={sigText}
                 onChangeText={editWhileIdle(phase, (text: string) => setSig({ kind: "edited", text }))}
                 editable={phase === "idle"}

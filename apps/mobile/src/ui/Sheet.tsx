@@ -37,6 +37,15 @@ export function useSheetPanelBounds(): ViewStyle {
 }
 
 /**
+ * A `Modal`'s key: on Android its dialog keeps the size it measured in the OLD density when the
+ * display size changes (the pixels do not move, so nothing re-measures), and the panel runs off the
+ * screen. Keying the dialog on the scale opens a fresh one; the content's state lives above it.
+ */
+export function useModalKey(): string {
+  return `density-${useWindowDimensions().scale}`;
+}
+
+/**
  * The bottom sheet: a backdrop press away from dismissal, the panel where the thumb is.
  * `avoidKeyboard` lifts the panel over the keyboard for a sheet that holds a text input
  * (the folders name sheet) — the composer's own `KeyboardAvoidingView` arrangement.
@@ -66,6 +75,7 @@ export function Sheet({
   const keyboardLift = useKeyboardLift();
   const insets = useSafeAreaInsets();
   const bounds = useSheetPanelBounds();
+  const modalKey = useModalKey();
   if (!open) return null;
   const body = (
     <>
@@ -98,7 +108,7 @@ export function Sheet({
     </>
   );
   return (
-    <Modal transparent animationType={t.reduceMotion ? "none" : "slide"} visible onRequestClose={onClose}>
+    <Modal key={modalKey} transparent animationType={t.reduceMotion ? "none" : "slide"} visible onRequestClose={onClose}>
       {avoidKeyboard ? (
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}

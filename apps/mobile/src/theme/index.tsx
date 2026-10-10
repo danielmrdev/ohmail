@@ -8,14 +8,15 @@
  * resolved above this provider (`./face.ts`) from the device pin and the account's synced answer — the account half
  * is a `GET /consent` field, and this module has no wire.
  */
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { AccessibilityInfo, useColorScheme, type ViewStyle } from "react-native";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { AccessibilityInfo, Text, useColorScheme, type LayoutChangeEvent, type ViewStyle } from "react-native";
 import { DEFAULT_FACE, teachOf, type FaceName } from "./face";
 import { lift, liftUp, type LiftLevel } from "./lift";
 import { ohmarchyEasing, ohmarchyRadius } from "./ohmarchy";
 import { paletteOf, type Palette, type SchemeName } from "./palette";
 import { type as typePresets } from "./type";
 import { HIT, layout, motion, radius, space, zLayer } from "./tokens";
+import { FIRST_READING, readProbe, textCapOf } from "./text-scale";
 
 export * from "./face";
 export * from "./oklch";
@@ -24,6 +25,7 @@ export * from "./palette";
 export * from "./lift";
 export * from "./type";
 export * from "./tokens";
+export * from "./text-scale";
 
 export type ThemePref = "system" | "light" | "dark";
 
@@ -75,6 +77,12 @@ export interface Theme {
   reduceMotion: boolean;
   /** ms, already zeroed when `reduceMotion` is on — the one place that decides. */
   ms: (d: keyof typeof motion.duration) => number;
+  /**
+   * The `maxFontSizeMultiplier` EVERY `Text` and `TextInput` carries. It never caps anything; its
+   * value moves when the system text size does, which is what makes each node re-measure
+   * (`./text-scale.ts`).
+   */
+  textCap: number;
 }
 
 const ThemeContext = createContext<Theme | null>(null);
@@ -113,6 +121,15 @@ export function ThemeProvider({
   const system = useColorScheme();
   const reduceMotion = useReduceMotion();
   const scheme: SchemeName = pref === "system" ? (system === "dark" ? "dark" : "light") : pref;
+  const [scale, setScale] = useState(FIRST_READING);
+  const onProbe = useCallback(
+    (e: LayoutChangeEvent) => {
+      const height = e.nativeEvent.layout.height;
+      setScale((prev) => readProbe(prev, height));
+    },
+    [],
+  );
+  const textCap = textCapOf(scale.generation);
 
   const value = useMemo<Theme>(() => {
     const faced = faceTokens(face);
@@ -133,10 +150,26 @@ export function ThemeProvider({
       reduceMotion,
       // The face's easing, paper's durations — `motion.duration` is deliberately not faced.
       ms: (d) => (reduceMotion ? 0 : motion.duration[d]),
+      textCap,
     };
-  }, [scheme, face, reduceMotion]);
+  }, [scheme, face, reduceMotion, textCap]);
 
-  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+  return (
+    <ThemeContext.Provider value={value}>
+      {children}
+      {/* The text-size probe: one invisible line whose height is the live system scale. */}
+      <Text
+        onLayout={onProbe}
+        maxFontSizeMultiplier={textCap}
+        numberOfLines={1}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={[typePresets.h1, { position: "absolute", top: 0, left: 0, opacity: 0 }]}
+      >
+        Ag
+      </Text>
+    </ThemeContext.Provider>
+  );
 }
 
 /** Live `prefers-reduced-motion` equivalent. */

@@ -52,6 +52,7 @@ export function Txt({ variant = "body", tone = "ink", tabular, style, ...rest }:
   return (
     <Text
       {...rest}
+      maxFontSizeMultiplier={t.textCap}
       style={[
         t.type[variant] as TextStyle,
         { color },
@@ -315,7 +316,7 @@ export function Badge({
     >
       {icon ? <Icon name={icon} size={10} color={fg} weight={1.5} /> : null}
       {children != null ? (
-        <Text style={[t.type.badge, { color: fg, fontVariant: ["tabular-nums"] }]}>{children}</Text>
+        <Text maxFontSizeMultiplier={t.textCap} style={[t.type.badge, { color: fg, fontVariant: ["tabular-nums"] }]}>{children}</Text>
       ) : null}
     </View>
   );
@@ -332,7 +333,7 @@ export function TagChip({ name, ink, bg }: { name: string; ink: string; bg: stri
         paddingVertical: 2,
       }}
     >
-      <Text style={[t.type.tagchip, { color: ink }]}>{name}</Text>
+      <Text maxFontSizeMultiplier={t.textCap} style={[t.type.tagchip, { color: ink }]}>{name}</Text>
     </View>
   );
 }
@@ -376,7 +377,7 @@ export function Chip({
       ]}
     >
       {icon ? <Icon name={icon} size={12} color={t.c.accentInk} /> : null}
-      <Text style={[t.type.chip, { color: t.c.ink2, flexShrink: 1 }]}>{children}</Text>
+      <Text maxFontSizeMultiplier={t.textCap} style={[t.type.chip, { color: t.c.ink2, flexShrink: 1 }]}>{children}</Text>
     </View>
   );
   return onPress ? (
@@ -445,7 +446,7 @@ export function Button({
       ]}
     >
       {icon ? <Icon name={icon} size={13} color={fg} /> : null}
-      <Text style={[t.type.button, { color: fg }]}>{label}</Text>
+      <Text maxFontSizeMultiplier={t.textCap} style={[t.type.button, { color: fg }]}>{label}</Text>
     </Tap>
   );
 }

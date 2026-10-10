@@ -197,6 +197,7 @@ function Field({
         ]}
       >
         <TextInput
+          maxFontSizeMultiplier={t.textCap}
           value={value}
           onChangeText={onChange}
           autoCorrect={false}

@@ -20,6 +20,7 @@ export function ComposeCopies({ value, editable, onChange }: {
         {label}
       </Txt>
       <TextInput
+        maxFontSizeMultiplier={t.textCap}
         value={text}
         onChangeText={set}
         editable={editable}

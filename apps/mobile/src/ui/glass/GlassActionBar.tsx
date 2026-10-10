@@ -98,7 +98,7 @@ export function GlassActionBar({
     >
       {v.icon ? <Icon name={v.icon} size={13} color={t.c.ink2} /> : null}
       {opts?.iconOnly ? null : (
-        <Text style={[t.type.button, { color: t.c.ink2 }]} numberOfLines={1}>
+        <Text maxFontSizeMultiplier={t.textCap} style={[t.type.button, { color: t.c.ink2 }]} numberOfLines={1}>
           {v.label}
         </Text>
       )}
@@ -121,7 +121,7 @@ export function GlassActionBar({
         opacity: pressed && !measure ? 0.86 : 1,
       })}
     >
-      <Text style={[t.type.button, { color: t.c.onAccent }]} numberOfLines={1}>
+      <Text maxFontSizeMultiplier={t.textCap} style={[t.type.button, { color: t.c.onAccent }]} numberOfLines={1}>
         {label}
       </Text>
     </Tap>
@@ -142,7 +142,7 @@ export function GlassActionBar({
         backgroundColor: pressed && !measure ? t.c.tint : "transparent",
       })}
     >
-      <Text style={[t.type.button, { color: t.c.ink2, fontWeight: "700", letterSpacing: 0.5 }]}>⋯</Text>
+      <Text maxFontSizeMultiplier={t.textCap} style={[t.type.button, { color: t.c.ink2, fontWeight: "700", letterSpacing: 0.5 }]}>⋯</Text>
     </Tap>
   );
 

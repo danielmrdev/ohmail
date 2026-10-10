@@ -60,7 +60,7 @@ export function GlassIconButton({
       })}
     >
       {glyph !== undefined ? (
-        <Text style={[t.type.button, { color, fontWeight: "700", letterSpacing: 0.5 }]}>{glyph}</Text>
+        <Text maxFontSizeMultiplier={t.textCap} style={[t.type.button, { color, fontWeight: "700", letterSpacing: 0.5 }]}>{glyph}</Text>
       ) : icon !== undefined ? (
         <Icon name={icon} size={17} weight={on ? 1.7 : 1.3} color={color} />
       ) : null}
@@ -82,6 +82,7 @@ export function GlassIconButton({
           }}
         >
           <Text
+            maxFontSizeMultiplier={t.textCap}
             style={[
               t.type.badge,
               { color: badgeHot ? t.c.onAccent : t.c.ink3, fontVariant: ["tabular-nums"] },
