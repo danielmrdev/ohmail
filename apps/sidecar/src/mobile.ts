@@ -457,13 +457,17 @@ export const TRANSACTION_WAIT_MS = 30_000;
  * overlap), so it goes where every transaction funnels: the handle's `transaction` method. A
  * re-entrant `db.transaction` would deadlock, so the wait is bounded by {@link TRANSACTION_WAIT_MS}.
  */
-export function oneTransactionAtATime<T extends object>(db: T, waitMs = TRANSACTION_WAIT_MS): T {
+/** One transaction chain two handles can share — the drain's and everybody else's, on one file. */
+export interface TransactionChain { tail: Promise<unknown> }
+
+export function oneTransactionAtATime<T extends object>(
+  db: T, waitMs = TRANSACTION_WAIT_MS, chain: TransactionChain = { tail: Promise.resolve() },
+): T {
   const handle = db as T & {
     transaction?: (fn: unknown, config?: unknown) => Promise<unknown>;
   };
   const inner = handle.transaction;
   if (typeof inner !== "function") return db;
-  let tail: Promise<unknown> = Promise.resolve();
   handle.transaction = function serialized(fn: unknown, config?: unknown): Promise<unknown> {
     let started = false;
     let refused = false;
@@ -475,10 +479,10 @@ export function oneTransactionAtATime<T extends object>(db: T, waitMs = TRANSACT
       started = true;
       return inner.call(handle, fn, config);
     };
-    const run = tail.then(turn, turn);
+    const run = chain.tail.then(turn, turn);
     // The CHAIN keeps the entry whatever the caller is told, and swallows so that one transaction's
     // failure does not reject the next caller's turn.
-    tail = run.catch(() => undefined);
+    chain.tail = run.catch(() => undefined);
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         if (started) return;   // it is running; a slow transaction is not this failure
@@ -500,6 +504,240 @@ export function oneTransactionAtATime<T extends object>(db: T, waitMs = TRANSACT
     });
   };
   return db;
+}
+
+/** The savepoint each drain transaction is inside the open page. */
+const PAGE_LETTER = "ohmail_page_letter";
+const BEGIN_SQL = /^\s*begin(\s+(deferred|immediate|exclusive))?\s*;?\s*$/i;
+const COMMIT_SQL = /^\s*(commit|end)(\s+transaction)?\s*;?\s*$/i;
+const ROLLBACK_SQL = /^\s*rollback(\s+transaction)?\s*;?\s*$/i;
+/** A statement that changes the store — what a replay has to repeat. A plain read changes nothing. */
+const WRITE_SQL = /^\s*(insert|update|delete|replace|with|create|drop|alter|savepoint|release|rollback\s+to)\b/i;
+/** The page's replay log is kept up to this many bytes of parameters; past it a refused commit is the drain's. */
+export const PAGE_REPLAY_BYTES = 16 * 1024 * 1024;
+
+/** {@link pagedExecutor}'s three views of one handle, and the page's commit. */
+export interface PagedExecutor {
+  /** The app's door: a statement waits for the letter in flight to end, then commits the page first. */
+  readonly main: PhoneSqlExecutor;
+  /**
+   * The engine's own statements, which a drain letter makes too: inside a letter they are part of it
+   * (logged with it); outside one they commit the page first.
+   */
+  readonly engine: PhoneSqlExecutor;
+  /** The drain's: a transaction is a savepoint of the page, released, not committed. */
+  readonly ingest: PhoneSqlExecutor;
+  /** Commit the page now. A page that could not be committed is the drain's failure, thrown here. */
+  endPage(): Promise<void>;
+}
+
+type Logged = { kind: "run" | "all"; sql: string; params: readonly unknown[]; rows?: string };
+
+/** A RETURNING answer, comparable across a replay. */
+const answerOf = (rows: unknown): string => JSON.stringify(rows, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v));
+
+const paramBytes = (params: readonly unknown[]): number => params.reduce<number>((n, p) =>
+  n + (typeof p === "string" ? p.length : p instanceof Uint8Array ? p.byteLength : 8), 0);
+
+/**
+ * ONE DURABLE COMMIT PER CYCLE PAGE, NOT PER LETTER (PERF-026). The drain's mail is re-read from the
+ * server, so its transactions are savepoints of one page and a kill loses at most that page. The app's
+ * statements — reads too — wait for the letter in flight to end and commit the page first, so the app
+ * never reads or joins a row a kill could take back. The engine's own statements belong to the letter
+ * they land in. A refused commit is replayed once from the page's log; a replay the store answers
+ * differently (its own ids and clocks) or a second refusal is the DRAIN's failure, heard at its next step.
+ */
+export function pagedExecutor(exec: PhoneSqlExecutor): PagedExecutor {
+  let pageOpen = false;
+  let letterOpen = false;
+  let mainTx = false;
+  let letterStart = 0;
+  let log: Logged[] = [];
+  let logBytes = 0;
+  let pageLost: unknown = null;
+  /** Settles when the letter in flight ends — what the app's statement waits on, outside the chain. */
+  let letterEnded: Promise<void> = Promise.resolve();
+  let endLetter: () => void = () => undefined;
+  const openLetter = (): void => {
+    letterOpen = true;
+    letterEnded = new Promise<void>((r) => { endLetter = r; });
+  };
+  const closeLetter = (): void => {
+    letterOpen = false;
+    endLetter();
+  };
+  let tail: Promise<unknown> = Promise.resolve();
+  const serial = <T>(job: () => Promise<T>): Promise<T> => {
+    const next = tail.then(job, job);
+    tail = next.catch(() => undefined);
+    return next;
+  };
+  /* A COPY of the parameters: the caller's array is reused after the statement returns (measured:
+     a replayed insert read another statement's values). */
+  const note = (entry: Logged): void => {
+    if (!pageOpen) return;
+    entry = { ...entry, params: [...entry.params] };
+    log.push(entry);
+    logBytes += paramBytes(entry.params);
+  };
+  const begin = async (): Promise<void> => {
+    await exec.run("BEGIN IMMEDIATE", []);
+    pageOpen = true;
+    log = [];
+    logBytes = 0;
+  };
+  /** Repeat logged writes; `false` where a RETURNING answer differs (the store's own ids and clocks). */
+  const replay = async (entries: readonly Logged[]): Promise<boolean> => {
+    let same = true;
+    for (const e of entries) {
+      if (e.kind === "run") { await exec.run(e.sql, e.params); note(e); continue; }
+      const { rows } = await exec.all(e.sql, e.params);
+      const now = answerOf(rows);
+      if (now !== e.rows) same = false;
+      note({ ...e, rows: now });
+    }
+    return same;
+  };
+  /** Commit the released letters. Refused: replay once; refused again: the page is the drain's loss. */
+  const commitPage = async (): Promise<void> => {
+    if (!pageOpen) return;
+    const entries = log;
+    const replayable = logBytes <= PAGE_REPLAY_BYTES;
+    pageOpen = false;
+    log = [];
+    logBytes = 0;
+    try {
+      await exec.run("COMMIT", []);
+      return;
+    } catch (first) {
+      await exec.run("ROLLBACK", []).catch(() => undefined);
+      if (!replayable) { pageLost = first; return; }
+      try {
+        await begin();
+        if (!(await replay(entries))) throw first;
+        pageOpen = false;
+        log = [];
+        await exec.run("COMMIT", []);
+      } catch {
+        pageOpen = false;
+        log = [];
+        await exec.run("ROLLBACK", []).catch(() => undefined);
+        pageLost = first;
+      }
+    }
+  };
+  /** The drain's next step hears a page it was told was taken and that is gone. */
+  const drainHears = (): void => {
+    const e = pageLost;
+    if (e === null) return;
+    pageLost = null;
+    throw e;
+  };
+  /**
+   * The app's statement: after the letter in flight ends, with the released letters committed first.
+   * It waits OUTSIDE the chain — the letter's own next statements are queued behind it otherwise.
+   */
+  const asMain = async <T>(work: () => Promise<T>, opensTransaction = false): Promise<T> => {
+    for (;;) {
+      const turn = await serial(async (): Promise<{ wait: Promise<void> } | { done: T }> => {
+        if (letterOpen && !mainTx) return { wait: letterEnded };
+        if (!mainTx) await commitPage();
+        const done = await work();
+        if (opensTransaction) mainTx = true;
+        return { done };
+      });
+      if ("done" in turn) return turn.done;
+      await turn.wait;
+    }
+  };
+  const main: PhoneSqlExecutor = {
+    all: (sql, params) => asMain(() => exec.all(sql, params)),
+    run: (sql, params) => {
+      if (BEGIN_SQL.test(sql)) return asMain(() => exec.run(sql, params), true);
+      if (mainTx && (COMMIT_SQL.test(sql) || ROLLBACK_SQL.test(sql))) {
+        return serial(async () => { mainTx = false; await exec.run(sql, params); });
+      }
+      return asMain(() => exec.run(sql, params));
+    },
+    batch: (statements) => asMain(() => exec.batch(statements)),
+    close: () => serial(async () => {
+      if (!letterOpen) await commitPage().catch(() => undefined);
+      await exec.close();
+    }),
+  };
+  /** The engine's statement: part of the letter in flight, or after the page's commit. */
+  const asEngine = <T>(sql: string, params: readonly unknown[], work: () => Promise<T>, rowsOf?: (t: T) => unknown): Promise<T> =>
+    serial(async () => {
+      if (!letterOpen && !mainTx) await commitPage();
+      const out = await work();
+      if (letterOpen && WRITE_SQL.test(sql)) {
+        note(rowsOf ? { kind: "all", sql, params, rows: answerOf(rowsOf(out)) } : { kind: "run", sql, params });
+      }
+      return out;
+    });
+  const engine: PhoneSqlExecutor = {
+    all: (sql, params) => asEngine(sql, params, () => exec.all(sql, params), (out) => out.rows),
+    run: (sql, params) => {
+      if (BEGIN_SQL.test(sql) || (mainTx && (COMMIT_SQL.test(sql) || ROLLBACK_SQL.test(sql)))) return main.run(sql, params);
+      return asEngine(sql, params, () => exec.run(sql, params));
+    },
+    batch: (statements) => serial(async () => {
+      if (letterOpen) throw new Error("a batch was asked for inside a drain letter; it would open a second transaction");
+      await commitPage();
+      await exec.batch(statements);
+    }),
+    close: () => main.close(),
+  };
+  const ingest: PhoneSqlExecutor = {
+    all: (sql, params) => serial(async () => {
+      if (!ROLLBACK_SQL.test(sql)) drainHears();
+      const out = await exec.all(sql, params);
+      if (WRITE_SQL.test(sql)) note({ kind: "all", sql, params, rows: answerOf(out.rows) });
+      return out;
+    }),
+    run: (sql, params) => serial(async () => {
+      if (letterOpen && ROLLBACK_SQL.test(sql)) {
+        try {
+          await exec.run(`ROLLBACK TO SAVEPOINT ${PAGE_LETTER}`, []);
+          await exec.run(`RELEASE SAVEPOINT ${PAGE_LETTER}`, []);
+        } finally {
+          log.length = letterStart;
+          closeLetter();
+        }
+        return;
+      }
+      drainHears();
+      if (BEGIN_SQL.test(sql) && !mainTx && !letterOpen) {
+        if (!pageOpen) await begin();
+        await exec.run(`SAVEPOINT ${PAGE_LETTER}`, []);
+        openLetter();
+        letterStart = log.length;
+        return;
+      }
+      if (letterOpen && COMMIT_SQL.test(sql)) {
+        try { await exec.run(`RELEASE SAVEPOINT ${PAGE_LETTER}`, []); } finally { closeLetter(); }
+        return;
+      }
+      if (pageOpen && ROLLBACK_SQL.test(sql)) { pageOpen = false; log = []; }
+      await exec.run(sql, params);
+      if (WRITE_SQL.test(sql)) note({ kind: "run", sql, params });
+    }),
+    batch: (statements) => serial(async () => {
+      drainHears();
+      if (!letterOpen) { await commitPage(); drainHears(); }
+      await exec.batch(statements);
+    }),
+    close: () => main.close(),
+  };
+  return {
+    main, engine, ingest,
+    endPage: () => serial(async () => {
+      drainHears();
+      if (letterOpen) return;
+      await commitPage();
+      drainHears();
+    }),
+  };
 }
 
 /**
@@ -551,7 +789,10 @@ export async function openPhoneStore(
      and `rollback` included, and no caller's code runs inside them — so a throw here is the store's,
      whatever its text (see `StoreStatementFaultError`). */
   const writes = storeWriteGauge();
-  const db = drizzleSqliteProxy(
+  /* THE DRAIN'S PAGE (PERF-026): the cycle's transactions commit as one page on `ingest`, and any
+     statement on `main` commits that page first — see {@link pagedExecutor}. */
+  const paged = pagedExecutor(exec);
+  const proxyOver = (exec: PhoneSqlExecutor) => drizzleSqliteProxy(
     async (sql, params, method) => {
       try {
         if (method === "run") {
@@ -584,6 +825,12 @@ export async function openPhoneStore(
     },
   );
 
+  const db = proxyOver(paged.engine);
+  const route = proxyOver(paged.main);
+  const ingest = proxyOver(paged.ingest);
+  /* ONE transaction chain for both handles: a drain letter and another caller's transaction never
+     overlap on the one connection. */
+  const chain: TransactionChain = { tail: Promise.resolve() };
   /* OUTSIDE the transaction gate, so an announcement is delivered after the write is durable
      and without holding the next writer's turn — the contract's "delivered when the
      transaction commits", which this store has to keep for itself. */
@@ -591,7 +838,13 @@ export async function openPhoneStore(
      this store's own from then on. See `Dialect.foldLog`. */
   let foldMark: LogMark = { folded: null };
   const branded = brandDialect(
-    deliverLocalNotifyAtCommit(oneTransactionAtATime(db, transactionWaitMs)), "sqlite",
+    deliverLocalNotifyAtCommit(oneTransactionAtATime(db, transactionWaitMs, chain)), "sqlite",
+  ) as unknown as LocalDb;
+  const ingestDb = brandDialect(
+    deliverLocalNotifyAtCommit(oneTransactionAtATime(ingest, transactionWaitMs, chain)), "sqlite",
+  ) as unknown as LocalDb;
+  const routeDb = brandDialect(
+    deliverLocalNotifyAtCommit(oneTransactionAtATime(route, transactionWaitMs, chain)), "sqlite",
   ) as unknown as LocalDb;
   return {
     db: branded,
@@ -636,7 +889,10 @@ export async function openPhoneStore(
     laneCensus: () => null,
     // The planner statistics are a PGlite concern; the platform's SQLite plans for itself here.
     analyzeSearchIfStale: async () => false,
-    close: async () => { await exec.close(); },
+    ingestDb,
+    routeDb,
+    endIngestPage: () => paged.endPage(),
+    close: async () => { await paged.main.close(); },
   };
 }
 

@@ -2445,6 +2445,9 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
      * second handle to the same file with no fact of its own.
      */
     const repo = makeDrizzleRepo(db);
+    /* THE CYCLE'S REPO: over the drain's own handle where the store pages the drain's commits (the
+       phone's — see `OpenLocalDb.ingestDb`), the same repo everywhere else. */
+    const cycleRepo = opened.ingestDb ? makeDrizzleRepo(opened.ingestDb) : repo;
     /**
      * Who this install is, to the organizer lease — one identity for the machine, whatever
      * number of mailboxes it holds. The full argument is at the lease's banner: the id must
@@ -4362,7 +4365,7 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
          the first cycle makes anyway; a failed read leaves the count to that cycle. */
       void repo.listMessageFailures(mb.id).then((rows) => { deadLetters.hydrate(rows); }, () => undefined);
       const syncDeps = {
-        repo,
+        repo: cycleRepo,
         /**
          * AN ACCESSOR, NOT A COPY — the same rule the runtime record below states for its
          * thirteen fields, and here it is load-bearing rather than tidy. A re-dial REPLACES the
@@ -6293,6 +6296,9 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
             break;
           } finally {
             if (cycleServed) noteCycleServed();
+            /* THE PAGE ENDS WITH THE CYCLE, served or not: what it took is durable before the
+               next cycle edge decides anything. */
+            await opened.endIngestPage?.();
           }
           cycleMs.push(Date.now() - cycleStart);
           cycles++;
@@ -9924,7 +9930,9 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
             },
           );
         }
-        const answered = await asPerson(req, () => app.handle(req, depsFor()));
+        /* THE APP'S DOOR READS COMMITTED ROWS ONLY where a drain page can be open (PERF-026). */
+        const answered = await asPerson(req, () =>
+          app.handle(req, opened.routeDb ? { ...depsFor(), db: opened.routeDb } : depsFor()));
         noteDoorWrite(req, answered);
         // The mailbox list carries this install's own settled sync verdicts — on `handle`
         // ALONE, like the local routes above: a paired device renders its own indicator and

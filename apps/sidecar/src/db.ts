@@ -522,6 +522,17 @@ export interface OpenLocalDb {
    */
   analyzeSearchIfStale(): Promise<boolean>;
   /**
+   * THE DRAIN'S OWN HANDLE, where a store commits a cycle's mail as one page (the phone's). Its
+   * transactions are savepoints of a page that {@link endIngestPage} commits; any statement on
+   * {@link db} commits the page first, so nothing another caller reads or writes waits on it or
+   * joins it. Absent: the drain uses {@link db} and every transaction commits on its own.
+   */
+  ingestDb?: LocalDb;
+  /** The app's door to the same store, where a drain page is open: never served an uncommitted row. */
+  routeDb?: LocalDb;
+  /** Commit the open page, if any. Called at every cycle edge and before the drain's tail. */
+  endIngestPage?(): Promise<void>;
+  /**
    * Flush and release. Idempotent — shutdown paths call it from more than one place, and they share
    * one close. On the desktop store it refuses new calls, waits for the admitted ones, and rejects
    * with {@link StoreCloseTimeoutError} rather than shut down under one still running.
