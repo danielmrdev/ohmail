@@ -411,8 +411,9 @@ export interface LocalMailboxRuntime {
   /** The doorbell: the ladder to base and one coalesced drain now, as an INBOX `exists` rings it. */
   ring(): void;
   /** Stop this mailbox's timer, wait for the in-flight cycle and close its login. Leaves the
-   *  store alone — the store is the install's, not this row's. */
-  detach(): Promise<void>;
+   *  store alone — the store is the install's, not this row's. `"restart"` (the install's stop
+   *  the shell marked) keeps the claim for the relaunch; every other caller passes `"quit"`. */
+  detach(leaving: "quit" | "restart"): Promise<void>;
   /**
    * Re-dial now if this mailbox's connection is dead — the foreground wake, exposed. The engine
    * already re-dials a dead connection at the top of its poll, the right cadence for a desktop whose

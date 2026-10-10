@@ -247,7 +247,7 @@ fn main() {
                     // NOBODY WAITS HERE, and that is the whole of it: this arm only makes sure
                     // the engine is on its way out. The waiting is below, after the loop.
                     host::LifecycleAction::StopEngine => {
-                        shell.begin_stop();
+                        shell.begin_stop(engine::Leaving::Quit);
                     }
                     host::LifecycleAction::HideInsteadOfClose => {
                         if let tauri::RunEvent::WindowEvent {

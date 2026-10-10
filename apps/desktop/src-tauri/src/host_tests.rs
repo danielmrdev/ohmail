@@ -1562,3 +1562,50 @@ fn a_restore_publishes_nothing_without_an_identity_and_arms_nothing_from_an_off_
     }
     assert!(!quiet.armed());
 }
+
+// ── Which replacement tells the engine it is a restart ───────────────────────────────────────
+
+/// The frames the stand-in engine read before one respawn replaced it. The shell runs the `record`
+/// engine, the replacement is inert, and `replan` has stopped (and reaped) the old one by the time
+/// the respawn returns, so its record is complete.
+fn frames_read_before(respawn: &dyn Fn(&HostRuntime<tauri::Wry>)) -> Vec<serde_json::Value> {
+    use crate::engine::tests::{quick, wait_for, Fixture};
+    let _live = crate::inherited_fds::tests::live_process();
+    let fixture = Fixture::new("host-respawn");
+    let mut host = armed_runtime();
+    host.shell = Arc::new(engine::Shell::around(engine::Engine::spawn_with(fixture.launch("record"), quick())));
+    wait_for(
+        || matches!(host.shell.engine().state(), EngineState::Serving { .. }),
+        std::time::Duration::from_secs(20),
+        "the engine to announce itself",
+    );
+    engine::plan_double::next(|| Plan::Inert(EngineState::Stopped));
+    respawn(&host);
+    assert_eq!(fixture.exits(), 1, "the replaced engine did not leave: {:?}", fixture.frames());
+    fixture.frames()
+}
+
+/// ARMING, DISARMING AND THE RE-ARM AFTER A REFUSED PAIRING bring the same local door back from the
+/// same data directory, so each tells the engine it is a restart and the organizer claim is kept.
+#[test]
+fn arming_disarming_and_rearming_tell_the_engine_it_is_a_restart() {
+    use crate::engine::tests::is_the_restart_frame;
+    let spawn = || HostSpawn { port: 3311, origin: None, lan: None, assets: None };
+    let respawns: [(&str, Box<dyn Fn(&HostRuntime<tauri::Wry>)>); 3] = [
+        ("arm", Box::new(move |h| respawn_armed(h, spawn()))),
+        ("disarm", Box::new(|h| respawn_disarmed(h, Some(3311)))),
+        ("rearm", Box::new(move |h| respawn_rearmed(h, Some(HostPlan::Armed(spawn()))))),
+    ];
+    for (what, respawn) in respawns {
+        let frames = frames_read_before(&*respawn);
+        assert!(frames.last().is_some_and(is_the_restart_frame), "{what}: {frames:?}");
+    }
+}
+
+/// A STAND-DOWN BECAUSE THE SHELL IS MOVING — a switch away from the local door, or a sign-out — is
+/// a quit: nothing local organizes next, so the engine is told nothing and gives its claim back.
+#[test]
+fn a_stand_down_for_a_shell_transition_is_a_quit_and_tells_the_engine_nothing() {
+    let frames = frames_read_before(&|h| respawn_for_shell_transition(h, Some(3311)));
+    assert_eq!(frames, Vec::<serde_json::Value>::new(), "a switch-away or sign-out kept the claim");
+}

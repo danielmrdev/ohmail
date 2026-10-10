@@ -2601,6 +2601,31 @@ fn the_hook_records_that_it_ran_stops_the_engine_and_starts_nothing() {
     assert!(!hook.ran(), "a new attempt inherited the last one's record");
 }
 
+/// THE INSTALL'S STOP IS A RESTART: the hook stops the shell's real engine through `ShellDoor`, and
+/// the engine reads the `leaving` frame last before its EOF, so it keeps the organizer claim for the
+/// copy the installer starts. Driven against the stand-in engine, never a stub door.
+#[cfg(feature = "local-engine")]
+#[test]
+fn the_hook_stops_the_engine_as_a_restart() {
+    use crate::engine::tests::{is_the_restart_frame, quick, wait_for, Fixture};
+    use crate::engine::{Engine, EngineState, Shell};
+    let _live = crate::inherited_fds::tests::live_process();
+    let fixture = Fixture::new("hook-restart");
+    let shell = Arc::new(Shell::around(Engine::spawn_with(fixture.launch("record"), quick())));
+    wait_for(
+        || matches!(shell.engine().state(), EngineState::Serving { .. }),
+        Duration::from_secs(20),
+        "the engine to announce itself",
+    );
+    let hook = super::InstallHook::new(Arc::new(super::ShellDoor(Arc::clone(&shell))));
+
+    hook.run();
+
+    let frames = fixture.frames();
+    assert!(frames.last().is_some_and(is_the_restart_frame), "{frames:?}");
+    assert_eq!(fixture.exits(), 1, "the engine did not leave for the installer");
+}
+
 /// AN INSTALLER THAT DID NOT START LEAVES THE RELEASE ON OFFER AND SAYS SO: the same press installs
 /// it, the dialog is not asked again, and the report carries the instant the window keys its
 /// sentence on, until the press's fetch begins.

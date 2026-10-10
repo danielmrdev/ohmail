@@ -75,14 +75,14 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
+use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TrySendError};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 #[cfg(test)]
 #[path = "engine_tests.rs"]
-mod tests;
+pub(crate) mod tests;
 
 /// THE NEXT PLAN A TEST'S SHELL MAKES, per test thread and once: what lets a resume or a retry in a
 /// test start a real engine where a shell with no configuration would start none. The closure runs
@@ -1186,13 +1186,33 @@ impl Engine {
     }
 
     /// Ask the engine to leave, wait for it, and kill it if it will not. Idempotent, and safe to
-    /// call from a window-close and again from the app's exit.
-    pub fn stop(&self) {
+    /// call from a window-close and again from the app's exit. Only the FIRST call's `leaving`
+    /// counts: a later one finds the input already closed.
+    pub fn stop(&self, leaving: Leaving) {
         {
             let mut s = self.inner.shared.lock().expect("engine state");
             if !s.stop {
                 s.stop = true;
                 s.deadline = Some(Instant::now() + self.inner.timings.stop_grace);
+                // A RESTART SAYS SO FIRST, on the same channel and under the same lock, so the frame
+                // is the last thing the engine reads before the EOF. `try_send`: no ack and no wait;
+                // a full or closed channel is the ordinary quit, which gives the claim back.
+                if leaving == Leaving::Restart {
+                    if let Some(writer) = s.stdin.as_ref() {
+                        match writer.try_send(encode_leaving()) {
+                            Ok(()) => log_line(format_args!(
+                                "stopping for a restart — the engine keeps its organizer claim for the relaunch"
+                            )),
+                            Err(err) => log_line(format_args!(
+                                "the restart could not be told to the engine ({}); it gives its claim back",
+                                match err {
+                                    TrySendError::Full(_) => "its input queue is full",
+                                    TrySendError::Disconnected(_) => "it stopped reading its input",
+                                }
+                            )),
+                        }
+                    }
+                }
                 // ORDER: the stop flag is set before the pipe is closed, under the same lock the
                 // supervisor takes to read it. The other order races — the child exits cleanly,
                 // the supervisor sees an exit with no stop pending, and restarts the engine the
@@ -1217,7 +1237,7 @@ impl Drop for Engine {
     /// shell also calls [`Engine::stop`] explicitly — but an `Engine` dropped for any other
     /// reason must not leave a child behind either.
     fn drop(&mut self) {
-        self.stop();
+        self.stop(Leaving::Quit);
     }
 }
 
@@ -1472,8 +1492,19 @@ pub enum Resume {
     NothingStopped,
 }
 
+/// WHY THE SHELL IS STOPPING THE ENGINE, required at every stop and replace so that the compiler is
+/// the census of callers (no `Default`). `Restart` is the same local door coming back from the same
+/// data directory: the engine is told with a `leaving` frame before its input closes and keeps its
+/// organizer claim for the relaunch. Everything else is
+/// `Quit`, which gives the claim back.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Leaving {
+    Quit,
+    Restart,
+}
+
 /// A quit's stage, and what every wait on one stop shares.
-struct Leaving {
+struct LeaveSlot {
     stage: LeaveStage,
     /// Bumped by every stop this shell starts, so a stop that ends late marks only its own run.
     run: u64,
@@ -1485,31 +1516,35 @@ struct Leaving {
     /// The person closed the app. A restart that then does not happen ends it, instead of
     /// starting the engine again behind a window that is already gone.
     quitting: bool,
+    /// Why this run stops the engine. A Quit pressed while it is in flight wins over a Restart,
+    /// up to the moment the stop thread tells the engine; a Restart never overrides a Quit.
+    leaving: Leaving,
 }
 
-/// [`Leaving`] behind its lock, and the wake-up its waits sleep on. NO WAIT HOLDS THE LOCK: a
+/// [`LeaveSlot`] behind its lock, and the wake-up its waits sleep on. NO WAIT HOLDS THE LOCK: a
 /// restart's stop used to wait inside it, so a close pressed meanwhile blocked the thread that
 /// draws for the whole stop, up to [`SHUTDOWN_BOUND`], and was then dropped.
 pub(crate) struct Shutdown {
-    state: Mutex<Leaving>,
+    state: Mutex<LeaveSlot>,
     left: Condvar,
 }
 
 impl Shutdown {
     pub(crate) const fn new() -> Shutdown {
         Shutdown {
-            state: Mutex::new(Leaving {
+            state: Mutex::new(LeaveSlot {
                 stage: LeaveStage::NotStarted,
                 run: 0,
                 ends_by: None,
                 left: false,
                 quitting: false,
+                leaving: Leaving::Quit,
             }),
             left: Condvar::new(),
         }
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, Leaving> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, LeaveSlot> {
         self.state.lock().expect("shell shutdown")
     }
 }
@@ -1742,10 +1777,11 @@ impl Shell {
     }
 
     /// Restart the engine from the stored configuration and the current host-mode decision —
-    /// what arming and disarming do once the setting is written.
-    pub fn replan(&self) {
+    /// what arming and disarming do once the setting is written, and what a shell transition does
+    /// before it moves the door. The caller says which of the two it is.
+    pub fn replan(&self, leaving: Leaving) {
         *self.pending_door.lock().expect("pending door") = None;
-        self.replace(self.planned(None));
+        self.replace(self.planned(None), leaving);
     }
 
     /// The failure card's "Unlock and retry" press: remove the engine's data-directory lock and
@@ -1783,7 +1819,8 @@ impl Shell {
         // A free witness is held by its reading until here; the next engine takes it at its spawn.
         drop(witness);
         *self.pending_door.lock().expect("pending door") = None;
-        self.replace(plan);
+        // The same door from the same directory; the engine has already given up, so nothing is sent.
+        self.replace(plan, Leaving::Restart);
         Ok(self.status())
     }
 
@@ -1810,7 +1847,8 @@ impl Shell {
             format!("the store could not be moved aside ({err}); the engine was not restarted")
         })?;
         *self.pending_door.lock().expect("pending door") = None;
-        self.replace(plan);
+        // A new store, so a new install id: nothing of the old one's continues.
+        self.replace(plan, Leaving::Quit);
         Ok(self.status())
     }
 
@@ -1836,7 +1874,8 @@ impl Shell {
             return Err("this install has no engine to start; nothing was restarted".to_string());
         }
         *self.pending_door.lock().expect("pending door") = None;
-        self.replace(plan);
+        // The same door from the same directory; the engine has already given up, so nothing is sent.
+        self.replace(plan, Leaving::Restart);
         Ok(self.status())
     }
 
@@ -1846,8 +1885,8 @@ impl Shell {
     }
 
     /// Ask the engine to leave. Idempotent, and safe from a window-close and again from the exit.
-    pub fn stop(&self) {
-        self.engine().stop();
+    pub fn stop(&self, leaving: Leaving) {
+        self.engine().stop(leaving);
     }
 
     /// Start the engine leaving, and DO NOT WAIT for it. `true` if this call started it.
@@ -1855,14 +1894,18 @@ impl Shell {
     /// What a close press runs, so that nothing between the press and an empty screen belongs to
     /// the engine. Everything [`Shell::stop`] does still happens, in the same order, with the same
     /// grace period and the same kill — on a thread nobody is drawing on.
-    pub fn begin_stop(self: &Arc<Shell>) -> bool {
+    pub fn begin_stop(self: &Arc<Shell>, leaving: Leaving) -> bool {
         let mut slot = self.leaving.lock();
-        self.start_stop(&mut slot)
+        self.start_stop(&mut slot, leaving)
     }
 
-    /// [`Shell::begin_stop`] under the lock its caller holds.
-    fn start_stop(self: &Arc<Shell>, slot: &mut Leaving) -> bool {
+    /// [`Shell::begin_stop`] under the lock its caller holds. A stop already under way starts
+    /// nothing, but a Quit pressed during it wins over its Restart if the engine has not been told.
+    fn start_stop(self: &Arc<Shell>, slot: &mut LeaveSlot, leaving: Leaving) -> bool {
         if slot.stage != LeaveStage::NotStarted {
+            if leaving == Leaving::Quit {
+                slot.leaving = Leaving::Quit;
+            }
             return false;
         }
         slot.run += 1;
@@ -1870,11 +1913,15 @@ impl Shell {
         slot.stage = LeaveStage::InFlight;
         slot.ends_by = None;
         slot.left = false;
+        slot.leaving = leaving;
         let shell = Arc::clone(self);
         thread::Builder::new()
             .name("ohmail-quit".into())
             .spawn(move || {
-                shell.stop();
+                // The reason is read as the engine is told, so a Quit pressed meanwhile is the one sent.
+                let engine = shell.engine();
+                let leaving = shell.leaving.lock().leaving;
+                engine.stop(leaving);
                 // This run's, and only while it is current: a restart that did not happen started
                 // the engine again, and that engine is not the one this thread stopped.
                 let mut slot = shell.leaving.lock();
@@ -1902,8 +1949,11 @@ impl Shell {
     pub fn finish_stop(self: &Arc<Shell>, within: Duration) -> bool {
         let mut slot = self.leaving.lock();
         // Nothing started one — a platform that ends the app without a close request, or a quit
-        // from the tray. The window is gone by now.
-        self.start_stop(&mut slot);
+        // from the tray. The window is gone by now. Only then: this wait is no press, so it never
+        // turns a restart under way into a quit.
+        if slot.stage == LeaveStage::NotStarted {
+            self.start_stop(&mut slot, Leaving::Quit);
+        }
         // EVERY WAIT ON ONE STOP SHARES THE FIRST ONE'S BOUND, and sleeps with the lock released,
         // so a press on the thread that draws never waits behind a restart's stop.
         loop {
@@ -1989,7 +2039,7 @@ impl Shell {
         let owns = {
             let mut slot = self.leaving.lock();
             slot.quitting = true;
-            self.start_stop(&mut slot)
+            self.start_stop(&mut slot, Leaving::Quit)
         };
         if installing {
             fence.quit_asked();
@@ -2023,9 +2073,10 @@ impl Shell {
 
     /// Stop the engine and wait for it, bounded by [`SHUTDOWN_BOUND`]: what a restart owes the copy
     /// it starts. The quit's two halves back to back, because a restart leaves this process exactly
-    /// as a quit does — the stop on a thread of its own, the wait bounded, the kill past the grace.
+    /// as a quit does — the stop on a thread of its own, the wait bounded, the kill past the grace —
+    /// with one difference: the engine is told it is a restart, and keeps its organizer claim.
     pub fn stop_for_restart(self: &Arc<Shell>) -> bool {
-        self.begin_stop();
+        self.begin_stop(Leaving::Restart);
         self.finish_stop(SHUTDOWN_BOUND)
     }
 
@@ -2067,7 +2118,8 @@ impl Shell {
         slot.ends_by = None;
         slot.left = false;
         drop(slot);
-        self.replan();
+        // The engine is already stopped, so this stop sends nothing; it is still the same door.
+        self.replan(Leaving::Restart);
         Resume::Resumed
     }
 
@@ -2077,16 +2129,16 @@ impl Shell {
     /// new one started before the old one has gone fails to start — and it fails in the way that
     /// looks worst, because "another copy already holds this directory" is also what a genuine
     /// second instance of the app reports.
-    fn replace(&self, plan: Plan) {
-        self.replace_with(|| plan);
+    fn replace(&self, plan: Plan, leaving: Leaving) {
+        self.replace_with(|| plan, leaving);
     }
 
     /// [`Shell::replace`] with a step between the stop and the spawn, under the same lock: a door
     /// switch moves the directory the stopped engine held, and nothing may read the slot or start
     /// an engine while it does. The step answers the plan to spawn.
-    fn replace_with(&self, between: impl FnOnce() -> Plan) {
+    fn replace_with(&self, between: impl FnOnce() -> Plan, leaving: Leaving) {
         let mut slot = self.engine.lock().expect("shell engine");
-        slot.stop();
+        slot.stop(leaving);
         let plan = between();
         *slot = Arc::new(match plan {
             Plan::Spawn(launch) => Engine::spawn(launch),
@@ -2152,7 +2204,7 @@ impl Shell {
         self.replace(Plan::Inert(EngineState::NotConfigured {
             missing: vec![config::CONFIG_FILE_NAME.to_string()],
             door: None,
-        }));
+        }), Leaving::Quit);
         if let Err(reason) = clear_candidate_slot(root) {
             log_line(format_args!(
                 "{reason}; it holds no door, and the next candidate replaces it"
@@ -2178,7 +2230,7 @@ impl Shell {
             return Err(out_of_time(SEGMENT_LAUNCH));
         }
         let started = Instant::now();
-        self.replace(self.paths.plan_now_in(Some(candidate), Some(dir)));
+        self.replace(self.paths.plan_now_in(Some(candidate), Some(dir)), Leaving::Quit);
 
         // SEGMENT ONE — the launch. Polled rather than waited on a condition variable: the ready
         // announcement sets the state without notifying, and a one-off launch does not justify
@@ -2374,7 +2426,7 @@ impl Shell {
                         self.planned(None)
                     }
                 }
-            });
+            }, Leaving::Quit);
             outcome?;
             return Ok(self.status());
         }
@@ -2391,7 +2443,7 @@ impl Shell {
         self.replace_with(|| {
             leave_erased_copy(&root, &config);
             self.planned(Some(&config))
-        });
+        }, Leaving::Quit);
         Ok(self.status())
     }
 
@@ -2450,7 +2502,7 @@ impl Shell {
             }
             *self.pending_door.lock().expect("pending door") = None;
             self.planned(None)
-        });
+        }, Leaving::Quit);
         let undone = outcome?;
         self.note_pairing_left(undone.session_left_at.clone());
         Ok((self.status(), undone))
@@ -2630,8 +2682,8 @@ impl Shell {
         //
         // The engine goes down before the files move: it holds the data directory, and removing a
         // file underneath a process that has it open is the kind of thing that works on one
-        // platform and does not on another.
-        self.engine().stop();
+        // platform and does not on another. A sign-out is a quit: the claim goes back.
+        self.engine().stop(Leaving::Quit);
 
         // ── THE CLOUD DOOR'S SEALED SESSION IS THE CREDENTIAL, SO ITS REMOVAL IS NOT OPTIONAL ──
         //
@@ -2674,7 +2726,7 @@ impl Shell {
         self.replace(Plan::Inert(EngineState::NotConfigured {
             missing: vec![config::CONFIG_FILE_NAME.to_string()],
             door: None,
-        }));
+        }), Leaving::Quit);
         Ok(self.status())
     }
 
@@ -3744,6 +3796,19 @@ fn absolute_url(base: &str, url: &str) -> String {
     } else {
         url.to_string()
     }
+}
+
+/// The `leaving` frame [`Engine::stop`] writes before a restart's EOF: preamble and header, no body,
+/// and no `id`, because nothing answers it. A type [`encode_request`] cannot produce, so no request
+/// a page sends through the bridge can say it (`engine.ts`, the latch it sets).
+pub(crate) fn encode_leaving() -> Vec<u8> {
+    let header = serde_json::json!({ "v": PROTOCOL_VERSION, "t": "leaving", "reason": "restart" });
+    let header_bytes = serde_json::to_vec(&header).expect("a fixed header always encodes");
+    let mut frame = Vec::with_capacity(PREAMBLE_BYTES + header_bytes.len());
+    frame.extend_from_slice(&(header_bytes.len() as u32).to_be_bytes());
+    frame.extend_from_slice(&0u32.to_be_bytes());
+    frame.extend_from_slice(&header_bytes);
+    frame
 }
 
 /// A `req` frame: preamble, header JSON, body. Mirrors the engine's codec — see the constants at

@@ -53,7 +53,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::config;
-use crate::engine::{self, EngineState, Found, Plan, Shell};
+use crate::engine::{self, EngineState, Found, Leaving, Plan, Shell};
 
 #[cfg(test)]
 #[path = "host_tests.rs"]
@@ -1566,13 +1566,12 @@ pub fn tailscale_serve_arm<R: tauri::Runtime>(
     // environment as the host client's assets root. One spelling with `ShellPaths`, so the two
     // independent resolutions of the same directory cannot disagree.
     let assets = packaged_host_client(engine::resource_dir_of(&app).as_deref());
-    host.shell.set_host_plan(Some(HostPlan::Armed(HostSpawn {
+    respawn_armed(&host, HostSpawn {
         port,
         origin: identity.as_ref().map(|i| i.origin.clone()),
         lan,
         assets,
-    })));
-    host.shell.replan();
+    });
     stand_up_tray(&app, host.inner());
 
     // The publication, last, and ONLY with a tailnet identity in hand. This waits for the fresh
@@ -1737,6 +1736,30 @@ fn app_side_of_stand_down<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
 }
 
+/// THE FOUR WAYS HOST MODE REPLACES THE ENGINE, each with its own leaving reason. Arming, disarming
+/// and the re-arm after a refused pairing bring the same local door back from the same data
+/// directory, so they are restarts and the organizer claim is kept. A stand-down because the SHELL
+/// is moving (a door switch away, a sign-out) is a quit: nothing local organizes next.
+pub(crate) fn respawn_armed<R: tauri::Runtime>(host: &HostRuntime<R>, spawn: HostSpawn) {
+    host.shell.set_host_plan(Some(HostPlan::Armed(spawn)));
+    host.shell.replan(Leaving::Restart);
+}
+
+pub(crate) fn respawn_disarmed<R: tauri::Runtime>(host: &HostRuntime<R>, held: Option<u16>) {
+    host.shell.set_host_plan(held.map(HostPlan::Held));
+    host.shell.replan(Leaving::Restart);
+}
+
+pub(crate) fn respawn_rearmed<R: tauri::Runtime>(host: &HostRuntime<R>, plan: Option<HostPlan>) {
+    host.shell.set_host_plan(plan);
+    host.shell.replan(Leaving::Restart);
+}
+
+pub(crate) fn respawn_for_shell_transition<R: tauri::Runtime>(host: &HostRuntime<R>, held: Option<u16>) {
+    host.shell.set_host_plan(held.map(HostPlan::Held));
+    host.shell.replan(Leaving::Quit);
+}
+
 /// The stand-down above with this app's own halves supplied: the tailnet CLI, the start-at-login
 /// registration and the dock icon, and the world step — the engine replaced without its host
 /// door, which is what takes the listener away.
@@ -1751,14 +1774,10 @@ fn stand_down<R: tauri::Runtime>(
         &|held| {
             /* THE DOOR, TAKEN AWAY — and the PORT, KEPT. The replacement engine is launched with
                the stand-down knob instead of the arming ones, so it binds that port and answers
-               that this computer no longer serves mail there. */
-            host.shell.set_host_plan(held.map(HostPlan::Held));
-            /* `replan` stops the engine before it spawns the replacement, so when this returns
-               the host door of this install is gone rather than scheduled to go. The door-switch
-               caller replaces the engine again a moment later with the new door's plan; one extra
-               restart is what the invariant costs on that path, and it is paid while the person
-               is already watching a door change. */
-            host.shell.replan();
+               that this computer no longer serves mail there. `replan` stops the engine before it
+               spawns the replacement, so when this returns the host door of this install is gone
+               rather than scheduled to go. The same door comes back: a restart. */
+            respawn_disarmed(host, held);
         },
     )
 }
@@ -1777,10 +1796,10 @@ pub fn stand_down_on_shell_transition<R: tauri::Runtime>(
         host,
         &|args| run_tailscale(args),
         &|| app_side_of_stand_down(app),
-        &|held| {
-            host.shell.set_host_plan(held.map(HostPlan::Held));
-            host.shell.replan();
-        },
+        /* The door-switch caller replaces the engine again a moment later with the new door's plan;
+           one extra restart is what the invariant costs on that path. A QUIT: the shell is moving
+           away from this door, so the claim goes back now. */
+        &|held| respawn_for_shell_transition(host, held),
         why,
     );
 }
@@ -1844,10 +1863,7 @@ pub fn rearm_after_restore<R: tauri::Runtime>(
         &|| {
             after_restore_with(snapshot, &|| enable_autostart(app), &|| stand_up_tray(app, host), "after a refused pairing");
         },
-        &|plan| {
-            host.shell.set_host_plan(plan);
-            host.shell.replan();
-        },
+        &|plan| respawn_rearmed(host, plan),
         &|port, generation| host.publish_when_listening(port, generation),
     );
 }

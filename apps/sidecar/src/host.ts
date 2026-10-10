@@ -2,7 +2,10 @@ import type { Readable, Writable } from "node:stream";
 import { FrameDecoder, FrameWriter, MAX_BODY_BYTES, PROTOCOL_VERSION, type FrameLimits } from "./frame.js";
 import { describeMethod, describeRoute, type Diagnostic } from "./log.js";
 import { noteFirstPageServed } from "./first-page-gate.js";
-import { decodeRequest, encodeResponse, type ErrorHeader, type MailboxHeader, type ReadyHeader, type ReadyInfo, type RequestHeader } from "./protocol.js";
+import {
+  decodeRequest, encodeResponse,
+  type ErrorHeader, type LeavingHeader, type MailboxHeader, type ReadyHeader, type ReadyInfo, type RequestHeader,
+} from "./protocol.js";
 
 /**
  * The sidecar side of the bridge — frames on stdin, `app.handle` behind them, frames back out. The
@@ -40,6 +43,11 @@ export interface StdioHostOptions {
    * no resync point in a length-prefixed stream, so this is terminal by design.
    */
   onFatal?: (err: unknown) => void;
+  /**
+   * The shell's `leaving` frame ({@link LeavingHeader}), handed over as it arrived: no dispatch,
+   * no response. Absent ⇒ the frame is admitted and ignored (the cloud engine has no claim to keep).
+   */
+  onLeaving?: (header: LeavingHeader) => void;
   limits?: Partial<FrameLimits>;
 }
 
@@ -174,6 +182,19 @@ export function serveOverStdio(opts: StdioHostOptions): StdioHost {
       return;
     }
     for (const f of frames) {
+      /* THE ONE NON-REQUEST FRAME THE SHELL SENDS, admitted by name: it answers nothing and
+         dispatches nothing. Every other unknown type below is still fatal. */
+      if ((f.header as Partial<LeavingHeader>).t === "leaving") {
+        if (f.header.v !== PROTOCOL_VERSION) {
+          fatal(Object.assign(
+            new Error(`frame protocol version ${String(f.header.v)}, expected ${PROTOCOL_VERSION}`),
+            { code: "frame_version_mismatch" },
+          ));
+          return;
+        }
+        opts.onLeaving?.(f.header as LeavingHeader);
+        continue;
+      }
       const header = f.header as Partial<RequestHeader>;
       // Both messages quote the frame, and both errors reach `fatal`, which logs them — so both
       // carry a `code`. `describeError` reads `code` through an identifier grammar and emits it,

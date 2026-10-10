@@ -2299,7 +2299,7 @@ describe("the auto-updater", () => {
     // later, so the restart door itself waits for an install still writing.
     expect(engineSrc).toMatch(/pub fn restart_after<T>\(shell: &Arc<Shell>, fence: &InstallFence, then: impl FnOnce\(\) -> T\) -> T \{\s*crate::updater::after_install\(fence, \|\| \{[\s\S]*?shell\.stop_for_restart\(\);[\s\S]*?then\(\)\s*\}\)\s*\}/);
     expect(updater).toMatch(/pub\(crate\) fn after_install<T>\(fence: &InstallFence, then: impl FnOnce\(\) -> T\) -> T \{\s*fence\.wait\(\);\s*then\(\)\s*\}/);
-    expect(engineSrc).toMatch(/pub fn stop_for_restart\(self: &Arc<Shell>\) -> bool \{\s*self\.begin_stop\(\);\s*self\.finish_stop\(SHUTDOWN_BOUND\)\s*\}/);
+    expect(engineSrc).toMatch(/pub fn stop_for_restart\(self: &Arc<Shell>\) -> bool \{\s*self\.begin_stop\(Leaving::Restart\);\s*self\.finish_stop\(SHUTDOWN_BOUND\)\s*\}/);
     // The menu and the Settings press no longer install on the thread that draws.
     expect(updater).not.toMatch(/Press::Restart => install_and_restart\(/);
     /* NO THIRD RESTART AND NO THIRD INSTALL, in any spelling, in any module of the tree: the two

@@ -180,7 +180,9 @@ if (mode !== "serve-deaf") {
   process.stdin.on("end", () => process.exit(0));
 }
 
-if (mode === "echo" || mode === "mute" || mode === "unnamed" || mode === "renamed") {
+// `record` notes every frame's header and body length, so a test reads what crossed the pipe
+// before the EOF: the `exit` line follows the last frame.
+if (mode === "echo" || mode === "mute" || mode === "unnamed" || mode === "renamed" || mode === "record") {
   let buf = Buffer.alloc(0);
   let named = mode === "echo" || mode === "mute";
   process.stdin.on("data", (chunk) => {
@@ -193,6 +195,7 @@ if (mode === "echo" || mode === "mute" || mode === "unnamed" || mode === "rename
       const header = JSON.parse(buf.subarray(8, 8 + hl).toString("utf8"));
       const body = buf.subarray(8 + hl, 8 + hl + bl);
       buf = buf.subarray(8 + hl + bl);
+      if (mode === "record") { note("frame " + JSON.stringify({ header, bodyBytes: bl })); continue; }
       if (mode === "mute") continue;
       if (!named) {
         named = true;
@@ -238,7 +241,7 @@ fn node() -> String {
 
 static SEQ: AtomicU32 = AtomicU32::new(0);
 
-struct Fixture {
+pub(crate) struct Fixture {
     dir: PathBuf,
     script: PathBuf,
     log: PathBuf,
@@ -247,7 +250,7 @@ struct Fixture {
 }
 
 impl Fixture {
-    fn new(name: &str) -> Fixture {
+    pub(crate) fn new(name: &str) -> Fixture {
         let n = SEQ.fetch_add(1, Ordering::SeqCst);
         let dir = std::env::temp_dir().join(format!("ohmail-engine-test-{}-{name}-{n}", std::process::id()));
         fs::create_dir_all(&dir).expect("temp dir");
@@ -263,7 +266,7 @@ impl Fixture {
         Fixture { script: dir.join("fake-engine.cjs"), log: dir.join("starts.log"), dir, owned: false }
     }
 
-    fn launch(&self, mode: &str) -> Launch {
+    pub(crate) fn launch(&self, mode: &str) -> Launch {
         Launch {
             program: PathBuf::from(node()),
             args: vec![self.script.clone().into_os_string(), OsString::from(mode)],
@@ -291,9 +294,25 @@ impl Fixture {
         self.lines().iter().filter(|l| l.starts_with("start ")).count()
     }
 
-    fn exits(&self) -> usize {
+    pub(crate) fn exits(&self) -> usize {
         self.lines().iter().filter(|l| l.starts_with("exit ")).count()
     }
+
+    /// The frames a `record` engine read, in order — each `{ header, bodyBytes }`.
+    pub(crate) fn frames(&self) -> Vec<serde_json::Value> {
+        self.lines()
+            .iter()
+            .filter_map(|l| l.strip_prefix("frame "))
+            .filter_map(|rest| rest.rsplit_once(' '))
+            .filter_map(|(json, _pid)| serde_json::from_str(json).ok())
+            .collect()
+    }
+}
+
+/// The one frame a restart writes, as the `record` engine reads it back.
+pub(crate) fn is_the_restart_frame(frame: &serde_json::Value) -> bool {
+    frame["header"] == serde_json::json!({ "v": 1, "t": "leaving", "reason": "restart" })
+        && frame["bodyBytes"] == serde_json::json!(0)
 }
 
 impl Drop for Fixture {
@@ -306,7 +325,7 @@ impl Drop for Fixture {
 
 /// Fast timings. The behaviour under test is the ordering and the bounds, not the numbers —
 /// [`default_timings_are_the_shipped_ones`] is what pins the numbers.
-fn quick() -> Timings {
+pub(crate) fn quick() -> Timings {
     Timings {
         stop_grace: Duration::from_millis(400),
         healthy_for: Duration::from_secs(60),
@@ -315,7 +334,7 @@ fn quick() -> Timings {
     }
 }
 
-fn wait_for(mut done: impl FnMut() -> bool, within: Duration, what: &str) {
+pub(crate) fn wait_for(mut done: impl FnMut() -> bool, within: Duration, what: &str) {
     let deadline = Instant::now() + within;
     while Instant::now() < deadline {
         if done() {
@@ -557,7 +576,7 @@ fn a_build_with_no_engine_beside_it_is_not_an_error() {
         quick(),
     );
     wait_for(|| matches!(engine.state(), EngineState::Absent { .. }), Duration::from_secs(5), "the absent state");
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 // ── Finding a Node to run the engine with ───────────────────────────────────────────────────
@@ -925,7 +944,7 @@ fn the_engine_is_running_when_it_says_it_is_serving() {
     assert!(engine.last_exit().is_none(), "nothing has ended: {:?}", engine.last_exit());
     assert_eq!(fixture.exits(), 0, "the engine has not left: {:?}", fixture.lines());
 
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 #[test]
@@ -949,7 +968,7 @@ fn a_process_that_never_says_ready_is_never_reported_as_serving() {
         }
         other => panic!("expected a failed state carrying the last exit, got {other:?}"),
     }
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 // ── Quitting: the defect this slice exists to prevent ───────────────────────────────────────
@@ -989,7 +1008,7 @@ fn with_host_mode_armed_a_closed_window_leaves_the_engine_serving_and_quit_reaps
 
     // Quit — the tray's, or the platform's — is StopEngine in EVERY column, and stop reaps.
     assert_eq!(lifecycle_action(true, WindowSignal::Exit), LifecycleAction::StopEngine);
-    engine.stop();
+    engine.stop(Leaving::Quit);
     // THE REAP IS READ OFF waitpid, NEVER OFF THE FAKE'S EXIT LINE. On a loaded runner the child
     // can outlast quick()'s 400 ms grace, and stop then kills it: a reap that writes no exit line
     // (rc4 arm64, 2026-09-23, "killing it" 3 ms before this assertion read 0). `last_exit` is the
@@ -1009,7 +1028,7 @@ fn the_host_listener_signal_is_read_off_the_diagnostic_stream() {
     let engine = Engine::spawn_with(fixture.launch("serve-host"), quick());
     wait_for(|| engine.host_signal().is_some(), Duration::from_secs(10), "the host signal");
     assert_eq!(engine.host_signal(), Some(crate::host::HostSignal::Listening { port: 3311 }));
-    engine.stop();
+    engine.stop(Leaving::Quit);
 
     let plain = Engine::spawn_with(fixture.launch("serve"), quick());
     wait_for(
@@ -1018,7 +1037,7 @@ fn the_host_listener_signal_is_read_off_the_diagnostic_stream() {
         "the plain engine to serve",
     );
     assert_eq!(plain.host_signal(), None, "a signal appeared out of nothing");
-    plain.stop();
+    plain.stop(Leaving::Quit);
 }
 
 #[test]
@@ -1036,7 +1055,7 @@ fn quitting_leaves_no_engine_behind() {
     );
     let pid = engine.pid().expect("a running engine has a pid");
 
-    engine.stop();
+    engine.stop(Leaving::Quit);
 
     assert_eq!(engine.state(), EngineState::Stopped);
     // Three independent proofs, because "the supervisor says it stopped it" is the claim under
@@ -1065,7 +1084,7 @@ fn quitting_closes_the_engines_input_rather_than_killing_it() {
     );
 
     let began = Instant::now();
-    engine.stop();
+    engine.stop(Leaving::Quit);
 
     // It left of its own accord, well inside the grace period — it was asked, not killed: the
     // kernel's status is a clean 0, read off waitpid rather than off the fake's exit line.
@@ -1091,7 +1110,7 @@ fn an_engine_that_ignores_the_ask_is_killed_rather_than_left_running() {
     let pid = engine.pid().expect("a running engine has a pid");
 
     let began = Instant::now();
-    engine.stop();
+    engine.stop(Leaving::Quit);
 
     assert!(began.elapsed() >= quick().stop_grace, "the grace period was waited out before killing");
     assert_eq!(engine.state(), EngineState::Stopped);
@@ -1121,8 +1140,8 @@ fn stopping_twice_is_the_same_as_stopping_once() {
         Duration::from_secs(20),
         "the engine to announce itself",
     );
-    engine.stop();
-    engine.stop();
+    engine.stop(Leaving::Quit);
+    engine.stop(Leaving::Quit);
     assert_eq!(engine.state(), EngineState::Stopped);
     assert_eq!(fixture.starts(), 1, "nothing was restarted by the second stop");
 }
@@ -1137,7 +1156,7 @@ fn a_stopped_engine_is_not_restarted() {
         Duration::from_secs(20),
         "the engine to announce itself",
     );
-    engine.stop();
+    engine.stop(Leaving::Quit);
     thread::sleep(Duration::from_millis(300));
     assert_eq!(fixture.starts(), 1);
     assert_eq!(engine.state(), EngineState::Stopped);
@@ -1166,7 +1185,7 @@ fn the_supervisor_sleeps_through_an_idle_engine() {
     let turns = engine.supervisor_turns() - before;
 
     assert!(turns < 15, "the supervisor came round {turns} times in ten idle seconds");
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 /// A CHILD THAT LEAVES IS NOTICED AT ONCE, AND NOT AT THE END OF A TIMER.
@@ -1189,7 +1208,7 @@ fn a_child_that_leaves_is_noticed_without_waiting_for_a_timer() {
     );
 
     let began = Instant::now();
-    engine.stop();
+    engine.stop(Leaving::Quit);
 
     assert!(
         began.elapsed() < Duration::from_millis(500),
@@ -1223,7 +1242,7 @@ fn the_close_press_hands_the_engine_off_and_the_exit_waits_for_it() {
     let pid = shell.engine().pid().expect("a running engine has a pid");
 
     let began = Instant::now();
-    shell.begin_stop();
+    shell.begin_stop(Leaving::Quit);
     let pressed = began.elapsed();
     assert!(
         pressed < quick().stop_grace / 4,
@@ -1321,6 +1340,99 @@ fn a_restart_that_did_not_happen_starts_the_engine_again_and_a_quit_still_stops_
     );
 }
 
+/// A RESTART TELLS THE ENGINE BEFORE ITS INPUT CLOSES. The `leaving` frame is the last thing the
+/// engine reads, and the engine still leaves on the EOF after it (exit 0, never the kill): that frame
+/// is what makes the engine keep its organizer claim for the relaunch (`engine.ts`, the latch).
+#[test]
+fn a_restart_sends_the_leaving_frame_last_and_the_engine_still_leaves_on_the_eof() {
+    let _live = live_process();
+    let fixture = Fixture::new("restart-frame");
+    let shell = Arc::new(Shell::around(Engine::spawn_with(fixture.launch("record"), quick())));
+    wait_for(
+        || matches!(shell.engine().state(), EngineState::Serving { .. }),
+        Duration::from_secs(20),
+        "the engine to announce itself",
+    );
+
+    assert!(shell.stop_for_restart(), "the engine did not leave inside the bound");
+
+    let frames = fixture.frames();
+    assert!(
+        frames.last().is_some_and(is_the_restart_frame),
+        "the last frame before the EOF was not the restart's: {frames:?}"
+    );
+    assert_eq!(frames.iter().filter(|f| is_the_restart_frame(f)).count(), 1, "{frames:?}");
+    assert_eq!(fixture.exits(), 1, "the engine did not leave: {:?}", fixture.lines());
+    let exit = shell.engine().last_exit().expect("the run ended");
+    assert_eq!(exit.code, Some(0), "it was killed rather than asked to leave");
+}
+
+/// AND A QUIT SAYS NOTHING — the control. A close press, the app's own exit and every stop that is
+/// not the same door coming back give the claim back, so the engine reads no frame at all.
+#[test]
+fn a_quit_sends_no_leaving_frame() {
+    let _live = live_process();
+    let fixture = Fixture::new("quit-no-frame");
+    let shell = Arc::new(Shell::around(Engine::spawn_with(fixture.launch("record"), quick())));
+    wait_for(
+        || matches!(shell.engine().state(), EngineState::Serving { .. }),
+        Duration::from_secs(20),
+        "the engine to announce itself",
+    );
+
+    assert!(shell.begin_stop(Leaving::Quit));
+    assert!(shell.finish_stop(Duration::from_secs(20)), "the shutdown did not finish inside the bound");
+
+    assert_eq!(fixture.frames(), Vec::<serde_json::Value>::new(), "a quit told the engine something");
+    assert_eq!(fixture.exits(), 1, "the engine did not leave: {:?}", fixture.lines());
+}
+
+/// A CLOSE PRESSED WHILE A RESTART'S STOP HAS NOT YET TOLD THE ENGINE WINS: the Quit replaces the
+/// pending Restart, so the engine reads no `leaving` frame and gives its claim back. The stop thread
+/// reaches the engine through the shell's engine slot; holding it keeps the restart untold.
+#[test]
+fn a_quit_pressed_before_the_restart_reaches_the_engine_wins() {
+    let _live = live_process();
+    let fixture = Fixture::new("quit-wins-restart");
+    let shell = Arc::new(Shell::around(Engine::spawn_with(fixture.launch("record"), quick())));
+    wait_for(
+        || matches!(shell.engine().state(), EngineState::Serving { .. }),
+        Duration::from_secs(20),
+        "the engine to announce itself",
+    );
+    {
+        let held = shell.engine.lock().expect("shell engine");
+        assert!(shell.begin_stop(Leaving::Restart));
+        assert!(!shell.begin_stop(Leaving::Quit), "a second stop was started beside the restart's");
+        drop(held);
+    }
+    assert!(shell.finish_stop(Duration::from_secs(20)), "the shutdown did not finish inside the bound");
+    assert_eq!(fixture.frames(), Vec::<serde_json::Value>::new(), "the engine was told it is restarting");
+    assert_eq!(fixture.exits(), 1, "the engine did not leave: {:?}", fixture.lines());
+}
+
+/// AND A RESTART NEVER OVERRIDES A QUIT — the control, under the same hold.
+#[test]
+fn a_restart_pressed_during_a_quits_stop_stays_a_quit() {
+    let _live = live_process();
+    let fixture = Fixture::new("restart-after-quit");
+    let shell = Arc::new(Shell::around(Engine::spawn_with(fixture.launch("record"), quick())));
+    wait_for(
+        || matches!(shell.engine().state(), EngineState::Serving { .. }),
+        Duration::from_secs(20),
+        "the engine to announce itself",
+    );
+    {
+        let held = shell.engine.lock().expect("shell engine");
+        assert!(shell.begin_stop(Leaving::Quit));
+        assert!(!shell.begin_stop(Leaving::Restart), "a second stop was started beside the quit's");
+        drop(held);
+    }
+    assert!(shell.finish_stop(Duration::from_secs(20)), "the shutdown did not finish inside the bound");
+    assert_eq!(fixture.frames(), Vec::<serde_json::Value>::new(), "a quit told the engine it is restarting");
+    assert_eq!(fixture.exits(), 1, "the engine did not leave: {:?}", fixture.lines());
+}
+
 /// Has a stop begun? Read without waiting: a lock somebody holds is a stop under way, which is
 /// what the defect below looked like from outside.
 fn a_stop_is_under_way(shell: &Shell) -> bool {
@@ -1357,7 +1469,7 @@ fn a_close_during_a_restarts_stop_is_answered_at_once_and_the_restart_still_wait
     wait_for(|| a_stop_is_under_way(&shell), Duration::from_secs(10), "the restart to begin its stop");
 
     let began = Instant::now();
-    assert!(!shell.begin_stop(), "a second stop was started beside the restart's");
+    assert!(!shell.begin_stop(Leaving::Quit), "a second stop was started beside the restart's");
     let (hid_tx, hid) = mpsc::channel();
     let (exit_tx, exited) = mpsc::channel();
     shell.leave_with(idle, SHUTDOWN_BOUND, || {}, move || { let _ = hid_tx.send(()); }, move || { let _ = exit_tx.send(()); });
@@ -1428,7 +1540,7 @@ fn a_close_after_a_resume_that_gave_up_on_the_stop_still_ends_the_app() {
     );
     let pid = shell.engine().pid().expect("a running engine has a pid");
     // The hook's stop (`stop_for_restart`) with its bound run out, then the resume's.
-    shell.begin_stop();
+    shell.begin_stop(Leaving::Restart);
     assert!(!shell.finish_stop(Duration::from_millis(100)), "a deaf engine left inside 100 ms");
     assert_eq!(shell.resume_after_failed_restart(Duration::from_millis(100)), Resume::StillLeaving);
 
@@ -1655,7 +1767,7 @@ fn a_failed_start_brings_the_engine_back_once_after_its_stop_completed_through_t
     let (data, engine) = witnessed(&fixture, "serve-deaf");
     let gone = engine.pid().expect("a running engine has a pid");
     let shell = Arc::new(Shell::around(engine));
-    shell.begin_stop();
+    shell.begin_stop(Leaving::Quit);
     let short = {
         let shell = Arc::clone(&shell);
         thread::spawn(move || shell.finish_stop(Duration::from_millis(100)))
@@ -1688,7 +1800,7 @@ fn a_failed_start_brings_the_engine_back_once_after_its_stop_completed_through_t
     assert_eq!(shell.resume_after_failed_restart(SHUTDOWN_BOUND), Resume::NothingStopped, "a second resume");
     assert_eq!(fixture.starts(), 2, "a second resume started another engine: {:?}", fixture.lines());
     assert!(!short.join().unwrap(), "the short wait read a deaf engine as gone");
-    shell.stop();
+    shell.stop(Leaving::Quit);
 }
 
 /// Where the parent below tells its child which fixture to run in.
@@ -1780,7 +1892,7 @@ fn an_engine_that_dies_is_noticed_and_restarted_a_bounded_number_of_times() {
     // restart loop with extra steps.
     thread::sleep(Duration::from_millis(400));
     assert_eq!(fixture.starts(), MAX_STARTS as usize);
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 /// THE SENTENCE THE USER GETS NAMES THE CAUSE THE CHILD NAMED, AND GUESSES NOTHING.
@@ -1820,7 +1932,7 @@ fn giving_up_quotes_what_the_engine_actually_said() {
         }
         other => panic!("expected a failed state, got {other:?}"),
     }
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 /// ONCE THE ENGINE HAS SERVED, THE NEWEST ERROR IS THE ONE THAT MATTERS.
@@ -1851,7 +1963,7 @@ fn a_run_that_served_is_diagnosed_by_its_last_error_not_its_first() {
         }
         other => panic!("expected a failed state, got {other:?}"),
     }
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 /// AN ATTEMPT THAT SAID NOTHING DOES NOT ERASE ONE THAT DID.
@@ -1886,7 +1998,7 @@ fn a_later_silent_attempt_does_not_erase_the_reason_an_earlier_one_gave() {
         }
         other => panic!("expected a failed state, got {other:?}"),
     }
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 #[test]
@@ -1909,7 +2021,7 @@ fn a_stray_write_to_the_frame_stream_is_fatal_to_that_run() {
     // exit line of its own.
     let exit = engine.last_exit().expect("the last run was reaped");
     assert!(exit.served, "the reaped run never reached ready: {:?}", fixture.lines());
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 #[test]
@@ -1927,7 +2039,7 @@ fn stopping_during_a_restart_delay_does_not_wait_the_delay_out() {
         "the supervisor to enter its restart delay",
     );
     let began = Instant::now();
-    engine.stop();
+    engine.stop(Leaving::Quit);
     assert!(began.elapsed() < Duration::from_secs(5), "stop returned in {:?}", began.elapsed());
     assert_eq!(engine.state(), EngineState::Stopped);
 }
@@ -2031,7 +2143,7 @@ fn a_request_crosses_the_pipe_and_the_answer_comes_back() {
     assert_eq!(said["method"], "GET");
     assert_eq!(said["url"], "http://sidecar/mailboxes");
 
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 /// THE MAILBOX A PAIRED LAUNCH NAMES AFTER `ready`. A paired install's `ready` names none (it has no
@@ -2052,7 +2164,7 @@ fn a_mailbox_named_after_ready_fills_the_empty_id_before_the_next_answer() {
     assert_eq!(engine.state(), EngineState::Serving { mailbox_id: "mbx-2".to_string() });
     assert_eq!(engine.ready().expect("ready").mailbox_id, "mbx-2");
 
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 /// …and a launch whose `ready` named its mailbox keeps it: the frame fills an empty id, never moves one.
@@ -2068,7 +2180,7 @@ fn a_mailbox_frame_never_moves_a_mailbox_ready_named() {
     assert_eq!(engine.state(), EngineState::Serving { mailbox_id: "mbx-1".to_string() });
     assert_eq!(engine.ready().expect("ready").mailbox_id, "mbx-1");
 
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 #[test]
@@ -2096,7 +2208,7 @@ fn the_shell_adds_the_authorization_and_the_caller_cannot() {
     assert_eq!(auth[0], format!("Bearer tok_{}", "a".repeat(24)));
     assert!(!auth[0].contains("i-chose-this"), "the caller's authorization was forwarded");
 
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 #[test]
@@ -2134,7 +2246,7 @@ fn a_root_relative_path_is_composed_against_the_engines_own_base() {
     let said: serde_json::Value = serde_json::from_slice(&answer.body).expect("json");
     assert_eq!(said["url"], "http://sidecar/mailboxes");
 
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 #[test]
@@ -2156,7 +2268,7 @@ fn a_request_body_reaches_the_engine_intact() {
     assert_eq!(said["method"], "POST");
     assert_eq!(said["body"], r#"{"from":"petra@nordlys.example"}"#);
 
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 #[test]
@@ -2201,7 +2313,7 @@ fn an_engine_that_dies_mid_request_fails_the_caller_instead_of_hanging() {
     let err = answer.expect_err("a killed engine answered a request");
     assert!(!err.is_empty(), "the failure said nothing");
 
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 #[test]
@@ -2224,7 +2336,7 @@ fn the_credential_state_rides_on_the_ready_frame() {
     let engine = Engine::spawn_with(f.launch("echo"), quick());
     serving(&engine);
     assert_eq!(engine.ready().expect("ready").credential_state, CredentialState::Ready);
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 #[test]
@@ -2279,7 +2391,7 @@ fn the_status_the_window_can_read_carries_no_token() {
     assert!(!printed.contains("tok_"), "the session token reached the window: {printed}");
     assert!(!printed.to_lowercase().contains("sessiontoken"), "{printed}");
 
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 #[test]
@@ -2310,7 +2422,7 @@ fn a_starting_engine_names_its_phase_and_a_serving_one_carries_none() {
     let after = status_json(&engine).to_string();
     assert!(!after.contains("bootPhase"), "the narration outlived the boot: {after}");
 
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 #[test]
@@ -2332,7 +2444,7 @@ fn the_schema_upgrade_carries_its_count_and_a_pair_that_says_nothing_carries_non
     let printed = status_json(&engine).to_string();
     assert!(printed.contains("\"bootPhase\":\"migrating\""), "{printed}");
     assert!(printed.contains("\"bootPending\":12"), "{printed}");
-    engine.stop();
+    engine.stop(Leaving::Quit);
 
     let g = Fixture::new("counted-bad");
     let refused = Engine::spawn_with(g.launch("counted-bad"), quick());
@@ -2344,7 +2456,7 @@ fn the_schema_upgrade_carries_its_count_and_a_pair_that_says_nothing_carries_non
     let after = status_json(&refused).to_string();
     assert!(!after.contains("bootApplied"), "a count larger than its own total crossed: {after}");
     assert!(!after.contains("bootPending"), "{after}");
-    refused.stop();
+    refused.stop(Leaving::Quit);
 }
 
 #[test]
@@ -3067,7 +3179,7 @@ fn the_shells_lines_and_the_engines_own_diagnostics_both_reach_the_file() {
 
     let engine = Engine::spawn_with(f.launch("serve"), quick());
     serving(&engine);
-    engine.stop();
+    engine.stop(Leaving::Quit);
 
     // Uninstalled before the assertions so nothing else in this binary can add to the file while it
     // is being read.
@@ -3244,7 +3356,7 @@ fn configuring_the_pending_door_writes_no_door_and_is_only_for_an_install_with_n
         }))
         .expect("the relaunch behind the adopted door");
     assert!(adopted.get("identityPending").is_none(), "{adopted}");
-    shell.stop();
+    shell.stop(Leaving::Quit);
     let _ = fs::remove_dir_all(&root);
 
     let root = signed_in_root("pending-over-a-door", "https://api.ohmail.app");
@@ -3312,7 +3424,7 @@ fn the_pending_local_door_writes_no_door_and_its_next_configure_commits_it() {
     let written: serde_json::Value =
         serde_json::from_slice(&fs::read(&file).expect("the door")).expect("json");
     assert!(written.get("pending").is_none(), "the flag reached the disk: {written}");
-    shell.stop();
+    shell.stop(Leaving::Quit);
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -3352,7 +3464,7 @@ fn a_pending_local_door_that_gave_up_is_retried_onto_no_door() {
        binary is packaged; `not_configured` in the app): the same answer a shell with no door reads. */
     let no_door = {
         let fresh = Shell::rooted_for_tests(&root);
-        fresh.replan();
+        fresh.replan(Leaving::Quit);
         fresh.status()
     };
     assert_eq!(answered["state"], no_door["state"], "{answered}");
@@ -3716,7 +3828,7 @@ fn an_inherited_mail_server_setting_does_not_reach_a_cloud_child() {
 
     let engine = Engine::spawn_with(launch, quick());
     serving(&engine);
-    engine.stop();
+    engine.stop(Leaving::Quit);
     std::env::remove_var("OHMAIL_IMAP_HOST");
 
     let reported: Vec<String> = f.lines().into_iter().filter(|l| l.starts_with("env ")).collect();
@@ -3739,7 +3851,7 @@ fn a_local_child_still_inherits_what_the_environment_says() {
     launch.env.push((OsString::from("FAKE_REPORT_ENV"), OsString::from("OHMAIL_TEST_INHERITED")));
     let engine = Engine::spawn_with(launch, quick());
     serving(&engine);
-    engine.stop();
+    engine.stop(Leaving::Quit);
     std::env::remove_var("OHMAIL_TEST_INHERITED");
 
     let reported: Vec<String> = f.lines().into_iter().filter(|l| l.starts_with("env ")).collect();
@@ -4909,7 +5021,7 @@ fn the_unlock_press_removes_the_stale_lock_and_starts_the_engine_again() {
         Some("failed"),
         "the press removed the lock but never re-entered start"
     );
-    shell.stop();
+    shell.stop(Leaving::Quit);
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -4939,7 +5051,7 @@ fn the_unlock_press_keeps_a_lock_whose_holder_is_still_running() {
     holder.wait().expect("reap the holder");
     shell.unlock_retry().expect("the holder has gone, so the press acts");
     assert!(!lock.exists(), "the lock outlived its holder");
-    shell.stop();
+    shell.stop(Leaving::Quit);
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -5025,7 +5137,7 @@ fn the_witness_is_held_for_exactly_the_life_of_the_engine_it_was_handed_to() {
     let (data, engine) = witnessed(&fixture, "serve-locked");
     let record = fs::read(data.join("sidecar.lock")).expect("the engine wrote its record");
     assert!(matches!(witness::read(&data), witness::Reading::Held), "the witness was free while its engine served");
-    engine.stop();
+    engine.stop(Leaving::Quit);
     assert_eq!(engine.state(), EngineState::Stopped);
     match witness::read(&data) {
         witness::Reading::Free { served, .. } => {
@@ -5048,7 +5160,7 @@ fn a_record_whose_writer_served_under_a_free_witness_is_removed_whatever_its_pid
     let _live = live_process();
     let fixture = Fixture::new("witness-free");
     let (data, engine) = witnessed(&fixture, "serve-locked");
-    engine.stop();
+    engine.stop(Leaving::Quit);
     let lock = data.join("sidecar.lock");
     assert!(lock.exists(), "the gone engine's record is the case under test");
     let reading = witness::read(&data);
@@ -5078,7 +5190,7 @@ fn a_record_whose_witness_is_still_held_is_kept() {
     );
     assert_eq!(fs::read(&lock).expect("still there"), before);
     drop(reading);
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 /// A RECORD THE WITNESS NEVER VOUCHED FOR KEEPS THE PID'S RULE: an older build's engine, or one
@@ -5130,7 +5242,7 @@ fn an_engine_that_let_its_witness_go_is_never_vouched_for() {
     assert!(remove_unheld_lock(&lock, |_| true, &reading).is_err(), "a live engine's lock went on a witness it let go");
     assert!(lock.exists());
     drop(reading);
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 /// The close-on-exec flag in a `/proc/<pid>/fdinfo/<fd>` reading: O_CLOEXEC in its octal flags.
@@ -5198,7 +5310,7 @@ fn a_record_whose_engine_closed_its_witness_and_still_runs_is_kept() {
     );
     assert_eq!(fs::read(&lock).expect("still there"), before);
     drop(reading);
-    engine.stop();
+    engine.stop(Leaving::Quit);
 }
 
 /// THE BELT READS THE RECORD'S OWN START TIME TOO, and only a match keeps: a record naming a live
@@ -5365,7 +5477,7 @@ fn the_start_over_press_sets_the_store_aside_and_starts_the_engine_again() {
         Some("failed"),
         "the press moved the store but never re-entered start"
     );
-    shell.stop();
+    shell.stop(Leaving::Quit);
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -5436,7 +5548,7 @@ fn the_retry_press_starts_the_engine_again_and_removes_nothing() {
     );
     assert!(lock.exists(), "the press removed the lock, which is the lock card's judgement");
     assert!(dir.join(STORE_DIR_NAME).join("PG_VERSION").exists(), "the press moved the store");
-    shell.stop();
+    shell.stop(Leaving::Quit);
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -5511,7 +5623,7 @@ fn the_retry_press_re_plans_a_no_key_engine_through_the_keystore() {
     assert_ne!(state, Some("no_key"), "the press never read the keystore again");
     assert_ne!(state, Some("failed"), "the press never re-entered start");
     crate::engine::keystore_double::queue(Vec::new());
-    shell.stop();
+    shell.stop(Leaving::Quit);
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -5644,7 +5756,7 @@ fn a_door_switch_waits_for_a_sign_out_rather_than_landing_inside_it() {
         .expect("the door switch never finished")
         .expect("the door switch refused once the lock was free");
     thread.join().expect("the door-switch thread panicked");
-    shell.stop();
+    shell.stop(Leaving::Quit);
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -6104,7 +6216,7 @@ fn leaving_a_deleted_account_s_door_for_this_computer_s_own_removes_its_copy() {
         );
         assert_eq!(outside_the_hosted_dir(&root), kept, "{at}: the discard touched something beside the copy");
         assert!(!crate::config::candidate_data_dir(&root).exists(), "{at}: the slot kept the copy");
-        shell.stop();
+        shell.stop(Leaving::Quit);
         let _ = fs::remove_dir_all(&root);
     }
 }
@@ -6120,7 +6232,7 @@ fn control_a_signed_out_door_left_for_this_computer_s_own_stays_frozen() {
     assert!(is_own_door(&root));
     assert_eq!(under(&root, "engine-cloud"), frozen, "a signed-out door's frozen copy moved");
     assert_eq!(outside_the_hosted_dir(&root), kept);
-    shell.stop();
+    shell.stop(Leaving::Quit);
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -6183,7 +6295,7 @@ fn an_operator_authority_an_older_build_read_from_the_copy_stays_where_it_is() {
         "the directory kept more than the operator's authority, or lost it",
     );
     assert_eq!(outside_the_hosted_dir(&root), kept);
-    shell.stop();
+    shell.stop(Leaving::Quit);
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -6205,7 +6317,7 @@ fn only_the_exact_erased_flag_takes_a_copy_with_its_door() {
         let shell = Shell::rooted_for_tests(&root);
         shell.switch_door(&own_door(), false).expect("the switch to this computer's own door");
         assert_eq!(under(&root, "engine-cloud"), frozen, "{record:?} took the copy with its door");
-        shell.stop();
+        shell.stop(Leaving::Quit);
         let _ = fs::remove_dir_all(&root);
     }
 }
@@ -6226,7 +6338,7 @@ fn a_pairing_left_unanswered_from_the_deleted_account_s_door_then_this_computer_
     assert!(!root.join("engine-cloud").exists(), "the deleted account's copy came back and stayed");
     assert!(!root.join("engine-cloud.replaced").exists(), "the set-aside copy stayed");
     assert_eq!(outside_the_hosted_dir(&root), kept);
-    shell.stop();
+    shell.stop(Leaving::Quit);
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -6247,7 +6359,7 @@ fn control_a_switch_to_a_hosted_door_leaves_the_deleted_account_s_directory_to_i
     after.sort();
     before.sort();
     assert_eq!(after, before, "a switch to a hosted door took the deleted account's directory from its engine");
-    shell.stop();
+    shell.stop(Leaving::Quit);
     let _ = fs::remove_dir_all(&root);
 }
 

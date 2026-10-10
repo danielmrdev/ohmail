@@ -1,5 +1,5 @@
 import { realpathSync } from "node:fs";
-import { Writable } from "node:stream";
+import { type Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { createSidecar, type Sidecar, type SidecarConfig } from "./engine.js";
 import { armFirstPageGate } from "./first-page-gate.js";
@@ -383,6 +383,25 @@ function armShutdownDeadline(log: Diagnostic, reason: string, inFlight: () => nu
   }, SHUTDOWN_DEADLINE_MS);
 }
 
+/**
+ * THE LOCAL ORGANIZER'S BRIDGE: requests to the engine, and the shell's `leaving` frame to its
+ * latch, so a stop the shell marks as a restart keeps the organizer claim. Exported so the restart
+ * test drives this composition rather than a copy of it; the cloud engine wires no `onLeaving`.
+ */
+export function serveLocalBridge(
+  sidecar: Pick<Sidecar, "handle" | "leaving">,
+  io: { input: Readable; output: Writable; log: Diagnostic; onFatal: (err: unknown) => void },
+): StdioHost {
+  return serveOverStdio({
+    handle: (req) => sidecar.handle(req),
+    input: io.input,
+    output: io.output,
+    log: io.log,
+    onFatal: io.onFatal,
+    onLeaving: (header) => sidecar.leaving(header.reason),
+  });
+}
+
 export async function runSidecar(): Promise<void> {
   const stdout = claimStdout();
   ignoreEpipe(process.stderr);
@@ -453,8 +472,7 @@ export async function runSidecar(): Promise<void> {
     process.exit(1);
   }
 
-  host = serveOverStdio({
-    handle: (req) => sidecar!.handle(req),
+  host = serveLocalBridge(sidecar, {
     input: process.stdin,
     output: stdout,
     log,

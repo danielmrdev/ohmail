@@ -765,6 +765,12 @@ export interface Sidecar {
    * untouched, so the next launch claims it back unless another install has taken it.
    */
   stop(): Promise<void>;
+  /**
+   * THE SHELL SAID WHY IT IS STOPPING THIS ENGINE — its `leaving` frame, before the EOF. Only
+   * `"restart"` changes anything: the {@link stop} that follows keeps every claim for the relaunch,
+   * which continues it under the same install id. Any other value is the ordinary quit.
+   */
+  leaving(reason: unknown): void;
 }
 
 /**
@@ -2378,6 +2384,12 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
      * flag, and only `stop()` sets it.
      */
     let stopping = false;
+    /**
+     * THE SHELL MARKED THIS STOP AS A RESTART ({@link Sidecar.leaving}). Set only by the exact word
+     * `"restart"` and never cleared: one frame arrives, just before the input ends. Read by
+     * `stop()` alone, so a mailbox removed or re-pointed meanwhile still gives its claim back.
+     */
+    let leavingForRestart = false;
     /**
      * One account-scoped pass at a time across the whole install. The passes below take an
      * account and no mailbox; every runtime's drain reaches them, and drains of different
@@ -7820,7 +7832,7 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
          * `close()`'s LOGOUT) share one drain interval, and when it runs out the socket is
          * DESTROYED, ending the hung command.
          */
-        async detach() {
+        async detach(leaving: "quit" | "restart") {
           stopped = true;
           if (timer) clearTimeout(timer);
           if (heartbeatTimer) clearTimeout(heartbeatTimer);
@@ -7859,8 +7871,11 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
                by accident. No reachable state has `organizing` true with `claimed` false, so this
                releases in exactly the cases it released in before, and in the window as well.
                NOT on a runtime that never dialled: there is no login to release through, and the
-               attempt was a TypeError logged as a failed release. A claim from before ages out. */
-            const politely = Promise.resolve().then(() => (organizer.claimed && !launchSkipped
+               attempt was a TypeError logged as a failed release. A claim from before ages out.
+               AND NOT ON A RESTART THE SHELL MARKED: the relaunch continues this claim under the same
+               install id (lease rule 3); a restart that never comes back leaves it to age out. */
+            const keepForRestart = leaving === "restart";
+            const politely = Promise.resolve().then(() => (organizer.claimed && !launchSkipped && !keepForRestart
               ? releaseOwnClaim(
                 adapter, installId, mb.id, { current: leaseNonce, pending: leasePendingNonce }, log,
                 "this install is stopping and its claim could not be removed; it ages out of "
@@ -7879,7 +7894,16 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
                   });
                 }
               })
-              : Promise.resolve()))
+              : keepForRestart && organizer.claimed && !launchSkipped
+                ? Promise.resolve().then(() => {
+                  log("organizer_claim_kept_for_restart", {
+                    mailboxId: mb.id,
+                    staleAfterMs: config.leaseStaleAfterMs ?? DEFAULT_STALE_AFTER_MS,
+                    reason: "the shell is restarting this app, so the claim stays in ohmail/_meta for "
+                      + "the relaunch to continue; a restart that does not come back leaves it to age out",
+                  });
+                })
+                : Promise.resolve()))
               .then(() => Promise.resolve(adapter.close()))
               .catch((err: unknown) => { log("adapter_close_failed", { err }); });
             wedged = !(await settledWithin(politely, left()));
@@ -9356,7 +9380,7 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
                       through a failed password change. The old runtime cannot be revived (its
                       adapter is closed), so the roster entry is restored on failure and the next
                       launch re-attaches; what is lost is the poll until then. */
-                  await live.detach();
+                  await live.detach("quit");
                   runtimes.delete(mailboxId);
                   /* THE ROW AS IT NOW STANDS — a re-point must not erase this mailbox's own
                      stand-down memory or an outstanding takeover stamp. Asserting nulls here would
@@ -9546,7 +9570,7 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
                    The STORE is untouched. `detach` closes what this mailbox holds and nothing
                    else, because the other mailboxes are still serving out of the same database —
                    which is exactly what the install's own `stop()` may not assume any more. */
-                await removed.detach();
+                await removed.detach("quit");
                 runtimes.delete(mailboxId);
               }
               /* THE LINE SAYS WHICH OF THE TWO THINGS HAPPENED, because it used to say the one
@@ -9949,10 +9973,15 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
            a gate parked in the lease read would run its whole drain before anything told it to
            stop. `detach()` sets `stopped` first and releases after the queue has settled, which is
            the only ordering where both are true. */
-        await Promise.allSettled(runtimes.all().map((r) => r.detach()));
+        const leaving = leavingForRestart ? "restart" : "quit";
+        await Promise.allSettled(runtimes.all().map((r) => r.detach(leaving)));
         // The send door's kept connections go with the install: nothing outlives the stop.
         await sendConnections.closeAll();
         await opened.close();
+      },
+      leaving(reason: unknown) {
+        /* STRICT: the one word that keeps the claim. Anything else is the quit, and releases. */
+        if (reason === "restart") leavingForRestart = true;
       },
     };
   } catch (err) {

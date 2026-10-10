@@ -140,7 +140,19 @@ export interface MailboxHeader extends Record<string, unknown> {
   mailboxId: string;
 }
 
-export type AnyHeader = RequestHeader | ResponseHeader | ErrorHeader | ReadyHeader | PhaseHeader | MailboxHeader;
+/**
+ * THE SHELL SAYING WHY IT IS ABOUT TO CLOSE THIS ENGINE'S INPUT — written once, just before the
+ * EOF, and answered by nothing. Only `reason: "restart"` means anything (the claim is kept for the
+ * relaunch); any other value, or none, is the ordinary quit. No `id`: it is not a request.
+ */
+export interface LeavingHeader extends Record<string, unknown> {
+  v: number;
+  t: "leaving";
+  reason?: unknown;
+}
+
+export type AnyHeader =
+  | RequestHeader | ResponseHeader | ErrorHeader | ReadyHeader | PhaseHeader | MailboxHeader | LeavingHeader;
 
 /** A `Request` → the frame that carries it. Consumes the request's body. */
 export async function encodeRequest(
