@@ -1311,15 +1311,18 @@ export function ComposeSheet({
     // `w`, `mailboxId` and the three fields are read at the timer; `onScreen` is their change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bound, draftId, phase, onScreen]);
-  /* THE ROW WAS SENT FROM ANOTHER DEVICE — the mirror's word, read while this sheet is idle on it
-     (its own send leaves the sheet). Held from that moment, because the keep that follows binds a
-     NEW row; `goneAt` is what the row held, so text typed after it is told apart from the letter. */
-  const sentElsewhere = draftId !== null && phase === "idle" && w.actions.draftSent(draftId);
-  const [goneAt, setGoneAt] = useState<string | null>(null);
+  /* THE ROW WAS SENT OR DELETED ON ANOTHER DEVICE — the mirror's word, read while this sheet is idle
+     on it (its own send leaves the sheet). Held from that moment, because the keep that follows
+     binds a NEW row; `at` is what the row held, so text typed after it is told apart from the letter. */
+  const left = draftId !== null && phase === "idle" ? w.actions.draftLeft(draftId) : null;
+  const [gone, setGone] = useState<{ why: "sent" | "deleted"; at: string } | null>(null);
   useEffect(() => {
-    if (sentElsewhere && goneAt === null) setGoneAt(saved.current ?? onScreen);
+    if (left !== null && gone === null) setGone({ why: left, at: saved.current ?? onScreen });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sentElsewhere]);
+  }, [left]);
+  const goneAt = gone?.at ?? null;
+  const goneNote: FailedSendCopy | null = gone === null ? null
+    : gone.why === "sent" ? "replySentElsewhere" : "replyDeletedElsewhere";
   const typedSinceGone = goneAt !== null && onScreen !== goneAt;
 
   /**
@@ -1501,7 +1504,7 @@ export function ComposeSheet({
   const sendAsNew = useRef(false);
 
   const send = async (sendAt: string | null = null, andDone = false) => {
-    if (goneAt !== null && !sendAsNew.current) { setFailNote("replySentElsewhere"); return; }
+    if (goneNote !== null && !sendAsNew.current) { setFailNote(goneNote); return; }
     // The picker closes the moment ANY send is dispatched — a panel left standing over a
     // message that is already on its way offers rows for an act that may no longer happen.
     setLater(null);
@@ -1515,7 +1518,7 @@ export function ComposeSheet({
       : forward
         ? await w.actions.sendForward(m!.id, recipients ?? [], body, sigText, files, andDone, forwardConfirmed, draftId)
         : await w.actions.sendReply(m!.id, body, mode === "replyAll", sigText, sendAt, files, andDone, draftId);
-    const result = await toRow(asNew && draftId !== null && w.actions.draftSent(draftId) ? null : draftId);
+    const result = await toRow(asNew && draftId !== null && w.actions.draftLeft(draftId) !== null ? null : draftId);
     // `superseded`: a newer press of this reply carries it and says its sentence.
     if (result.outcome === "sent" || result.outcome === "superseded") {
       leave();
@@ -1540,12 +1543,12 @@ export function ComposeSheet({
      toast and the top bar render under this Modal, so a sentence said only there was a press with no
      answer. Pinned up to `pinnedNotesMax`; past it they scroll at the letter's end, scrolled to. */
   const noteItems = [
-    goneAt !== null ? (
-      <Txt key="sentElsewhere" variant="caption" tone="ink2" accessibilityRole="alert">
-        {Copy.composeSentElsewhere}
+    gone !== null ? (
+      <Txt key="leftElsewhere" variant="caption" tone="ink2" accessibilityRole="alert">
+        {gone.why === "sent" ? Copy.composeSentElsewhere : Copy.composeDeletedElsewhere}
       </Txt>
     ) : null,
-    goneAt !== null && typedSinceGone && failNote === "replySentElsewhere" ? (
+    goneNote !== null && typedSinceGone && failNote === goneNote ? (
       <Button key="sendAsNew" label={Copy.composeSendAsNew} variant="quiet" onPress={() => { sendAsNew.current = true; void send(); }} />
     ) : null,
     phase === "queued" || phase === "unverified" ? (

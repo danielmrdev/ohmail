@@ -606,6 +606,7 @@ const NO_ACTIONS: WorldActions = {
   // Nothing is connected, so nothing can be kept: the sheet says so and stays open.
   draftKeep: () => Promise.resolve("refused" as const),
   draftSent: () => false,
+  draftLeft: () => null,
   sendOutcome: () => "unknown",
   tagToggle: () => undefined,
   tagCreate: () => undefined,
@@ -1546,6 +1547,7 @@ export function WorldProvider({ children }: { children: ReactNode }) {
           draftSendAgain: (draftId) => acts.draftSendAgain(draftId),
           draftKeep: (keep) => acts.draftKeep(keep),
           draftSent: (draftId) => acts.draftSent(draftId),
+          draftLeft: (draftId) => acts.draftLeft(draftId),
           sendOutcome: (key) => outcomeOf(key),
           tagToggle: (id, tag, assigned) => void acts.tagToggle(id, tag, assigned),
           tagCreate: (id, name) => void acts.tagCreate(id, name),

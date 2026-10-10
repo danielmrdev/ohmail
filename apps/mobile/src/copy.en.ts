@@ -1959,6 +1959,8 @@ const TABLE = {
   replySentElsewhere: "Not sent: this draft already went from another device.",
   composeSentElsewhere: "This draft was sent from another device. Anything you type now is kept as a new draft.",
   composeSendAsNew: "Send as a new letter",
+  replyDeletedElsewhere: "Not sent: this draft was deleted on another device.",
+  composeDeletedElsewhere: "This draft was deleted on another device. Anything you type now is kept as a new draft.",
   /* The refused send while this phone cannot reach its mail server — said in the composer. */
   composeNotSentOffline: "Not sent. This phone can't reach your mail server. It's kept in Drafts — send it again once you're back online.",
   /* Send pressed again over an unconfirmed send: a second copy could reach them twice. */

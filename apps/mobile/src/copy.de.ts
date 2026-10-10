@@ -1312,6 +1312,8 @@ export const DE: Deck = {
   replySentElsewhere: "Nicht gesendet: Dieser Entwurf ging bereits von einem anderen Gerät aus.",
   composeSentElsewhere: "Dieser Entwurf wurde von einem anderen Gerät gesendet. Was du jetzt schreibst, wird als neuer Entwurf gespeichert.",
   composeSendAsNew: "Als neue Nachricht senden",
+  replyDeletedElsewhere: "Nicht gesendet: Dieser Entwurf wurde auf einem anderen Gerät gelöscht.",
+  composeDeletedElsewhere: "Dieser Entwurf wurde auf einem anderen Gerät gelöscht. Was du jetzt schreibst, wird als neuer Entwurf gespeichert.",
   composeNotSentOffline: "Nicht gesendet. Dieses Telefon erreicht deinen Mailserver nicht. Die Nachricht liegt in den Entwürfen — sende sie erneut, sobald du wieder online bist.",
   replyUnverifiedAgain: "Nicht nochmal gesendet. Der erste Versand ist vielleicht schon raus, schau also zuerst in deinen Gesendet-Ordner.",
   /* Die Anhänge des Editors — `apps/webapp/messages/de.json` (`compose.attach*`) byte für Byte,

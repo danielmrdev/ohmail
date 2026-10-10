@@ -7,7 +7,7 @@
  * leaving it is the same act everywhere: closing goes back, and over a queued send the close
  * withdraws it first (`ComposeSheet.closeComposer`).
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import { Copy } from "../src/copy";
 import { useWorld } from "../src/state/world";
@@ -18,6 +18,7 @@ import { ComposeSheet, forwardAskSentence } from "../src/ui/MessageActions";
 import { useLocale } from "../src/i18n/LocaleProvider";
 import { SurfaceBoundary } from "../src/ui/ErrorBoundary";
 import { mailtoPrefill } from "../src/ui/mailto";
+import { composeDraftPlan, type ComposeDraftOpen } from "../src/ui/compose-route";
 
 /** Gated like the tabs — a deep-linked route must not render the empty world. */
 export default function ComposeScreen() {
@@ -37,6 +38,8 @@ function ComposeBody() {
   const w = useWorld();
   /** A kept forward of a `no_forward` original: the ask the reader asks, answered once here. */
   const [confirmed, setConfirmed] = useState(false);
+  /** The row the sheet opened on, held: the open is decided once (`compose-route.ts`). */
+  const held = useRef<ComposeDraftOpen | null>(null);
   /* `?draft=<id>`: the Drafts card's Edit — the sheet opens bound to that row, or not at all. */
   const { draft: draftParam, mailto } = useLocalSearchParams<{ draft?: string; mailto?: string }>();
   const leave = () => {
@@ -54,27 +57,22 @@ function ComposeBody() {
     );
   }
   if (typeof draftParam === "string" && draftParam !== "") {
-    const row = w.drafts.find((d) => d.id === draftParam);
+    const plan = composeDraftPlan(draftParam, held.current, w.drafts.find((d) => d.id === draftParam), (id) => w.message(id));
     /* A row this phone cannot take whole is never opened as a fresh letter: that would be a second row. */
-    if (!row || row.edit === null) {
+    if (plan.kind !== "sheet") {
       return (
         <Screen>
           <DetailBar title={Copy.draftsTitle} />
-          <Empty title={Copy.draftsTitle} hint={Copy.draftsEditNote} />
+          <Empty
+            title={Copy.draftsTitle}
+            hint={plan.kind === "notEditable" ? Copy.draftsEditNote
+              : plan.kind === "gone" ? Copy.draftsRowGone : Copy.draftsForwardOriginalAbsent}
+          />
         </Screen>
       );
     }
-    /* A FORWARD DRAFT OPENS AS A FORWARD of its original, which the send reads from this
-       mirror; one this phone does not hold is said, never opened as a plain mail. */
-    const original = row.edit.forwardOf !== null ? w.message(row.edit.forwardOf) : undefined;
-    if (row.edit.forwardOf !== null && !original) {
-      return (
-        <Screen>
-          <DetailBar title={Copy.draftsTitle} />
-          <Empty title={Copy.draftsTitle} hint={Copy.draftsForwardOriginalAbsent} />
-        </Screen>
-      );
-    }
+    held.current = plan.open;
+    const { draft, original } = plan.open;
     if (original?.forwardAsk && !confirmed) {
       return (
         <Screen>
@@ -86,8 +84,8 @@ function ComposeBody() {
     }
     return (
       <ComposeSheet
-        m={original ?? null} mode={original ? "forward" : "new"} forwardConfirmed={confirmed}
-        draft={{ id: row.id, body: row.body, ...row.edit }} onClose={leave}
+        m={original} mode={original ? "forward" : "new"} forwardConfirmed={confirmed}
+        draft={draft} onClose={leave}
       />
     );
   }

@@ -2498,7 +2498,7 @@ export function sendOutcomeOfResult(r: MutationResult | null): SendOutcome {
  * because asking again cannot help; every other failure keeps the plain one.
  */
 export type FailedSendCopy = "replyNotSecured" | "replyLoginRefused" | "replyUnreachable" | "replyNotSignedIn"
-  | "replyForwardOriginalUnavailable" | "replyFailed" | "replySentElsewhere";
+  | "replyForwardOriginalUnavailable" | "replyFailed" | "replySentElsewhere" | "replyDeletedElsewhere";
 
 export function failedSendCopy(r: MutationResult | null): FailedSendCopy {
   const code = r?.error?.code;
@@ -3194,6 +3194,12 @@ export interface LiveWorldActions {
   draftKeep(keep: DraftKeep): Promise<DraftKeepOutcome>;
   /** The mirror says this row was SENT — by another device while a composer here holds it. */
   draftSent(draftId: string): boolean;
+  /**
+   * What became of a row a composer here holds, by the mirror's word: `sent`, `deleted` (absent
+   * after a drain that completed since this phone last saw it), or `null`. An absence with no drain
+   * since says nothing: a re-bootstrap empties the mirror before it refills it.
+   */
+  draftLeft(draftId: string): "sent" | "deleted" | null;
   /** Put a tag on / take it off — `tag_assign`. */
   tagToggle(messageId: string, tag: WorldTag, assigned: boolean): Promise<boolean>;
   /** Tag-or-create: a name that does not exist yet, minted and put on this message in one act. */
@@ -4819,9 +4825,25 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
   const draftSent = (draftId: string): boolean =>
     engine.read().get<{ status?: unknown }>("draft", draftId)?.status === "sent";
 
-  /** A bound send of a row another device sent: refused before the wire, and said. */
-  const sentElsewhere = (draftId: string | null): SendResult | null =>
-    draftId !== null && draftSent(draftId) ? { outcome: "failed", failure: "replySentElsewhere" } : null;
+  /** The drain stamp at each row's last sighting — see {@link LiveWorldActions.draftLeft}. */
+  const draftSeenAt = new Map<string, string | null>();
+  const draftLeft = (draftId: string): "sent" | "deleted" | null => {
+    const row = engine.read().get<{ status?: unknown }>("draft", draftId);
+    const drained = engine.freshness().asOf;
+    if (row) {
+      draftSeenAt.set(draftId, drained);
+      return row.status === "sent" ? "sent" : null;
+    }
+    const seen = draftSeenAt.get(draftId);
+    return seen !== undefined && drained !== null && drained !== seen ? "deleted" : null;
+  };
+
+  /** A bound send of a row another device sent or deleted: refused before the wire, and said. */
+  const sentElsewhere = (draftId: string | null): SendResult | null => {
+    const left = draftId === null ? null : draftLeft(draftId);
+    if (left === null) return null;
+    return { outcome: "failed", failure: left === "sent" ? "replySentElsewhere" : "replyDeletedElsewhere" };
+  };
 
   const draftKeep = async (k: DraftKeep): Promise<DraftKeepOutcome> => {
     const parent = k.messageId === null ? undefined : messageOf(k.messageId);
@@ -4848,12 +4870,15 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
         subject, body: k.body, to, cc: env ? env.cc : (k.cc ?? []), bcc: env ? [] : (k.bcc ?? []),
       })
       .then((res) => res, () => null);
-    /* A ROW ANOTHER DEVICE SENT TAKES NO NEW WORDS — the server answers `draft_sent`. What is on
+    /* A ROW ANOTHER DEVICE SENT OR DELETED TAKES NO NEW WORDS (`draft_sent`, 404). What is on
        screen is then a new letter's, so it is kept as a NEW row and the composer is bound to it;
-       the mirror's `sent`, or the server's refusal when the mirror has not heard yet, decides. */
-    let target = bound !== null && draftSent(bound) ? null : bound;
+       the mirror's word, or the server's when the mirror has not heard yet, decides. A 404 counts
+       only for a row the mirror held: a local `not_found` is an absence, which says nothing. */
+    let target = bound !== null && draftLeft(bound) !== null ? null : bound;
+    const held = target !== null && engine.read().get("draft", target) !== undefined;
     let r = await save(target);
-    if (target !== null && r?.status === "rolled_back" && r.error?.code === "draft_sent") {
+    if (target !== null && r?.status === "rolled_back"
+      && (r.error?.code === "draft_sent" || (held && r.error?.code === "not_found"))) {
       target = null;
       r = await save(null);
     }
@@ -5344,7 +5369,7 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
     deleteMessage, trashList, trashRestore,
     sendReply, sendForward, sendNew, sendAndDoneOffered, withdrawSend, cancelSchedule, tagToggle, tagCreate, screenSender,
     screeningForecast, screeningRules, screeningStayed, stayedWhy, moveStayed, screenUnscreened,
-    draftDiscard, draftResolve, draftSendAgain, draftKeep, draftSent,
+    draftDiscard, draftResolve, draftSendAgain, draftKeep, draftSent, draftLeft,
     folderCreate, folderRename, folderDelete, folderDismiss,
   };
 }
@@ -5462,6 +5487,8 @@ export interface WorldActions {
   draftKeep(keep: DraftKeep): Promise<DraftKeepOutcome>;
   /** See {@link LiveWorldActions.draftSent}. */
   draftSent(draftId: string): boolean;
+  /** See {@link LiveWorldActions.draftLeft}. */
+  draftLeft(draftId: string): "sent" | "deleted" | null;
   /** What became of a queued send's key — how a locked composer settles. See `World.sendOutcome`. */
   sendOutcome(key: string): "pending" | "confirmed" | "rolled_back" | "unverified" | "unknown";
   tagToggle(messageId: string, tag: WorldTag, assigned: boolean): void;
@@ -5539,6 +5566,7 @@ export function stableActions(current: () => WorldActions): WorldActions {
     draftSendAgain: (draftId) => current().draftSendAgain(draftId),
     draftKeep: (keep) => current().draftKeep(keep),
     draftSent: (draftId) => current().draftSent(draftId),
+    draftLeft: (draftId) => current().draftLeft(draftId),
     sendOutcome: (key) => current().sendOutcome(key),
     tagToggle: (id, tag, assigned) => void current().tagToggle(id, tag, assigned),
     tagCreate: (id, name) => void current().tagCreate(id, name),
