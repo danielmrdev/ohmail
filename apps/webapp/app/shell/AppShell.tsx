@@ -27,6 +27,7 @@ import {
   replySubject,
   forwardSubject,
   inverseMutations,
+  firstContactTime,
   mirrorSuggestionIdOf,
   notifiedSenderName,
   sendAndDonePlanFor,
@@ -1565,18 +1566,19 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTranspor
   const firstRunDecide: FirstRunDecideSubject | null = useMemo(() => {
     const row = firstRunQueue[0];
     if (!row || "pinned" in row) return null;
+    const firstContact = firstContactTime(row);
     return {
       // The identity fact rides the name, so the guided first decision cannot show the claim alone.
       name: notifiedSenderName(row, (brand) => t("screener.senderCheck.chip", { brand })),
       address: row.from.address,
       held: row.held.length,
       /* THE SCREENER'S OWN CAPTION, not a second sentence written for this card. `heldCaption`
-         carries the first-contact time and `heldCaptionAll` does not, which is exactly the split
-         `ScreenerView` makes over the same rows — one held message has no "first contact" to
-         distinguish from its own arrival. */
-      since: row.held.length > 1
-        ? t("screener.heldCaption", { count: row.held.length, time: row.held[0]?.time ?? "" })
-        : t("screener.heldCaptionAll", { count: row.held.length }),
+         carries the first-contact time and `heldCaptionAll` does not, split by `firstContactTime`
+         as every surface's caption is: one held message has no "first contact" apart from its own
+         arrival, and a sender with mail past the gate has none at all. */
+      since: firstContact === undefined
+        ? t("screener.heldCaptionAll", { count: row.held.length })
+        : t("screener.heldCaption", { count: row.held.length, time: firstContact }),
       onDecide: (dest, opts) =>
         screener.decide(row, dest, { read: opts.markRead, scope: opts.scope }),
     };

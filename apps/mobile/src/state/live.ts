@@ -8,7 +8,7 @@
  * doctrine); the release family rewrites the sender's own holding rule, or writes an address rule
  * beside a domain rule (`releaseRules`), beside physical `move`s. Mutations read the raw mirror ({@link presentedOf} is for renders); no React, no I/O, no network.
  */
-import { isSharedProviderDomain } from "@ohmail/client-engine";
+import { firstContactTime, isSharedProviderDomain } from "@ohmail/client-engine";
 import {
   FOLDER_OF_VIEW,
   LAST_DRAIN_AT_META,
@@ -1495,6 +1495,8 @@ export interface ScreenerRow {
   inertRule?: { domain: string };
   /** Letters of this sender already past the gate (`ScreenerSenderDTO.reached`); 0 = first contact. */
   reached: number;
+  /** The first-contact time the held caption names (`firstContactTime`, every surface's rule); absent: none. */
+  firstContact?: string;
   /** Every held message, oldest first — all of it, always, never a collapsed count. */
   held: ScreenerHeld[];
   /** screened rows only. */
@@ -1561,6 +1563,7 @@ function rowOf(dto: ScreenerSenderDTO, scope: Scope | undefined): ScreenerRow {
     seen: false,
   }));
   const ai = aiOfDto(dto.ai);
+  const firstContact = firstContactTime(dto);
   return {
     id: dto.id,
     routeKey: senderKey(dto.from.address),
@@ -1580,6 +1583,7 @@ function rowOf(dto: ScreenerSenderDTO, scope: Scope | undefined): ScreenerRow {
     } : {}),
     ...(dto.inertRule ? { inertRule: { domain: dto.inertRule.domain } } : {}),
     reached: dto.reached ?? 0,
+    ...(firstContact !== undefined ? { firstContact } : {}),
     held,
     screenedOn: dto.screenedOn ?? "",
     detection: "",

@@ -19,7 +19,9 @@ import type {
   UnsubscribeHeaderState,
   UnsubscribeResult,
 } from "@ohmail/client-engine";
-import { countWhen, listSurface, mirrorCountInput, saysEmpty, senderKey, waitingSurfaceInput, type WaitingWhy } from "@ohmail/client-engine";
+import {
+  countWhen, firstContactTime, listSurface, mirrorCountInput, saysEmpty, senderKey, waitingSurfaceInput, type WaitingWhy,
+} from "@ohmail/client-engine";
 import {
   AddressText,
   AskWell,
@@ -2529,6 +2531,7 @@ function WaitingPreview({
     scope === "domain" ? displayDomainLabel(sender.from.address) : displayAddress(sender.from.address);
   const aiDest = sender.ai?.dest as Parameters<typeof DecisionBar>[0]["aiDest"];
   const barCopy = useDecisionBarCopy(ruleTarget);
+  const firstContact = firstContactTime(sender);
   return (
     <>
       {/* The bar is withheld on a mailbox this install does not organize — not disabled, GONE,
@@ -2721,10 +2724,9 @@ function WaitingPreview({
         )}
         {sender.held.length > 1 ? (
           <div className="scn-caption num">
-            {t("heldCaption", {
-              count: sender.held.length,
-              time: sender.held[0]?.time ?? "",
-            })}
+            {firstContact === undefined
+              ? t("heldCaptionAll", { count: sender.held.length })
+              : t("heldCaption", { count: sender.held.length, time: firstContact })}
           </div>
         ) : null}
         {sender.held.map((h) => (

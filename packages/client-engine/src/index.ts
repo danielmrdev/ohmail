@@ -76,6 +76,7 @@ export { watchWireFailedLists } from "./attachment-reask.js";
  */
 export { countWhen, listSurface, metaWhen, mirrorCountInput, saysEmpty, waitingSurfaceInput } from "./list-surface.js";
 export { notifiedSenderName } from "./notified-sender.js";
+export { firstContactTime } from "./first-contact.js";
 export type { ListSurface, ListSurfaceInput, MirrorCountFacts, WaitingSurfaceFacts, WaitingWhy } from "./list-surface.js";
 
 /**

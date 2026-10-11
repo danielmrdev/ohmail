@@ -206,7 +206,7 @@ export function SenderDetail({
 
         <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
           <Txt variant="caption" tone="ink3">
-            {Copy.heldCaption(row.held.length, row.held[0]?.time)}
+            {Copy.heldCaption(row.held.length, row.firstContact)}
           </Txt>
         </View>
 
