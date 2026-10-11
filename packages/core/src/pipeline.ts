@@ -640,7 +640,7 @@ export type ImportHold =
  * over its view, never a second matcher. It keeps mail it lets PAST the gate, and mail its own
  * decision files to the folder it already sits in (the previous organizer's screen-outs). A gate
  * verdict, or a denial of mail sitting elsewhere, keeps nothing: holding it would let a stranger in.
- * The document carries no list addresses, so this store's own are asked (`lists`).
+ * The document carries no list addresses, so this store's own and the letter's own are asked (`lists`).
  */
 function documentKeeps(
   hold: ImportHold, msg: NormalizedMessage, auth: AuthVerdict, ohboxPolicy: OhboxPolicy, arrival: string,
@@ -881,6 +881,20 @@ function listAddressesOf(msg: NormalizedMessage, auth: AuthVerdict, own: Readonl
 }
 
 /**
+ * THE LETTER IN HAND IS ITS OWN LIST EVIDENCE. Its commit records the addresses its `List-Post`
+ * names ({@link listAddressesOf}) only after the gate has judged it, so the letter that revealed a
+ * list address was judged as a person's. For its own verdict they are list addresses with no brand
+ * consented; a recorded row keeps its brands. A copy: the store's map is never written here.
+ */
+function withListAddresses(known: KnownSenders, named: readonly string[]): KnownSenders {
+  const added = named.filter((a) => !known.lists.has(a));
+  if (added.length === 0) return known;
+  const lists = new Map(known.lists);
+  for (const a of added) lists.set(a, new Set<string>());
+  return { ...known, lists };
+}
+
+/**
  * EACH FILE'S STORED SECTION IS THE SERVER'S: the section of `change.structure` whose decoded
  * bytes hash to the file's sha (`mime-sections.ts`), so a `part_id` is written only for bytes in
  * hand. A file nothing hashes equal to keeps mailparser's id and is logged with the reason — never
@@ -1029,7 +1043,8 @@ async function planFromRaw(change: Change, deps: PlanDeps): Promise<ChangePlan> 
     const senderCheck = claimedIdentity({
       fromName: normalized.from.name, fromAddress: normalized.from.address, subject: normalized.subject,
     }) ?? null;
-    // And the list addresses it names, in the same place for the same reason (mail 0150).
+    // And the list addresses it names, in the same place for the same reason (mail 0150): the gate
+    // below reads them as list addresses for this letter too ({@link withListAddresses}).
     const listAddresses = listAddressesOf(normalized, authVerdict, deps.ownAddresses);
 
     // Mail the customer FILED THEMSELVES leaves the pipeline here too. `Change.passive` means the
@@ -1094,7 +1109,7 @@ async function planFromRaw(change: Change, deps: PlanDeps): Promise<ChangePlan> 
     }
 
     const rules = await repo.listRules(accountId);
-    const known = await repo.knownSenders(accountId);
+    const known = withListAddresses(await repo.knownSenders(accountId), listAddresses);
     const ownAddresses = deps.ownAddresses ?? await repo.ownAddresses(accountId);
     let decision = evaluateRules({
       msg: normalized, rules, knownSenders: known, auth: authVerdict, ohboxPolicy, ownAddresses,
