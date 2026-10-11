@@ -646,11 +646,13 @@ export async function pressOrganizeHere(want: "start" | "stop"): Promise<PressOu
   return runInstruction(want);
 }
 
-async function runInstruction(want: "start" | "stop"): Promise<PressOutcome> {
+async function runInstruction(
+  want: "start" | "stop", start: () => Promise<PressOutcome> = () => startHere(),
+): Promise<PressOutcome> {
   instruction = want === "start" ? "starting" : "stopping";
   acting = want;
   notifyOrganizerState();
-  const act = want === "start" ? startHere() : stopHere();
+  const act = want === "start" ? start() : stopHere();
   /* The queue waits on a promise that cannot reject — a refused act still has to release the
      press behind it, or "start after stop" would be lost by the stop having failed. */
   inFlight = act.then(() => undefined, () => undefined);
@@ -668,8 +670,8 @@ async function runInstruction(want: "start" | "stop"): Promise<PressOutcome> {
   return next === null ? outcome : runInstruction(next);
 }
 
-async function startHere(): Promise<PressOutcome> {
-  const outcome = await claimHereStandalone();
+async function startHere(press: () => Promise<ClaimHereOutcome> = claimHereStandalone): Promise<PressOutcome> {
+  const outcome = await press();
   /* CARRIED AS ITSELF. A refused press over a live foreign claim is not `standing` — see
      {@link PressOutcome}. The door records the holder on the engine's own organizer state as it
      refuses, so `standaloneHere().heldBy` names it on this very render and the panel's claim is
@@ -688,6 +690,41 @@ async function startHere(): Promise<PressOutcome> {
      engine that is running now, and the deps were kept by the launch that opened it. */
   if (sessionDeps !== null) startOrganizerSession(launchGeneration, sessionDeps);
   return "started";
+}
+
+/** What the door's consent request answered, in the four words the start reads. */
+export type ConsentAnswer = "authorized" | "already" | "held" | "refused";
+
+/**
+ * THE DOOR'S CONTINUE, AS THE START IT IS. The request is the app's own (`consent`, which states the
+ * screen's rule to the door); the transition is the Start verb's, so every surface reads Starting
+ * until the claim lands, never "Nothing organizes this mailbox" for a poll interval. The gate is
+ * asked at once, as the engine's own claim asks it. `held` claims nothing; the consent is not recorded.
+ */
+export async function pressConsentHere(consent: () => Promise<ConsentAnswer>): Promise<PressOutcome> {
+  if (inFlight !== null) await inFlight;
+  const state = organizerInstruction();
+  if (state === "running" || state === "starting") {
+    await consent().catch(() => "refused" as const);
+    return "standing";
+  }
+  return runInstruction("start", () => startHere(() => claimByConsent(consent)));
+}
+
+async function claimByConsent(consent: () => Promise<ConsentAnswer>): Promise<ClaimHereOutcome> {
+  const held = door;
+  if (held === null) return "refused";
+  const answer = await consent().catch((): ConsentAnswer => "refused");
+  if (answer === "held" || answer === "refused") return answer;
+  await held.resume().catch(() => undefined);
+  /* A holder the cycle found after the door answered is named, never a could-not-check. */
+  const here = standaloneHere();
+  const holder = here?.heldBy ?? null;
+  const outcome: ClaimHereOutcome = here?.organizing === true ? "claimed"
+    : holder !== null && holder.holderState !== "none" && holder.holderState !== "stopped" ? "held" : "unreadable";
+  if (outcome === "claimed") settingsLeftBehind = null;
+  notifyOrganizerState();
+  return outcome;
 }
 
 async function stopHere(): Promise<PressOutcome> {

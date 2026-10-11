@@ -33,8 +33,9 @@ import { ShortcutHint } from "../shell/ShortcutHint";
 import { readColumnHidden } from "../shell/narrow";
 import { ACTED_FRESH_MS, nextSurvivor, readAfterVerb, type ActedMarker } from "../shell/after-verb";
 import { storageOwner } from "../shell/storage-owner";
-import { goFirstRun } from "../shell/routing";
-import type { NotOrganizingYet } from "../shell/mail-state";
+import { goFirstRun, goSettings } from "../shell/routing";
+import { sharedNotOrganizedWhy, type NotOrganizingYet } from "../shell/mail-state";
+import { displayAddress } from "../shell/idn";
 import type { UndoLink } from "../shell/shell-dispatch";
 import type { OhboxRowGroup } from "./ohbox-groups";
 import { PLACE_LABEL, avatarOf, resurfaceLabel, rowAddress, rowStamp, senderName, sentAvatarOf, sentRowRecipient, tagsOfMessage, hueOf } from "../shell/format";
@@ -2384,7 +2385,29 @@ export function OhboxView({
             {/* NOTHING ORGANIZES ANY OF THESE MAILBOXES YET: "All clear" would claim the gate is kept. The same
                 slot stands DRAWN, says what is true, and its press opens the organize decision — read off the mailbox
                 facts, so it does not wait for the mirror. */}
-            {notOrganizingYet?.every && doorbellCount === 0 && notOrganizingYet.mailboxes[0] ? (
+            {notOrganizingYet && !notOrganizingYet.every && doorbellCount === 0 && notOrganizingYet.mailboxes[0] ? (
+            /* A MIXED ACCOUNT: nobody waits for the mailboxes something organizes, and the one nothing
+               organizes is named rather than covered by "All clear". Its press is that mailbox's. */
+            <Doorbell
+              initials={[]}
+              hues={[]}
+              message={t.rich("doorbellNotOrganizingSome", {
+                count: notOrganizingYet.mailboxes.length,
+                address: displayAddress(notOrganizingYet.mailboxes[0].address),
+                b: (chunks) => <b>{chunks}</b>,
+              })}
+              actionLabel={(notOrganizingYet.mailboxes[0].why ?? "never_agreed") === "never_agreed"
+                ? t("doorbellNotYetAction") : t("doorbellNotOrganizingAction")}
+              ariaLabel={t("doorbellNotOrganizingSomeAria", {
+                count: notOrganizingYet.mailboxes.length,
+                address: displayAddress(notOrganizingYet.mailboxes[0].address),
+              })}
+              onPress={() => ((notOrganizingYet.mailboxes[0]!.why ?? "never_agreed") === "never_agreed"
+                ? goFirstRun({ rerun: true, mailboxId: notOrganizingYet.mailboxes[0]!.id })
+                : goSettings("mailboxes"))}
+            />
+            ) : notOrganizingYet?.every && doorbellCount === 0 && notOrganizingYet.mailboxes[0] ? (
+            sharedNotOrganizedWhy(notOrganizingYet) === "never_agreed" ? (
             <Doorbell
               initials={[]}
               hues={[]}
@@ -2393,6 +2416,20 @@ export function OhboxView({
               ariaLabel={t("doorbellNotYetAria")}
               onPress={() => goFirstRun({ rerun: true, mailboxId: notOrganizingYet.mailboxes[0]!.id })}
             />
+            ) : (
+            /* HANDED BACK, OR ITS HOLDER STOPPED: a standing state, never "All clear". The press is
+               Organize here, which lives in Mailboxes; consent was already given. */
+            <Doorbell
+              initials={[]}
+              hues={[]}
+              message={t.rich(sharedNotOrganizedWhy(notOrganizingYet) === "handed_back"
+                ? "doorbellHandedBack" : "doorbellNotOrganizing", { b: (chunks) => <b>{chunks}</b> })}
+              actionLabel={t("doorbellNotOrganizingAction")}
+              ariaLabel={t(sharedNotOrganizedWhy(notOrganizingYet) === "handed_back"
+                ? "doorbellHandedBackAria" : "doorbellNotOrganizingAria")}
+              onPress={() => goSettings("mailboxes")}
+            />
+            )
             ) : !mayState && doorbellCount === 0 ? null : (
             <Doorbell
               initials={doorbellInitials}

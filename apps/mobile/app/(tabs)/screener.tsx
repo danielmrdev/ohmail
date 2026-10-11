@@ -27,7 +27,7 @@ import { Segmented } from "../../src/ui/Segmented";
 import { SkeletonList } from "../../src/ui/Skeleton";
 import { useLocale } from "../../src/i18n/LocaleProvider";
 import { SurfaceBoundary } from "../../src/ui/ErrorBoundary";
-import { noneOrganized } from "../../src/ui/not-organizing";
+import { noneOrganizedWhy } from "../../src/ui/not-organizing";
 
 /**
  * The three empty states, READ WHEN THE SCREEN RENDERS rather than when this module is imported.
@@ -75,10 +75,10 @@ function ScreenerBody() {
   );
   /* "First-time senders knock here" is false where nothing organizes any mailbox: the waiting shelf says that
      instead, once the mailbox read has answered (`known`), never on a guess. */
-  const notYet = seg === "waiting" && w.mailboxes.known && noneOrganized(w.mailboxes.rows);
-  const empty = notYet
+  const notYet = seg === "waiting" && w.mailboxes.known ? noneOrganizedWhy(w.mailboxes.rows) : null;
+  const empty = notYet !== null
     ? {
-        title: Copy.waitingNotYetTitle,
+        title: notYet === "never_agreed" ? Copy.waitingNotYetTitle : Copy.waitingNotOrganizedTitle,
         hint: Copy.waitingNotYetHint,
         action: { label: Copy.waitingNotYetPress, onPress: () => router.push("/settings") },
       }

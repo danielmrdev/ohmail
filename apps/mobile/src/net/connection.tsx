@@ -18,7 +18,7 @@ import { nativeEngineDeps } from "../engine/native";
 import {
   discardStandaloneLaunch, endStandaloneHere, holdStandaloneDoor, organizerDoor, sayOrganizeRefused,
   sayReadingAtConnect,
-  takeConsentPress, sayOrganizerRestricted, standaloneHere, standaloneLaunchGeneration,
+  pressConsentHere, takeConsentPress, sayOrganizerRestricted, standaloneHere, standaloneLaunchGeneration,
 } from "../engine/organizer-session";
 import { engineLogSink, logNetwork } from "../engine/engine-log";
 import { accessLock, clearAccessLock, onAccessLock } from "./access-lock";
@@ -41,7 +41,7 @@ import { SyncRunner, drainLine } from "./drain";
 import { keepDraining, type AppLifecycle } from "./drain-cadence";
 import { installNetworkReader, networkDoor, networkNow, onNetworkChange } from "./network-door";
 import { nativeNetworkReader } from "./network-native";
-import { organizeHere, readMailboxes } from "./mailboxes";
+import { organizeHere, readMailboxes, type OrganizeOutcome } from "./mailboxes";
 import {
   connectProfileById,
   drainPendingWakeDrops,
@@ -377,11 +377,19 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       sayOrganizeRefused(refuse("organizeHereUnreadable"));
       return;
     }
-    const outcome = await organizeHere(session, id);
+    /* THE PRESS IS A START, through the standing instruction (`pressConsentHere`): the panel reads
+       Starting until the claim lands. The request is still this one, stating the screen's rule. */
+    const said: { outcome: OrganizeOutcome | null } = { outcome: null };
+    await pressConsentHere(async () => {
+      said.outcome = await organizeHere(session, id);
+      const k = said.outcome.kind;
+      return k === "authorized" || k === "already" || k === "held" ? k : "refused";
+    });
+    const outcome = said.outcome;
     /* Only for THIS session: a verdict that outlives its session (a switch, a forget) must not
        write a sentence under the next one — the rule every other late answer here follows. */
     const atPress = live.now();
-    if (atPress.k !== "live" || atPress.session !== session) return;
+    if (outcome === null || atPress.k !== "live" || atPress.session !== session) return;
     /* NOT `syncError`, which the Servers screen renders inside "Sync failed" — measured on a
        device announcing a sync failure for a mailbox whose sync had not failed. See
        `organizer-session.ts#organizeRefused` for where it goes and why. */

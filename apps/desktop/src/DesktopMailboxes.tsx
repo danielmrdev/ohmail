@@ -33,7 +33,7 @@ import {
   showInboundQuiet, type MailboxFacts,
 } from "../../webapp/app/shell/mail-state";
 import { addressKey } from "../../webapp/app/shell/address-key";
-import { holderIsLive, holderStopped } from "@trafficflow/core/reader-refusal";
+import { holderIsLive, holderStopped, organizerSituation, standingOf } from "@trafficflow/core/reader-refusal";
 import { agoStamp, dayStamp } from "../../webapp/app/shell/format";
 import { activeFormatLocale, activeFormatZone } from "../../webapp/app/shell/locale";
 import { storeRefusalsFigure } from "../../webapp/app/shell/mailbox-error-key";
@@ -1742,7 +1742,10 @@ export function DesktopMailboxes(
        not keep. `phoneHolderKey` picks between its two sentences; this file writes neither. */
     const phone = phoneHolder(m.organizedBy, holderStopped({ by: m.organizedBy, state: m.organizerState }));
     /* THE CHIP'S LABEL, computed once: it is the chip's caption AND the text of the live node
-       beside the chip (below), and the two must never disagree. */
+       beside the chip (below), and the two must never disagree. A holder that stopped organizes
+       nothing: the caption reads that from `organizerSituation`, the liveness the rail and the
+       sentence under the chip read, never "Organized by" a machine that stopped. */
+    const standing = standingOf(organizerSituation(m));
     const chipLabel =
       role === "organizer"
         ? (stopState ? t("chipStopping") : t("stateOrganizing"))
@@ -1750,7 +1753,7 @@ export function DesktopMailboxes(
            `disabled_reason` — so there is no name to put in `readerLabel`. */
         : m.legacyStandDown === true
           ? t("readerLabelLegacy")
-          : role === "released"
+          : role === "released" || (standing.kind === "nothing_organizes" && standing.lapsed !== null)
             ? t("stateNotOrganized")
             : t("readerLabel", { name: holderOf(m) });
     /* THE NAMED PLACE THE ANSWER ALWAYS IS. Reading along here silences the strip that repeats it,

@@ -936,6 +936,7 @@ const TABLE = {
   waitingEmptyHint: "First-time senders knock here before anything reaches your Ohbox.",
   /* The hint's stand-in where nothing organizes any mailbox yet (`ui/not-organizing.ts`): the knock is not true there. */
   waitingNotYetTitle: "ohmail is not organizing this mailbox yet.",
+  waitingNotOrganizedTitle: "Nothing organizes this mailbox.",
   waitingNotYetHint: "Nothing screens first-time senders, so they go straight to your Ohbox. Settings shows what organizes each mailbox.",
   waitingNotYetPress: "Open Settings",
   /**

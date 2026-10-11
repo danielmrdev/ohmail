@@ -67,7 +67,9 @@ import { useDrawnBody, useDrawnStates } from "../shell/body-slice";
 import { goFirstRun, goScreener, goSettings, type ScreenerSegmentId } from "../shell/routing";
 import { APPLY_PILE_ORDER, hasRealSuggestion, type PendingDecision } from "../shell/screener-state";
 /* The one role answer, from the module that derives it — see `mail-state.ts#screenerMode`. */
-import { readerHolder, type NotOrganizingYet, type ReaderHolding, type ScreenerRole } from "../shell/mail-state";
+import {
+  readerHolder, sharedNotOrganizedWhy, type NotOrganizingYet, type ReaderHolding, type ScreenerRole,
+} from "../shell/mail-state";
 import type { HeldBodyStall, ScreenerState, SpamRow } from "../shell/screener-state";
 import type { SuggestBatchControl } from "../shell/screener-suggest";
 import {
@@ -569,25 +571,31 @@ function Empty(
 }
 
 /**
- * NOTHING SCREENS THIS MAILBOX YET, AND THE PRESS THAT CHANGES THAT — the first run's own organize decision, opened as a
- * re-run on the first such mailbox, so the person reads what ohmail will do and nothing moves before Agree.
+ * NOTHING SCREENS THIS MAILBOX, AND THE PRESS THAT CHANGES THAT. Never agreed: the first run's organize decision,
+ * re-run on the first such mailbox, nothing moving before Agree. Handed back, or its holder stopped: consent stands,
+ * so the press is Organize here, in Mailboxes.
  */
 function NotOrganizingYetNote({ notYet }: { notYet: NotOrganizingYet }) {
   const t = useTranslations("screener");
   const first = notYet.mailboxes[0];
+  const why = sharedNotOrganizedWhy(notYet);
+  const one = (w: string | undefined) => (w === "handed_back" ? "handedBackOne" : w === "stopped" ? "notOrganizingOne" : "notYetOne");
   return (
     <span className="scn-not-yet" role="note">
       {notYet.every ? (
         <>
-          <b>{t("notYetTitle", { count: notYet.mailboxes.length })}</b>
-          <span>{t("notYetWhy")}</span>
+          <b>{t(why === "never_agreed" ? "notYetTitle" : why === "handed_back" ? "handedBackTitle" : "notOrganizingTitle",
+            { count: notYet.mailboxes.length })}</b>
+          <span>{t(why === "never_agreed" ? "notYetWhy" : "notOrganizingWhy")}</span>
         </>
       ) : notYet.mailboxes.map((m) => (
-        <span key={m.id}>{t("notYetOne", { address: displayAddress(m.address) })}</span>
+        <span key={m.id}>{t(one(m.why), { address: displayAddress(m.address) })}</span>
       ))}
-      {first ? (
+      {first === undefined ? null : (first.why ?? "never_agreed") === "never_agreed" ? (
         <button type="button" onClick={() => goFirstRun({ rerun: true, mailboxId: first.id })}>{t("notYetPress")}</button>
-      ) : null}
+      ) : (
+        <button type="button" onClick={() => goSettings("mailboxes")}>{t("notOrganizingPress")}</button>
+      )}
     </span>
   );
 }
@@ -1502,8 +1510,15 @@ export function ScreenerView({
           waitingInput(state.waiting.length),
           // A count this device derived is never shown as the mailbox's own.
           /* "all clear" is a screening claim; a zero over mailboxes nothing organizes says that instead. */
-          notOrganizingYet?.every && state.waitingCount === 0
-            ? t("metaNotYet")
+          notOrganizingYet && state.waitingCount === 0
+            ? (notOrganizingYet.every
+              ? t(({ never_agreed: "metaNotYet", handed_back: "metaHandedBack", stopped: "metaNotOrganizing" } as const)[
+                sharedNotOrganizedWhy(notOrganizingYet)])
+              /* A mixed account: "all clear" would cover the mailbox nothing organizes, so it is named. */
+              : t("metaNotOrganizingSome", {
+                count: notOrganizingYet.mailboxes.length,
+                address: displayAddress(notOrganizingYet.mailboxes[0]?.address ?? ""),
+              }))
             : state.waitingSource === "device"
               ? t("metaWaitingOnDevice", { count: state.waitingCount })
               : t("metaWaiting", { count: state.waitingCount }),

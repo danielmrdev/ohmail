@@ -2299,6 +2299,23 @@ describe("the reader row's three states, and the one that had no holder at all",
     expect(row.description, "the stopped phone took the holder-kind-blind sentence")
       .not.toBe(mailboxCopy.readerStopped!.replace("{name}", PHONE));
   });
+
+  it("(d) the CHIP of a phone that stopped says nothing organizes the mailbox, from the same liveness", async () => {
+    /* The rail and the sentence under the chip said the phone stopped; the caption still read
+       "Organized by" it, thirteen minutes on. One derivation now answers all three. */
+    FACTS = [{
+      ...readerWith({ kind: "mobile", name: PHONE, since: "2026-08-30T09:00:00.000Z" }),
+      organizerState: "stopped", organizeConsentedAt: "2026-08-30T08:00:00.000Z",
+    }];
+    const row = orgRow(await render("local"));
+    expect(row.label, "the chip named a phone that stopped as the organizer").toBe(mailboxCopy.stateNotOrganized!);
+    expect(row.description).toBe(mailboxCopy.readerHolderPhoneStopped!.replace("{name}", PHONE));
+    // CONTROL: the same phone still renewing keeps its name on the chip.
+    await act(async () => { root!.unmount(); });
+    mountPoint?.remove();
+    FACTS = [readerWith({ kind: "mobile", name: PHONE, since: "2026-08-30T09:00:00.000Z" })];
+    expect(orgRow(await render("local")).label).toBe(mailboxCopy.readerLabel!.replace("{name}", PHONE));
+  });
 });
 
 /**

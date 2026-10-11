@@ -8,7 +8,9 @@
  * in. Nothing here holds a password beyond the form's own state: {@link StandaloneFields}
  * carries it to the engine once — never logged, stamped into a refusal, or stored.
  */
-import { holderIsLive, portMeansImplicitTls, serverGuessFor } from "@ohmail/client-engine";
+import {
+  holderIsLive, organizerSituation, portMeansImplicitTls, serverGuessFor, standingOf,
+} from "@ohmail/client-engine";
 import { Copy } from "../copy";
 /* TYPE ONLY, so the session's module state does not travel into every consumer of this module.
    The mapping from the instruction to a chip is a DECISION and belongs here rather than in a
@@ -553,36 +555,27 @@ export function claimHere(
   if (here.metaBlocked != null && instruction !== "stopping" && here.releaseRequestedAt === null) {
     return { k: "blocked", reason: here.metaBlocked, holding: here.organizing };
   }
-  if (here.organizing) return ours();
   const held = here.heldBy;
-  /* A STOP THE MAIL SERVER HAS NOT HONOURED IS STILL OURS. The engine arranges nothing while it
-   * carries out a release, so `organizing` is false on both of its endings — and on a device that
-   * read as a FREE mailbox, with "Start organizing here" beside it, while the claim was still in
-   * `ohmail/_meta`. Nobody else holds a mailbox whose claim is ours and standing, so this arm sits
-   * above `free` and below `theirs`. `stopping` comes from the INSTRUCTION exactly as the
-   * organizing arm above takes it, not from the standing request: a stop still being carried out
-   * reads `Stopping`, one the server refused reads `Organizing`. Pinned `true` here, the chip said
-   * `Stopping` for ever and the Stop verb — the only way to ask again — stayed hidden. */
-  if (held === null && here.releaseRequestedAt !== null) return ours();
-  /* A HOLDER THAT LET GO IS NOBODY: the look that read no claim, or a lapsed one, answers the
-     remembered stand-down reason, and the card offers the start rather than naming a machine. */
-  if (held !== null && !holderIsLive({
-    by: held.holderState === "none" ? null : { kind: holderKind(held.standDownReason), name: held.name },
-    state: held.holderState,
-  })) {
-    if (handedBack && instruction !== "starting") return { k: "handedBack" };
-    return { k: "free", starting: instruction === "starting" };
+  /* THE SHARED VERDICT, over the engine's own answer (`organizerSituation`, the one derivation every
+     surface maps from). A stop the mail server has not honoured is still ours; a holder that let go
+     (`none`) is nobody. The answer carries no consent, so nothing here is a reason this card names. */
+  const recorded = held === null || held.holderState === "none" ? null : held;
+  const s = standingOf(organizerSituation({
+    organizerRole: here.organizing || (held === null && here.releaseRequestedAt !== null) ? "organizer" : "reader",
+    releaseRequestedAt: here.releaseRequestedAt,
+    organizedBy: recorded === null ? null : { kind: holderKind(recorded.standDownReason), name: recorded.name },
+    organizerState: recorded === null ? null : recorded.holderState,
+    organizerChecked: true,
+  }));
+  if (s.kind === "organizing_here" || s.kind === "stopping_here") return ours();
+  if (s.kind === "organized_elsewhere" && recorded !== null) {
+    const kind = holderKind(recorded.standDownReason);
+    return recorded.name.length > 0 ? { k: "theirs", name: recorded.name, kind } : { k: "theirsUnnamed", kind };
   }
-  if (held === null) {
-    /* NOT WHILE A PRESS IS IN FLIGHT: `starting` is a transition a person asked for and is the
-       sentence they are waiting on, and a hand-back flag from before it would replace it. */
-    if (handedBack && instruction !== "starting") return { k: "handedBack" };
-    return { k: "free", starting: instruction === "starting" };
-  }
-  const kind = holderKind(held.standDownReason);
-  return held.name.length > 0
-    ? { k: "theirs", name: held.name, kind }
-    : { k: "theirsUnnamed", kind };
+  /* NOTHING ORGANIZES IT, and the two client-local modifiers apply here only: a start in flight is
+     the sentence the person is waiting on, and our own hand-back, not taken again, names itself. */
+  if (handedBack && instruction !== "starting") return { k: "handedBack" };
+  return { k: "free", starting: instruction === "starting" };
 }
 
 /**

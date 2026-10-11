@@ -29,7 +29,8 @@
 import { addressKey } from "./address-key";
 import { liftedAt, refusalIsStale } from "./access-window";
 import {
-  holderIsLive, holderStopped, notOrganizingYet, rosterRefusalReason, type RequestRefusalReason,
+  holderIsLive, holderStopped, nothingOrganizesWhy, notOrganizingYet, organizerSituation, rosterRefusalReason,
+  standingOf, type NothingOrganizesWhy, type RequestRefusalReason,
 } from "@trafficflow/core/reader-refusal";
 
 export const SYNC_BLOCK_REASONS = [
@@ -124,10 +125,8 @@ export function readerStandDown(m: {
   organizeConsentedAt?: string | null;
   /**
    * THE RELEASE MARKER — the only column that separates "this account let the mailbox go" from
-   * "the install that held it vanished". See the `released` arm below for why nothing else can.
-   *
-   * Optional like every other member: a host that predates it sends no marker, and absent reads
-   * as NOT RELEASED, which keeps the stand-down sentence rather than inventing a release.
+   * "the install that held it vanished". Optional like every other member: a host that predates it
+   * sends no marker, and absent reads as NOT RELEASED, which keeps the stand-down sentence.
    */
   organizerReleasedAt?: string | null;
   /** The wall's own release (mail 0135) — {@link parkedByWall}. */
@@ -136,40 +135,21 @@ export function readerStandDown(m: {
   // THE LEGACY WIRE FIRST, unchanged: `disabled` with a reason is what an engine older than the
   // role column reports, and it is still the only thing those rows can say.
   if (m.status === "disabled") return standDownToken(m.disabledReason ?? null);
-  if (m.organizerRole !== "reader") return null;
-  // A HOLDER IS NAMED — not merely "the object exists". The DTO guarantees `organizedBy` is null
-  // as a whole when nobody is named, and testing `kind || name` rather than the object is what
-  // keeps a host that starts sending `{null,null,null}` from putting a stand-down on every row.
-  const holder = Boolean(m.organizedBy && (m.organizedBy.kind || m.organizedBy.name));
-  /* ABSENT COUNTS AS "NOT CONSENTED" HERE, and that is the SAFE direction rather than the
-     literal one. `MailboxFacts.organizeConsentedAt` has three states and absent means "this
-     build cannot tell" — but the only host that can reach this line is one sending
-     `organizerRole` and not the consent stamp, and on such a host a holder-less reader is
-     equally likely to be a mailbox nobody has agreed to organize yet. Claiming a stand-down
-     there would put "somebody else organizes this" over a fresh connect AND hang a claim button
-     on a row whose next screen is the consent statement, which is the defect the holder-or-consent
-     test above exists to prevent.
-     Losing an explanation costs a sentence; inventing one costs a false claim. */
-  const consented = m.organizeConsentedAt !== null && m.organizeConsentedAt !== undefined;
-  if (!holder && !consented) return null;
-  // Ahead of the holder and the release: a paused mailbox is neither stood down nor let go.
-  if (parkedByWall(m)) return "parked";
-  /* The release is its own answer, and the MARKER names it. A consented
-   * reader with nobody holding it used to report
-   * `organized_elsewhere_unknown` — a row arguing with its own claim
-   * button. The discriminator is the marker, not the absent holder: the
-   * per-cycle peek rewrites the holder columns all-null on an empty claim
-   * folder, so a genuine stand-down decays into the holder-less shape;
-   * `organizer_released_at` is written by the release alone and every
-   * promotion clears it (`standDownMemory`, server-side). A host too old to
-   * send the marker keeps the stand-down sentence — the cheaper error: a
-   * stale explanation costs a sentence, a false release costs a claim. */
-  if (!holder && m.organizerReleasedAt !== null && m.organizerReleasedAt !== undefined) {
-    return "released";
+  /* THE ROW'S OWN MEMORY, from the one derivation (`organizerSituation`). Asked as a row the door
+     has looked at: a stand-down is what the row records, not whether this door has peeked since. */
+  const s = standingOf(organizerSituation({
+    organizerRole: m.organizerRole, organizedBy: m.organizedBy, organizeConsentedAt: m.organizeConsentedAt,
+    organizerReleasedAt: m.organizerReleasedAt, organizerParkedAt: m.organizerParkedAt, organizerChecked: true,
+  }));
+  if (s.kind === "parked") return "parked";
+  const holder = s.kind === "organized_elsewhere" ? s.by : s.kind === "nothing_organizes" ? s.lapsed : null;
+  if (holder !== null) {
+    return standDownToken(holder.kind ? `organized_elsewhere:${holder.kind}` : "organized_elsewhere:unknown");
   }
-  return standDownToken(
-    m.organizedBy?.kind ? `organized_elsewhere:${m.organizedBy.kind}` : "organized_elsewhere:unknown",
-  );
+  if (s.kind !== "nothing_organizes" || s.why === "never_agreed") return null;
+  /* No holder, consented: the release marker names the person's own stop; without it a stand-down
+     whose winner vanished decayed into this shape, and the stand-down sentence is the cheaper error. */
+  return s.why === "handed_back" ? "released" : "organized_elsewhere_unknown";
 }
 
 /**
@@ -226,7 +206,8 @@ export function claimLeftBehind(m: {
  * none. The Screener and the Ohbox read it so neither claims screening over a mailbox nothing organizes.
  */
 export interface NotOrganizingYet {
-  mailboxes: { id: string; address: string }[];
+  /** `why` absent is never agreed, the only reason {@link notOrganizingYetOf} names. */
+  mailboxes: { id: string; address: string; why?: NothingOrganizesWhy }[];
   every: boolean;
 }
 
@@ -244,6 +225,33 @@ export function notOrganizingYetOf(facts: readonly NotOrganizingRow[] | null): N
     ? null
     : { mailboxes: not.map((m) => ({ id: m.id, address: m.address })), every: not.length === live.length };
   notOrganizingSeen.set(facts, out);
+  return out;
+}
+
+/** The reason every named mailbox shares (absent is never agreed), or `stopped`, the general one, for a mix. */
+export function sharedNotOrganizedWhy(n: NotOrganizingYet): NothingOrganizesWhy {
+  const whys = new Set(n.mailboxes.map((m) => m.why ?? "never_agreed"));
+  return whys.size === 1 ? [...whys][0]! : "stopped";
+}
+
+type NothingOrganizesRow = Parameters<typeof nothingOrganizesWhy>[0] & { id: string; address: string };
+const nothingOrganizesSeen = new WeakMap<readonly NothingOrganizesRow[], NotOrganizingYet | null>();
+
+/**
+ * EVERY MAILBOX NOTHING ORGANIZES, and why — never agreed, handed back, or its holder stopped — for
+ * the Screener and the Ohbox, which may not say "all clear" over any of them (`gateKept`).
+ */
+export function nothingOrganizesOf(facts: readonly NothingOrganizesRow[] | null): NotOrganizingYet | null {
+  if (facts === null) return null;
+  const seen = nothingOrganizesSeen.get(facts);
+  if (seen !== undefined) return seen;
+  const live = facts.filter((m) => m.status !== "disabled");
+  const not = live.flatMap((m) => {
+    const why = nothingOrganizesWhy(m);
+    return why === null ? [] : [{ id: m.id, address: m.address, why }];
+  });
+  const out = not.length === 0 ? null : { mailboxes: not, every: not.length === live.length };
+  nothingOrganizesSeen.set(facts, out);
   return out;
 }
 
@@ -654,24 +662,17 @@ export function gapOffers(facts: ReadonlyArray<OrganizerRow> | null): GapOffer[]
     ? [{ id: m.id ?? "", address: m.address ?? "", count: m.gapLetters }] : []);
 }
 
-/** Which kind one row is in, or `null` for a row with nothing to announce. */
+/**
+ * Which kind one row is in, or `null` for a row with nothing to announce — read off the one derivation
+ * (`organizerSituation`). This install organizing, never agreeing, the wall's pause and an unread lease
+ * are not news; a hand-back is the person's own act and stands as a state line, never a notice.
+ */
 function noticeKind(m: OrganizerRow): OrganizerNoticeKind | null {
-  /* THIS INSTALL ORGANIZES IT: never news — the person asked for it (consent, payment, "Organize
-     here"), and after a paid reopening it was one line per mailbox about what they paid for.
-     ABSENT READS AS ORGANIZER, the role's default on this surface. */
-  if (m.organizerRole !== "reader") return null;
-  // The wall's pause is not a handover; the account strip says why.
-  if (parkedByWall(m)) return null;
-  const holder = Boolean(m.organizedBy && (m.organizedBy.kind || m.organizedBy.name));
-  if (holder) return holderIsLive({ by: m.organizedBy, state: m.organizerState }) ? "elsewhere" : "stopped";
-  /* NO HOLDER, AND NOBODY EVER AGREED — an ordinary freshly connected mailbox. `=== null` and not
-     `== null`, so an absent stamp (a build that cannot tell) says nothing. */
-  if (m.organizeConsentedAt === null || m.organizeConsentedAt === undefined) return null;
-  /* NO HOLDER, CONSENTED: the release marker tells the two states apart. With it, the person
-     pressed Stop (news to nobody). Without it, a stand-down whose winner vanished DECAYED into
-     this shape (the peek writes the holder columns NULL): nothing files the mailbox, which is
-     `stopped` with no name — the one open condition. */
-  return m.organizerReleasedAt !== null && m.organizerReleasedAt !== undefined ? null : "stopped";
+  const s = standingOf(organizerSituation(m));
+  if (s.kind === "organized_elsewhere") return "elsewhere";
+  if (s.kind !== "nothing_organizes") return null;
+  if (s.lapsed !== null) return "stopped";
+  return s.why === "stopped" ? "stopped" : null;
 }
 
 /** The Cloud mirror's refused rows, as `GET /mailboxes` states them — see {@link MailboxFacts.storeRefusals}. */

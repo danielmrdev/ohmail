@@ -603,6 +603,7 @@ export const DE: Deck = {
   waitingEmptyTitle: "Es wartet niemand.",
   waitingEmptyHint: "Erstabsender klopfen hier an, bevor irgendetwas in deine Ohbox kommt.",
   waitingNotYetTitle: "ohmail organisiert dieses Postfach noch nicht.",
+  waitingNotOrganizedTitle: "Dieses Postfach wird von nichts organisiert.",
   waitingNotYetHint: "Niemand prüft Erstabsender, deshalb landen sie direkt in deiner Ohbox. In den Einstellungen steht, was jedes Postfach organisiert.",
   waitingNotYetPress: "Einstellungen öffnen",
   cutlinePending:
