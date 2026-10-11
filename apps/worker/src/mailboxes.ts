@@ -1285,6 +1285,16 @@ export async function markMailboxReleased(
     retryAfter: null,
     // Mail 0088 — the fifth writer of the triple. See `markMailboxStoodDown`'s note.
     organizerEventAt: now,
+    /* THE GAP WINDOW OPENS AT THE PERSON'S PRESS (mail 0151) — but never earlier than a holder this
+       row recorded since the promotion: a release withheld behind another install's live claim
+       starts at `now()`, so the window never reaches back over that tenure. The holder columns are
+       the look's, written on every visit that withholds. The wall's park opens no window: organizing
+       resumes by its join. `coalesce` keeps an earlier start. */
+    ...(opts.cause === "account_parked" ? {} : {
+      gapSince: sql`coalesce(${mailboxes.gapSince}, case when ${mailboxes.organizedByKind} is null
+        and ${mailboxes.organizedByName} is null and ${mailboxes.organizedByInstallId} is null
+        then ${mailboxes.releaseRequestedAt} end, now())`,
+    }),
   }).where(and(
     lifecycleWhere(mailboxId, opts.fence),
     /* THE REQUEST MUST STILL BE STANDING (the default cause). A worker carries a release decision

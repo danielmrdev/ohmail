@@ -2430,7 +2430,7 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
     const gapCatchupReady = new Set<string>();
     /**
      * THE MAILBOXES THE GAP PASS OWES A RUN, so a settled drain asks the store nothing: each attach
-     * once, a look that opens a window, and a recorded press. A pass that ran leaves nothing owed.
+     * once, a release or a look that opens a window, and a recorded press. A pass that ran leaves nothing owed.
      */
     const gapOwed = new Set<string>();
     const onceForTheAccount = async (fn: () => Promise<void>): Promise<void> => {
@@ -5220,6 +5220,14 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
                 // `standDownMemory`'s released arm.
                 organizerReleasedAt: now(),
                 organizerEventAt: now(),
+                /* AND THE GAP WINDOW OPENS AT THE PERSON'S PRESS, not one look later (mail 0151) —
+                   unless this row saw another holder since: a sibling's refusal or a recorded holder
+                   starts it at the store's clock, never back over that tenure. The columns are read
+                   before this statement clears them. */
+                gapSince: sql`coalesce(${mailboxes.gapSince}, case when ${mailboxes.releaseRefusal} is null
+                  and ${mailboxes.organizedByKind} is null and ${mailboxes.organizedByName} is null
+                  and ${mailboxes.organizedByInstallId} is null then ${mailboxes.releaseRequestedAt} end,
+                  ${dialect(db).now()})`,
               })
               .where(and(
                 eq(mailboxes.id, mb.id),
@@ -5262,6 +5270,8 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
             holderSeen.kind = null; holderSeen.name = null;
             holderSeen.since = null; holderSeen.state = null;
             holderSeen.capabilities = null;
+            // The window the statement opened owes the pass a run, whatever the next look reads.
+            gapOwed.add(mb.id);
             /* THE REQUEST IS SPENT, and this is the only line that spends it: the statement above
                is what cleared the row's own column, so the projection moves with it and not a
                moment earlier. The catch below does NOT clear it — a write that failed leaves the
