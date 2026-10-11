@@ -18,7 +18,7 @@ See [Status](README.md#status--read-this-first).
 Signed installers — a real Apple Developer ID and an Authenticode certificate. See
 [Roadmap](README.md#roadmap).
 
-## [0.25.22] — 2026-10-11
+## [0.25.22] — 2026-10-12
 
 ### Search on the desktop answers at once while mail syncs
 <!-- changes: fix-026-desktop-search-waits-behind-a-drain.md -->

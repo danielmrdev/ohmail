@@ -74,7 +74,7 @@
   </screenshots>
 
   <releases>
-    <release version="0.25.22" date="2026-10-11">
+    <release version="0.25.22" date="2026-10-12">
       <description>
         <ul>
           <li>Search on the desktop answers at once while mail syncs</li>
