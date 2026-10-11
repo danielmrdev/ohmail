@@ -389,10 +389,10 @@ function millisOf(v: unknown): number | null {
 }
 
 /** Strictly after `(date, id)` under `date desc nulls last, id desc` — the History keyset. */
-function afterDateDesc(d: Dialect, date: number | null, id: string, idCol: SQL): SQL {
+function afterDateDesc(d: Dialect, date: number | null, id: string, idCol: SQL, dateCol: SQL = sql`m.date`): SQL {
   return date === null
-    ? sql`(m.date is null and ${idCol} < ${id})`
-    : sql`(m.date < ${d.ts(new Date(date))} or (m.date = ${d.ts(new Date(date))} and ${idCol} < ${id}) or m.date is null)`;
+    ? sql`(${dateCol} is null and ${idCol} < ${id})`
+    : sql`(${dateCol} < ${d.ts(new Date(date))} or (${dateCol} = ${d.ts(new Date(date))} and ${idCol} < ${id}) or ${dateCol} is null)`;
 }
 
 /** Strictly after `(date, id)` under `date asc nulls last, id asc`. */
@@ -522,7 +522,7 @@ export class SearchService {
     // `SQL_RANK_ORDER`'s key sequence (a recency arm's rank is the constant its branches wrote).
     const rank = sql`m.rank`;
     const x = arm.local ? sql`, m.x` : sql``;
-    return sql`select m.id, row_number() over (order by ${rank} desc, m.date desc nulls last, m.id desc) as r${x}
+    return sql`select m.id, m.date, row_number() over (order by ${rank} desc, m.date desc nulls last, m.id desc) as r${x}
                from (select m.id, m.date, m.rank${x} from ${merged} m
                      order by ${rank} desc, m.date desc nulls last, m.id desc limit ${k}) m`;
   }
@@ -584,7 +584,12 @@ export class SearchService {
   private boundedRead(where: SQL, branches: readonly Branch[], k: number): SQL {
     const newestOf = (n: number): SQL => sql`select m.id as id, m.date as date from messages m left join folder_state fs on fs.message_id = m.id
       where ${where} order by m.date desc nulls last, m.id desc limit ${n}`;
-    const hit = sql`exists (select 1 from messages m left join message_search s on s.message_id = m.id
+    // Every branch the document's own: each walked row asks its document alone. The walk's row is
+    // already the message under the filters, and a second lookup of it was a disk read per row cold.
+    const docOnly = branches.every((b) => b.raw !== undefined);
+    const hit = docOnly
+      ? sql`exists (select 1 from message_search s where s.message_id = w.id and (${sql.join(branches.map((b) => b.pred), sql` or `)}) limit 1 offset 0)`
+      : sql`exists (select 1 from messages m left join message_search s on s.message_id = m.id
       left join message_bodies b on b.message_id = m.id
       where m.id = w.id and (${sql.join(branches.map((b) => b.pred), sql` or `)}) limit 1 offset 0)`;
     // The probe: the newest K asked first; a part too sparse there to fill the walk skips it.
@@ -670,7 +675,9 @@ export class SearchService {
         ...(walking ? [sql`${walkName} as (${this.sharedWalk(where, arms, k)})`] : []),
         ...armSqls.map((x, i) => sql`${a(i)} as (${x})`),
       ], sql`, `),
-      all: sql.join(armSqls.map((_, i) => sql`select id, r from ${a(i)}`), sql` union all `),
+      // Each row carries the date its arm read, so the fused candidates are ordered without being
+      // looked up again: one read of a message per candidate, a disk read each on a cold page.
+      all: sql.join(armSqls.map((_, i) => sql`select id, date, r from ${a(i)}`), sql` union all `),
       sizes: armSqls.map((_, i) => sql`${d.castInt(size(i))} as ${sql.raw(sizeNames[i]!)}`),
       sizeNames,
     };
@@ -746,13 +753,13 @@ export class SearchService {
     const score = d.castInt(sql`sum(${sql.raw(String(RRF_SCALE))} / (${sql.raw(String(RRF_K))} + r))`);
     const rows = await materializePage(db as Db, ctx.accountId, {
       rows: sql`
-      with ${e.named}, fused_e as (select id, ${score} as score from (${e.all}) x group by id),
-      ${s.named}, fused_s as (select id, ${score} as score from (${s.all}) x where ${none} group by id),
-      fused as (select id, score, 0 as t from fused_e union all select id, score, 1 as t from fused_s)
+      with ${e.named}, fused_e as (select id, date, ${score} as score from (${e.all}) x group by id, date),
+      ${s.named}, fused_s as (select id, date, ${score} as score from (${s.all}) x where ${none} group by id, date),
+      fused as (select id, date, score, 0 as t from fused_e union all select id, date, score, 1 as t from fused_s)
       select f.id as id, f.score as score, f.t as t, ${d.castInt(sql`(select count(*) from fused)`)} as fused,
         ${sql.join([...e.sizes, ...s.sizes], sql`, `)}
-      from fused f join messages m on m.id = f.id
-      order by f.score desc, m.date desc nulls last, f.id desc
+      from fused f
+      order by f.score desc, f.date desc nulls last, f.id desc
       limit ${limit + 1}`,
       keys: ["score", "t", "fused", ...e.sizeNames, ...s.sizeNames],
       order: sql`p.score desc, ${messages.date} desc nulls last, ${messages.id} desc`,
@@ -790,15 +797,15 @@ export class SearchService {
     if (sort === "relevance") {
       if (cursor !== null && cursor.k !== "r") throw new ServiceError("validation_failed", 400, "cursor belongs to another order");
       const { k, named, all, sizes } = this.fusedArms(d, where, arms, tier, limit);
-      const after = cursor === null ? sql`` : sql`where (f.score < ${cursor.s} or (f.score = ${cursor.s} and ${afterDateDesc(d, cursor.d, cursor.i, sql`f.id`)}))`;
+      const after = cursor === null ? sql`` : sql`where (f.score < ${cursor.s} or (f.score = ${cursor.s} and ${afterDateDesc(d, cursor.d, cursor.i, sql`f.id`, sql`f.date`)}))`;
       const rows = await read({
         rows: sql`
         with ${named},
-        fused as (select id, ${d.castInt(sql`sum(${sql.raw(String(RRF_SCALE))} / (${sql.raw(String(RRF_K))} + r))`)} as score from (${all}) x group by id)
+        fused as (select id, date, ${d.castInt(sql`sum(${sql.raw(String(RRF_SCALE))} / (${sql.raw(String(RRF_K))} + r))`)} as score from (${all}) x group by id, date)
         select f.id as id, f.score as score, ${d.castInt(sql`(select count(*) from fused)`)} as fused, ${sql.join(sizes, sql`, `)}
-        from fused f join messages m on m.id = f.id
+        from fused f
         ${after}
-        order by f.score desc, m.date desc nulls last, f.id desc
+        order by f.score desc, f.date desc nulls last, f.id desc
         limit ${limit + 1}`,
         keys: ["score", "fused", ...sizes.map((_, i) => "n" + String(i))],
         order: sql`p.score desc, ${messages.date} desc nulls last, ${messages.id} desc`,
