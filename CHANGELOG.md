@@ -13,6 +13,13 @@ See [Status](README.md#status--read-this-first).
 
 ## [Unreleased]
 
+### Still to come
+
+Signed installers — a real Apple Developer ID and an Authenticode certificate. See
+[Roadmap](README.md#roadmap).
+
+## [0.25.22] — 2026-10-11
+
 ### Search on the desktop answers at once while mail syncs
 <!-- changes: fix-026-desktop-search-waits-behind-a-drain.md -->
 
@@ -126,11 +133,6 @@ read. Agreeing to organize, or pressing Start organizing here, no longer adds a 
 
 When no message holds the word you typed, the closest words now come back sooner on a large mailbox,
 inside the 100 ms a search page is allowed. The words found are the same as before.
-
-### Still to come
-
-Signed installers — a real Apple Developer ID and an Authenticode certificate. See
-[Roadmap](README.md#roadmap).
 
 ## [0.25.21] — 2026-10-11
 
@@ -12091,7 +12093,8 @@ no network in any of them.
   Gatekeeper, SmartScreen and the AppImage's executable bit all need a manual
   step, and that is a real cost of a preview rather than something to gloss over.
 
-[Unreleased]: https://github.com/trafficflowhq/ohmail/compare/v0.25.21...HEAD
+[Unreleased]: https://github.com/trafficflowhq/ohmail/compare/v0.25.22...HEAD
+[0.25.22]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.22
 [0.25.21]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.21
 [0.25.20]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.20
 [0.25.19]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.19
