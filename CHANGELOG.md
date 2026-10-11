@@ -70,6 +70,63 @@ When the database stops answering during the worker's end-of-cycle passes, `/hea
 degraded until a sync cycle completes again. A slow query or a refused value on one account is still that
 account's failure alone.
 
+### The list cursor stays on screen, and dialogs keep their keys
+<!-- changes: fix-026-keys-reach-what-is-in-front.md -->
+
+- `j`, `k` and the arrow keys keep the message under the cursor on screen in the Ohbox,
+  scrolling the list only as far as that message needs, also in a short or zoomed window.
+- While a dialog is open (setup, the command palette, the Reply Run), keys meant for the list no
+  longer act on the mail behind it.
+- Setup takes focus when it opens, and a step that replaces its own button puts focus back in the
+  dialog, so Enter on its last step opens ohmail instead of a message behind it.
+
+### The first company-name letter through a mailing list waits at the Screener
+<!-- changes: fix-026-list-address-first-letter.md -->
+
+The first letter that uses a company's name through a mailing list's address you have written to now waits at
+the Screener with the mailing-list line, like the letters after it; before, it could reach News. The Screener no
+longer says "first contact" over a sender some of whose mail is already in your lists.
+
+### Letters that arrive after a hand-back are offered for filing
+<!-- changes: fix-026-organizer-state-and-the-hand-back-gap.md -->
+
+After Hand the mailbox back, the offer to file letters by your rules now counts the letters that
+arrived from the moment you pressed, not only those after the next device first looked; letters that
+arrived while the app saw another device organizing the mailbox are left out.
+
+### A handed-back mailbox is no longer called all clear
+<!-- changes: fix-026-organizer-state-and-the-hand-back-gap.md#2 -->
+
+The Ohbox and the Screener say a mailbox was handed back, or that nothing organizes it, instead of
+All clear while first-time senders go straight to the Ohbox; with several mailboxes, the one nothing
+organizes is named.
+
+### The desktop's Mailboxes chip says when a phone stopped organizing
+<!-- changes: fix-026-organizer-state-and-the-hand-back-gap.md#3 -->
+
+When the phone that organized a mailbox stops, the chip says nothing organizes it, as the sentence
+beside it does.
+
+### Organize on this phone shows Starting
+<!-- changes: fix-026-organizer-state-and-the-hand-back-gap.md#4 -->
+
+After Organize on this phone, the phone shows Starting until it organizes the mailbox, which now
+begins at once, instead of Nothing organizes this mailbox for a minute.
+
+### A phone connected to a mailbox starts organizing it within seconds
+<!-- changes: perf-026-phone-first-sync-and-claim.md -->
+
+On a phone set up on its own, reading a mailbox for the first time took minutes for a large one:
+about nine and a half minutes for 1,500 letters, during which the Ohbox said that nothing organized
+the mailbox. The same mailbox is now read in under a minute, and organizing starts as soon as it is
+read. Agreeing to organize, or pressing Start organizing here, no longer adds a wait of its own.
+
+### Search on ohmail Cloud finds the closest words to a mistyped word faster
+<!-- changes: perf-026-search-typo-tier.md -->
+
+When no message holds the word you typed, the closest words now come back sooner on a large mailbox,
+inside the 100 ms a search page is allowed. The words found are the same as before.
+
 ### Still to come
 
 Signed installers — a real Apple Developer ID and an Authenticode certificate. See
