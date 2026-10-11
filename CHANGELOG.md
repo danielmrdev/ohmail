@@ -143,7 +143,7 @@ device is organizing is kept, and the phone asks you once that device lets go.
 When no device was organizing a mailbox, new letters used to stay in the inbox for good. The next
 device to organize it now counts the ones your rules would file and asks before moving any.
 
-### Search on ohmail Cloud answers faster after a pause
+### Search on ohmail Cloud answers faster
 <!-- changes: perf-026-cloud-search.md -->
 
 A search no longer reads every account's newest unindexed words before it answers, a part of a word
