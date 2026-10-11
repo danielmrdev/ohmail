@@ -615,6 +615,8 @@ export function useShellKeys({
       group: "message",
       label: t("shortcuts.frSend"),
       inInput: true,
+      // The run's overlay is a page modal; this is its own send.
+      inModal: true,
       disabled: fr == null || fr.step >= fr.items.length,
       run: () => {
         if (!fr || fr.step >= fr.items.length) return;
@@ -818,6 +820,8 @@ export function useShellKeys({
       group: "app",
       label: t("shortcuts.palette"),
       inInput: true,
+      // The palette is a page modal: its own toggle still closes it.
+      inModal: palette.open,
       run: () => palette.toggle(),
     },
     /* LEAVE-THE-READER, the Zero sheet's lateral exit (review finding, round 1): under zero the

@@ -106,6 +106,27 @@ function showing(el: Element): boolean {
 }
 
 /**
+ * A surface that claims the page and is still a PEEK: any key dismisses it and then does its own
+ * job behind it (`ShortcutSheet`, where `?` `j` reads the map and moves the cursor). Declared on
+ * the surface, so the gate below reads a statement rather than a class name.
+ */
+export const KEY_PEEK = "data-key-peek";
+
+/**
+ * THE MODAL THAT OWNS THE PAGE: the topmost showing `aria-modal="true"` surface that is neither
+ * the reading surface nor a peek. The keymap asks it before every dispatch and the shell's focus
+ * rule lands in it, so a key or a focus that fell to the page root never reaches the mail behind
+ * (the setup dialog's ↵ opened, and so read, the letter under it). `aria-modal`, not every dialog
+ * role: an inline question (the bar's delete strip) or a popover claims no page; those are
+ * {@link isModalOpen}'s, for the destructive keys.
+ */
+export function pageModal(doc: Document): HTMLElement | null {
+  const all = [...doc.querySelectorAll<HTMLElement>('[aria-modal="true"]')]
+    .filter((el) => !el.matches(READING_SURFACE) && !el.hasAttribute(KEY_PEEK) && showing(el));
+  return all[all.length - 1] ?? null;
+}
+
+/**
  * Is anything standing over the deck — registered OR merely on screen?
  *
  * The registered count is consulted first because it is the cheaper question and because a

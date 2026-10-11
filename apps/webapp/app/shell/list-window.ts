@@ -90,6 +90,36 @@ export function listOrigin(el: HTMLElement): number {
   return top.getBoundingClientRect().top - box.top - el.clientTop + el.scrollTop;
 }
 
+/**
+ * KEEP A MOUNTED ROW WHOLLY ON SCREEN, MOVING THE LIST AS LITTLE AS IT CAN — the list cursor's
+ * rule after every move key. Only this scroller moves (`scrollIntoView` walks every ancestor),
+ * and a sticky child pinned at its top (the standing notice) is not screen a row can stand
+ * under. A row taller than the list shows its top.
+ */
+export function revealInScroller(scroller: HTMLElement, row: HTMLElement): void {
+  const box = scroller.getBoundingClientRect();
+  let top = box.top + scroller.clientTop;
+  const bottom = top + scroller.clientHeight;
+  for (const child of Array.from(scroller.children)) {
+    if (child === row || child.contains(row)) continue;
+    if (getComputedStyle(child).position !== "sticky") continue;
+    const at = child.getBoundingClientRect();
+    if (at.height > 0 && at.top <= top + 1) top = Math.max(top, at.bottom);
+  }
+  const r = row.getBoundingClientRect();
+  // Rounded outward: the browser snaps `scrollTop` to a device pixel and a fraction short clips.
+  if (r.top < top) scroller.scrollTop = Math.floor(scroller.scrollTop - (top - r.top));
+  else if (r.bottom > bottom) scroller.scrollTop = Math.ceil(scroller.scrollTop + Math.min(r.bottom - bottom, r.top - top));
+  /* A SHORT VIEWPORT SCROLLS THE PAGE TOO (app.css, 200 % zoom): the list's box can run past the
+     window, so the row is then kept inside the window the same minimal way. */
+  const page = scroller.ownerDocument.scrollingElement;
+  const tall = scroller.ownerDocument.defaultView?.innerHeight ?? 0;
+  if (!page || tall <= 0) return;
+  const s = row.getBoundingClientRect();
+  if (s.top < 0) page.scrollTop = Math.floor(page.scrollTop + s.top);
+  else if (s.bottom > tall) page.scrollTop = Math.ceil(page.scrollTop + Math.min(s.bottom - tall, s.top));
+}
+
 export interface ListWindow {
   /** First index to render, inclusive. */
   start: number;

@@ -41,7 +41,7 @@ import { PLACE_LABEL, avatarOf, resurfaceLabel, rowAddress, rowStamp, senderName
 import { useSenderCheckWords } from "../shell/sender-check";
 import { useKeyBindings, type KeyBinding } from "../shell/keymap";
 import { useZoneNav } from "../shell/zone-nav";
-import { useListWindow } from "../shell/list-window";
+import { revealInScroller, useListWindow } from "../shell/list-window";
 import { BootSkeleton } from "../shell/BootSkeleton";
 import { useLoadingGrace } from "../shell/loading-grace";
 import { useMailState } from "../shell/MailStateProvider";
@@ -713,11 +713,21 @@ export function OhboxView({
    * window mounts the top: a hit on anything deeper arrived at a resting list — no row, no
    * flash, nothing connecting click to arrival. Scrolling the scroller is the fix the window is
    * built for: the slice derives from `scrollTop`, so putting the row's offset in view mounts
-   * it and the locate pass flashes it. Keyed on the selection, a no-op when already mounted,
-   * never runs on scroll; resurfaced rows render whole and return early.
+   * it and the locate pass flashes it. Keyed on the selection, never run on scroll; a mounted
+   * row (resurfaced rows always are) is only brought wholly on screen.
    */
   useEffect(() => {
     if (!selectedId) return;
+    /* A MOUNTED ROW IS KEPT ON SCREEN. Nothing scrolled for one: every row the window mounts
+       past the fold took `j` off screen while the reader opened it, six presses at a time. */
+    const scroller = listScrollerRef.current;
+    const rows = scroller ? [...scroller.querySelectorAll<HTMLElement>(".row[data-id]")] : [];
+    const mounted = rows.find((r) => r.dataset.id === selectedId)
+      ?? rows.find((r) => (r.dataset.ids ?? "").split(" ").includes(selectedId));
+    if (scroller && mounted) {
+      revealInScroller(scroller, mounted);
+      return;
+    }
     const idx = rowIndexOf(selectedId);
     const rowIdx = idx - groupedResurfaced.length;
     if (idx < 0 || rowIdx < 0) return;

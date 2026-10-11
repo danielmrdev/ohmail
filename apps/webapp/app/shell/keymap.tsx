@@ -20,7 +20,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { modalIsOpen } from "./modal-gate";
+import { modalIsOpen, pageModal } from "./modal-gate";
 import { modGlyph, useModGlyph } from "./mod-glyph";
 /* The rules that stop key hints being shown on devices with no keys. It rides with the
    registry rather than with any one component because the chrome it hides is spread across the
@@ -102,6 +102,13 @@ export interface KeyBinding {
    * moves no mail and is the one place the composer's own chords are documented.
    */
   inWriting?: boolean;
+  /**
+   * Fire even while a page modal stands (`modal-gate.ts#pageModal`). Default false: with a dialog
+   * up, a key reaches the `overlay` layer — the thing on top — and nothing behind it, wherever
+   * focus fell. A global or view binding opts in only where it answers that modal itself (the
+   * Reply Run's send, the palette's toggle, Compose's Escape closing its own confirm).
+   */
+  inModal?: boolean;
   /**
    * Declared and listed, but inert right now (nothing to act on). It still appears in the
    * overlay: a shortcut that vanishes from the documentation when the list is empty is a
@@ -454,7 +461,12 @@ export function KeymapProvider({ children }: { children: ReactNode }) {
        * chords keep working, and a writing surface opts back in with `inWriting`.
        */
       const writing = writingSurfaces.current > 0;
-      const all = ordered();
+      /* A PAGE MODAL KEEPS THE KEYS. Asked of the app, never of focus: a step that took its own
+         button away left focus on the page root, and ↵ there opened the letter behind setup. */
+      const modal = typeof document === "undefined" ? null : pageModal(document);
+      const front = modal === null ? null
+        : new Set(layers.current.filter((l) => l.scope === "overlay").flatMap((l) => l.get()));
+      const all = front === null ? ordered() : ordered().filter((b) => b.inModal === true || front.has(b));
       /* The two focus rules, factored out because the parked walk at the bottom of this handler
          has to apply exactly the same ones: a message verb pressed inside a text field is a
          character, and one pressed behind a mounted composer is prose. Neither may place a

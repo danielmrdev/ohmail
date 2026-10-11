@@ -121,7 +121,7 @@ export function ShortcutSheet({ open, onClose }: { open: boolean; onClose: () =>
   return (
     <>
       <div className="ks-bg" onClick={onClose} />
-      <div className="ks" ref={sheetRef} role="dialog" aria-modal="true" aria-label={t("title")}>
+      <div className="ks" ref={sheetRef} role="dialog" aria-modal="true" aria-label={t("title")} data-key-peek="">
         <div className="ks-head">
           <h2 id="ks-title">
             <Icon name="open" /> {t("title")}

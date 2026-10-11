@@ -476,6 +476,8 @@ export function ComposeView({
       group: "app",
       label: confirmCancel || sendLaterOpen ? t("keyCloseConfirm") : t("keyLeave"),
       inInput: true,
+      // The cancel confirm is a page modal (`aria-modal`); this is the key that answers it.
+      inModal: confirmCancel,
       // The cascade rule, one branch wider: the send-later picker is an innermost thing too.
       run: () => {
         if (sendLaterOpen) closeSendLater();

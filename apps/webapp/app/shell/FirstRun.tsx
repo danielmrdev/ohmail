@@ -23,6 +23,7 @@ import type { DecisionDestination, DecisionScope } from "@ohmail/ui";
 import { isSharedProviderDomain } from "@trafficflow/core/rule-order";
 import { useDecisionBarCopy } from "./decision-copy";
 import { useModalGate } from "./modal-gate";
+import { useFocusFollows } from "./focus-follows";
 import { PROVIDERS, hostsFor, providerById, providerLabel, type ProviderPreset } from "./providers";
 import { isLocalServerHost, probeCopyKey, refusalTransport } from "./local-server-host";
 import { noPortProbeKey } from "./no-port-sentence";
@@ -775,7 +776,10 @@ export function FirstRun({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
+  /* THE CARD TAKES FOCUS when it opens and gives it back when it closes: opened from a
+     button behind it, focus stayed there and ↵ went past the dialog. */
   const cardRef = useRef<HTMLDivElement | null>(null);
+  useFocusFollows(cardRef);
   useEffect(() => {
     // Focus inside the stage on open, unless something in it already has it.
     if (cardRef.current && !cardRef.current.contains(document.activeElement)) cardRef.current.focus();
@@ -1157,8 +1161,8 @@ export function FirstRun({
 
   return (
     <div className="ob-stage">
-      <div className="login-card ob-card set-pane" role="dialog" aria-modal="true"
-        aria-labelledby={`${ids}-title`} ref={cardRef} tabIndex={-1}>
+      <div ref={cardRef} className="login-card ob-card set-pane" role="dialog" aria-modal="true"
+        aria-labelledby={`${ids}-title`} tabIndex={-1}>
         <span className="wordmark"><b><em>oh</em>mail</b></span>
 
         {/* NO RAIL ON EITHER SCREEN THAT IS NOT A PHASE. `vanished` is not in the walk, so

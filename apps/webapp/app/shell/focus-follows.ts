@@ -9,6 +9,7 @@
  * Surfaces call {@link useFocusFollows}; the shell mounts {@link FocusFollows} once.
  */
 import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
+import { pageModal } from "./modal-gate";
 
 const useCommitEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
@@ -250,7 +251,15 @@ export function useFocusFollows(ref: RefObject<HTMLElement | null>, opts: FocusF
  */
 export function FocusFollows(): null {
   useEffect(() => {
-    const onKey = (): void => { lastPress = placeOf(document.activeElement); };
+    const onKey = (e: KeyboardEvent): void => {
+      lastPress = placeOf(document.activeElement);
+      /* A KEY AT THE PAGE ROOT UNDER A PAGE MODAL ENTERS IT. Tab there walked to the first control
+         behind the dialog; the key itself reaches nothing behind (the keymap asks `pageModal`). */
+      const modal = focusIsLost() ? pageModal(document) : null;
+      if (modal === null) return;
+      enterInto(modal);
+      if (e.key === "Tab") e.preventDefault();
+    };
     const onPress = (e: Event): void => {
       const target = e.target instanceof Element ? e.target.closest<HTMLElement>(TABBABLE) : null;
       lastPress = placeOf(target);
@@ -266,10 +275,17 @@ export function FocusFollows(): null {
       });
     };
     const observer = new MutationObserver(() => {
+      if (returning > 0 || !focusIsLost()) return;
       const lost = lastFocus;
-      if (lost?.el == null || lost.el.isConnected || returning > 0 || !focusIsLost()) return;
-      lastFocus = null;
-      land(lost, false);
+      if (lost?.el != null && !lost.el.isConnected) {
+        lastFocus = null;
+        land(lost, false);
+        return;
+      }
+      /* A PAGE MODAL HOLDS FOCUS. A step that disabled or swapped its own button left focus on
+         the page root with no removal to answer, and ↵ there reached the mail behind setup. */
+      const modal = pageModal(document);
+      if (modal !== null) enterInto(modal);
     });
     observer.observe(document.body, { childList: true, subtree: true });
     document.addEventListener("keydown", onKey, true);
