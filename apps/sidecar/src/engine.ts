@@ -9931,8 +9931,7 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
           );
         }
         /* THE APP'S DOOR READS COMMITTED ROWS ONLY where a drain page can be open (PERF-026). */
-        const answered = await asPerson(req, () =>
-          app.handle(req, opened.routeDb ? { ...depsFor(), db: opened.routeDb } : depsFor()));
+        const answered = await asPerson(req, () => app.handle(req, opened.routeDb ? { ...depsFor(), db: opened.routeDb } : depsFor()));
         noteDoorWrite(req, answered);
         // The mailbox list carries this install's own settled sync verdicts — on `handle`
         // ALONE, like the local routes above: a paired device renders its own indicator and
