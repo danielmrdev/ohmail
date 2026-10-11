@@ -206,7 +206,7 @@ function SettingsBody() {
     <Screen>
       {/* The page carries its own heading, so the bar carries only the way back (one title). */}
       <DetailBar />
-      <Scroller bounded>
+      <Scroller bounded avoidKeyboard>
         <View style={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: 16 }}>
           <Txt variant="h1">{Copy.settings}</Txt>
         </View>

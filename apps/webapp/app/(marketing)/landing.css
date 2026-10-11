@@ -118,6 +118,9 @@ a.btn {
   font-weight: 550;
   padding: 6px 2px;
   transition: color 0.15s;
+  /* a label never breaks mid-word ("Self-/host" at 768): a bar that does not fit overflows
+     and is measured, rather than folding a word to look as if it did */
+  white-space: nowrap;
 }
 .l-nav-links a:hover {
   color: var(--ink);
@@ -144,6 +147,7 @@ a.btn {
 }
 .l-nav-cta {
   text-decoration: none;
+  white-space: nowrap;
 }
 /* the demo keeps a place in the bar, as the quiet one */
 .l-nav-demo {
@@ -3190,7 +3194,8 @@ a.btn {
   text-decoration: underline;
   text-underline-offset: 3px;
   text-decoration-thickness: 1px;
-  white-space: nowrap;
+  /* no `nowrap`: "Wofür ein Guthabenpunkt reicht" ran the German page past the right edge
+     on every phone from 390 to 660 (measured); a link that wraps is still a link */
 }
 .l-tier-what:hover { color: var(--ink1); }
 .l-tier-what:focus-visible {
@@ -3545,7 +3550,11 @@ a.btn {
 }
 .l-footer-nav {
   display: flex;
-  gap: 22px;
+  /* the row wraps: unwrapped, its German links set the footer column's minimum at 333px
+     and the whole page scrolled sideways on a 320–360 phone (measured) */
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px 22px;
 }
 .l-footer-nav a {
   font-size: 13px;
@@ -3863,13 +3872,46 @@ a.btn {
   }
 }
 
-@media (max-width: 760px) {
-  .l-nav-links,
-  /* with it, and not 280px later. The action row does not wrap and `.l-body` clips its
-     overflow, so at ~600px "Deutsch" pushed the sign-in link and the capsule off the
-     right edge with nothing to scroll to — the ask, unreachable, on every tablet. The
-     footer's copy is the one that survives this width. */
+/* ── the bar's ladder ────────────────────────────────────────────────
+   The row does not wrap and `.l-body` clips sideways, so whatever does not fit is simply
+   gone — measured: the full bar overflowed on every iPad in portrait (768–999 in German) and
+   the stripped one on German phones. One priority order, read off the bar's job (the ask,
+   then the door, then the way around the page), and each step takes the next-quietest thing:
+     < 1160  the demo link and the source link's name and count go (the demo is one scroll
+             away; the octocat still links the source) and the row's air tightens — the
+             section links stay for tablets. 1160 is the inner row's own measure: the full
+             German bar, no label folded, needs it
+     < 800   the language mark goes (a utility; the footer's switcher carries it)
+     ≤ 760   the section links go (the scroll IS the nav)
+     ≤ 480   the source link goes and the row tightens again — the bar is the door and the ask
+     ≤ 360   the theme toggle goes; the page follows the system scheme there
+   Every step is a width the bar was measured to fit at, in both faces and both languages. */
+@media (max-width: 1159px) {
+  .l-nav-demo,
+  .l-nav-github-name,
+  .l-nav-stars {
+    display: none;
+  }
+  .l-nav-inner {
+    padding-left: 20px;
+    padding-right: 20px;
+    gap: 16px;
+  }
+  .l-nav-links {
+    gap: 12px;
+  }
+}
+@media (max-width: 799px) {
+  /* and not 280px later. The action row does not wrap and `.l-body` clips its overflow, so
+     at ~600px "Deutsch" pushed the sign-in link and the capsule off the right edge with
+     nothing to scroll to — the ask, unreachable, on every tablet. The footer's copy is the
+     one that survives this width. */
   .l-nav-lang {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  .l-nav-links {
     display: none; /* one-page site: the scroll IS the nav on small screens */
   }
   /* the demo itself is one column at this width — so is its build-up */
@@ -3923,12 +3965,16 @@ a.btn {
   .l-live-badge {
     display: none;
   }
-  .l-nav-demo {
-    display: none; /* the bar keeps the ask; the demo is one scroll away */
+  .l-nav-github {
+    display: none; /* the ask must not wrap: "Anmelden" and "ohmail holen." in mono fit nothing beside them */
   }
-  .l-nav-github-name,
-  .l-nav-stars {
-    display: none; /* the octocat alone at this width — the ask must not wrap */
+  .l-nav-inner {
+    padding-left: 12px;
+    padding-right: 12px;
+    gap: 10px;
+  }
+  .l-nav-actions {
+    gap: 8px;
   }
 
   .l-hero-ctas {
@@ -3945,6 +3991,11 @@ a.btn {
   .l-demo-hints {
     gap: 6px 14px;
     font-size: 12px;
+  }
+}
+@media (max-width: 360px) {
+  .l-icon-btn {
+    display: none; /* the narrowest phones: the door and the ask; the page follows the system scheme */
   }
 }
 

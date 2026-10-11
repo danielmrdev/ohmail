@@ -26,6 +26,7 @@ import { Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { listInsets, type ListInsets } from "./list-insets";
 import { useBottomChromeExtent } from "./bottom-chrome";
+import { KeyboardRoom } from "./keyboard-room";
 import { usePosture } from "./posture";
 import { listNavClearance, scaffoldPlan, screenFillsWindow, screenRailClearance, screenSideInsets } from "./scaffold/plan";
 import { useInPane } from "./pane-chrome";
@@ -197,6 +198,7 @@ export function Scroller({
   contentStyle,
   refresh,
   bounded,
+  avoidKeyboard = false,
   ...rest
 }: React.ComponentProps<typeof ScrollView> & {
   contentStyle?: StyleProp<ViewStyle>;
@@ -207,10 +209,16 @@ export function Scroller({
    * of edge-to-edge lines. The mail lists never pass it — their width is the pane's.
    */
   bounded?: boolean;
+  /**
+   * A FORM'S SCROLLER ENDS ABOVE THE KEYBOARD: asked for, Android shortens the frame by the
+   * keyboard (`keyboard-room.tsx`) and iOS insets the content by it, so the focused field is
+   * scrolled into view, the last control is reachable, and a press lands with the keyboard up.
+   */
+  avoidKeyboard?: boolean;
 }) {
   const t = useTheme();
   const insets = useListInsets();
-  return (
+  const scroller = (
     <ScrollView
       {...rest}
       refreshControl={pullRefreshControl(t, refresh)}
@@ -221,10 +229,14 @@ export function Scroller({
         contentStyle,
       ]}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps={avoidKeyboard ? "handled" : rest.keyboardShouldPersistTaps}
+      automaticallyAdjustKeyboardInsets={avoidKeyboard || rest.automaticallyAdjustKeyboardInsets}
     >
       {children}
     </ScrollView>
   );
+  if (!avoidKeyboard || Platform.OS !== "android") return scroller;
+  return <KeyboardRoom>{scroller}</KeyboardRoom>;
 }
 
 /* ------------------------------------------------------------------ chrome */

@@ -24,7 +24,7 @@ import { Gated } from "../src/ui/Gated";
 import { MailRow } from "../src/ui/MailRow";
 import { SlotHeights } from "../src/ui/history-slot";
 import { HistoryAsks } from "../src/ui/history-asks";
-import { HISTORY_HEAD_PAD, HISTORY_RAIL_RIGHT, historyHeadPadRight } from "../src/ui/history-rail";
+import { HISTORY_HEAD_PAD, HISTORY_RAIL_RIGHT, historyListGutter } from "../src/ui/history-rail";
 import { SkeletonList } from "../src/ui/Skeleton";
 import { useLocale } from "../src/i18n/LocaleProvider";
 import { SurfaceBoundary } from "../src/ui/ErrorBoundary";
@@ -50,7 +50,8 @@ function HistoryBody() {
   const h = useStoreHistory();
   const { open, openRow, close } = useListDetail((id) => `/message/${id}`);
   const [more, setMore] = useState(false);
-  /* The year rail floats over the head's right edge: the head keeps its measured width clear. */
+  /* The year rail stands over the list's right edge: the list keeps its measured width clear, so
+     the head's words and every row's date end before it (`history-rail.ts`). */
   const [railWidth, setRailWidth] = useState<number | null>(null);
   const scrollTo = useRef<((y: number) => void) | null>(null);
   /** Where slot 0 sits in the scroll content, learnt from its own frame. */
@@ -118,6 +119,7 @@ function HistoryBody() {
       {/* The page carries its own heading, so the bar carries only the way back (one title). */}
       <DetailBar />
       <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, paddingRight: historyListGutter(rail ? railWidth : null) }}>
         <MailList
           groups={groups}
           rowKey={(i) => `slot-${i}`}
@@ -155,7 +157,7 @@ function HistoryBody() {
           gapAbove={h.length > 0 ? 8 : 0}
           refresh={pull}
           head={
-            <View style={{ paddingLeft: HISTORY_HEAD_PAD, paddingRight: historyHeadPadRight(rail ? railWidth : null), paddingTop: 8, paddingBottom: 4 }}>
+            <View style={{ paddingHorizontal: HISTORY_HEAD_PAD, paddingTop: 8, paddingBottom: 4 }}>
               <View style={{ flexDirection: "row", alignItems: "baseline", gap: 10 }}>
                 <Txt variant="h1" numberOfLines={1} style={{ flexShrink: 1 }}>{Copy.history}</Txt>
                 <Txt variant="meta" tone="ink3" tabular>{meta}</Txt>
@@ -191,6 +193,7 @@ function HistoryBody() {
           }
           tail={h.state === "ready" && h.total !== null && h.length > 0 ? <Tail>{Copy.historyTail(h.total)}</Tail> : null}
         />
+        </View>
         {rail ? (
           <View
             accessibilityRole="menu"

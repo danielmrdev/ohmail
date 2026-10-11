@@ -258,7 +258,7 @@ function Credentials() {
   };
 
   return (
-    <Scroller bounded>
+    <Scroller bounded avoidKeyboard>
       <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 }}>
         <Txt variant="h1" accessibilityRole="header">
           {Copy.phoneStandaloneFormTitle}

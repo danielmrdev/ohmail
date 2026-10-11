@@ -111,9 +111,17 @@ export function Segmented<T extends string>({
                 backgroundColor: on ? t.c[paint.selected] : "transparent",
               },
               on ? t.lift("l1") : null,
-              on && paint.ring ? { borderWidth: 1, borderColor: t.c.hair } : null,
             ]}
           >
+            {/* The ring is PAINT over the padding, never a border: a border sits inside the
+                basis, and at 313 dp with large text the selected label lost its last letters. */}
+            {on && paint.ring ? (
+              <View
+                pointerEvents="none"
+                style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0,
+                  borderRadius: t.radius.pill, borderWidth: 1, borderColor: t.c.hair }}
+              />
+            ) : null}
             <Txt variant={on ? "settingsLabel" : "navLabel"} tone={on ? "ink" : "ink3"} numberOfLines={1}>
               {seg.label}
             </Txt>

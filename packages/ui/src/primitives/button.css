@@ -110,6 +110,13 @@
 
    Only under 640px: a pointer does not need this, and the desktop's density is a design the wider
    layout was drawn around. */
+/* THE PRIMARY ACTION DRAWS 44 UNDER A THUMB AT EVERY WIDTH. The width rule below is the phone's;
+   a tablet in landscape and a phone in landscape are wider than 640 and still pressed with a
+   thumb, where the landing's "Get ohmail." and the sign-in's Continue measured 33. Keyed on the
+   pointer, for the one control class whose press is the page's point. */
+@media (pointer: coarse){
+  .btn.primary{min-height:44px}
+}
 @media (max-width: 640px){
   /* A verb draws 44 — this is the control the number was written for. */
   .btn{min-height:44px}
