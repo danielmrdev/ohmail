@@ -13,6 +13,22 @@ See [Status](README.md#status--read-this-first).
 
 ## [Unreleased]
 
+### Layout fixes on tablets and phones
+<!-- changes: fix-026-layout-sizes-r1b.md -->
+
+The website's header fits the window at every width: on a tablet in portrait it no longer runs off the right
+edge, and Get ohmail. stays on screen. On a touch screen, primary buttons such as Continue on the sign-in
+page are at least 44 px tall at every width. On the phone, History's year list stands beside the messages
+instead of covering their dates, the Screener's tabs keep their whole names with large text, and the server
+settings form scrolls above the keyboard so the focused field and Connect stay reachable.
+
+### A first search after a pause on ohmail Cloud reads less from disk
+<!-- changes: perf-026-search-page-rows-read-cold.md -->
+
+The search page no longer reads each candidate message a second time to sort it, so a search whose
+data has left the database's memory reads fewer pages from disk. A first search after a long pause
+can still take longer than a search right after another one.
+
 ### Still to come
 
 Signed installers — a real Apple Developer ID and an Authenticode certificate. See
