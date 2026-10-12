@@ -51,11 +51,12 @@ function MessageRoute() {
   const m = w.message(id ?? "");
 
   // TWO PANES: this full-screen route yields to the list-detail surface that owns the pair.
-  // `replace`, not push — the reader is the same reading, moved, and Back must still leave it.
+  // A pop back to the pane's route (`dismissTo`), not a push — the reader is the same reading,
+  // moved, and Back must still leave it.
   const target = plan.panes === 2 && m ? paneRouteFor(m) : null;
   /* An open sheet or composer holds the move; it fires when the last one closes. */
   const held = useSyncExternalStore(subscribeReaderHeld, readerHeldNow);
-  /* The move waits for an open sheet or composer, and from the replace on this route draws nothing. */
+  /* The move waits for an open sheet or composer, and from the move on this route draws nothing. */
   const leaving = usePaneMove(target, held);
   if (leaving !== null) return leaving;
   return (

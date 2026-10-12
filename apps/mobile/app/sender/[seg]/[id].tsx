@@ -47,7 +47,7 @@ function SenderRoute() {
   const twoPane = plan.panes === 2;
   const held = useSyncExternalStore(subscribeReaderHeld, readerHeldNow);
   /* The same door as the pushed reader's (`pane-move.ts`): an open sheet holds it, and from the
-     replace on this route draws nothing. */
+     move on this route draws nothing. */
   const leaving = usePaneMove(twoPane && id !== "" ? { pathname: "/screener", params: { open: id, seg } } : null, held);
   if (leaving !== null) return leaving;
 
