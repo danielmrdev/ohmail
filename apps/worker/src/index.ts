@@ -4679,6 +4679,8 @@ export async function startWorkerWithLock(
               db as unknown as Tx,
               {
                 accountId, log, until: sliceUntil(),
+                // No mailbox, deliberately: this pass spends through `spend`, never the circuit's
+                // meter, so it has no open charge to clear or refund (`ClassifierCircuit.port`).
                 classifier: classifierCircuit?.port(),
                 ...(spend ? { credits: spend } : {}),
                 ...(obligations ? { obligations } : {}),
@@ -5164,6 +5166,8 @@ export async function startWorkerWithLock(
               db as unknown as Tx,
               {
                 accountId, log, until: sliceUntil(),
+                // No mailbox, deliberately: this pass spends through `spend`, never the circuit's
+                // meter, so it has no open charge to clear or refund (`ClassifierCircuit.port`).
                 classifier: classifierCircuit?.port(),
                 ...(spend ? { credits: spend } : {}),
                 ...(obligations ? { obligations } : {}),
