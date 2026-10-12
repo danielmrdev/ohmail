@@ -132,7 +132,7 @@ account's failure alone.
 - While a dialog is open (setup, the command palette, the Reply Run), keys meant for the list no
   longer act on the mail behind it.
 - Setup takes focus when it opens, and a step that replaces its own button puts focus back in the
-  dialog, so Enter on its last step opens ohmail instead of a message behind it.
+  dialog, so Enter no longer opens a message behind it.
 
 ### The first company-name letter through a mailing list waits at the Screener
 <!-- changes: fix-026-list-address-first-letter.md -->
@@ -227,7 +227,7 @@ already in your mailbox when it first synced is not counted as new, whether you 
   the list agree, and `j` goes on through New.
 - The `?` sheet closes when `j` moves the cursor behind it.
 - After `1` or `g o`, Enter opens the message under the cursor, not the menu item pressed before.
-- Enter on setup's last step opens ohmail, as its badge says.
+- Enter on setup's last step no longer starts setup over.
 - At phone width, ← opens the menu, a letter laid out wider than the screen fits it, and the
   message's actions sit after the letter at full strength instead of over its last lines.
 
