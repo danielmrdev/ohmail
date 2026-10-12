@@ -1572,6 +1572,8 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTranspor
       name: notifiedSenderName(row, (brand) => t("screener.senderCheck.chip", { brand })),
       address: row.from.address,
       held: row.held.length,
+      // The rail's own count, so the step and the rail cannot say different numbers.
+      waiting: screener.waitingCount,
       /* THE SCREENER'S OWN CAPTION, not a second sentence written for this card. `heldCaption`
          carries the first-contact time and `heldCaptionAll` does not, split by `firstContactTime`
          as every surface's caption is: one held message has no "first contact" apart from its own

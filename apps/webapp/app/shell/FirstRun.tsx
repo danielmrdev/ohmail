@@ -11,8 +11,8 @@
  * one Escape binding (`overlay` scope).
  */
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import type { FocusEvent as ReactFocusEvent, ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   Button, DecisionBar, Kbd,
@@ -41,6 +41,26 @@ import {
 } from "./reader-holder";
 import { useManagedService } from "./managed-service";
 import "./first-run.css";
+
+const useCommitEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+const FIELD = 'input:not([type="hidden"]):not([type="button"]):not([type="submit"]), select, textarea';
+
+/**
+ * WHERE ↵ BELONGS IN A STEP: a choice or field before its ↵ control (a radio group on its checked
+ * choice), else that control, else — while the control is shut — the step itself, never the foot's
+ * Cancel, where ↵ would ask to leave setup.
+ */
+function stepEntry(root: HTMLElement): HTMLElement {
+  const entry = root.querySelector<HTMLElement>("[data-focus-entry]");
+  const fields = [...root.querySelectorAll<HTMLInputElement>(FIELD)].filter((f) => !f.disabled);
+  const before = fields.find((f) => entry === null || (f.compareDocumentPosition(entry) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0);
+  if (before !== undefined) {
+    if (before.type !== "radio" || before.checked) return before;
+    return fields.find((f) => f.type === "radio" && f.name === before.name && f.checked) ?? before;
+  }
+  return entry !== null && !(entry as HTMLButtonElement).disabled ? entry : root;
+}
 
 /**
  * THE RAIL — seven groups over eleven screens, because the rail names PHASES and several
@@ -127,6 +147,8 @@ export interface FirstRunDecideSubject {
   address: string;
   /** How many of their messages are waiting. */
   held: number;
+  /** How many senders wait in the Screener: the rail's count (`ScreenerState.waitingCount`). */
+  waiting: number;
   /** The "first contact N days ago" line, already formatted by the host. */
   since: ReactNode;
   onDecide: (dest: DecisionDestination, opts: { markRead: boolean; scope: DecisionScope }) => void;
@@ -780,10 +802,34 @@ export function FirstRun({
      button behind it, focus stayed there and ↵ went past the dialog. */
   const cardRef = useRef<HTMLDivElement | null>(null);
   useFocusFollows(cardRef);
-  useEffect(() => {
-    // Focus inside the stage on open, unless something in it already has it.
-    if (cardRef.current && !cardRef.current.contains(document.activeElement)) cardRef.current.focus();
-  }, []);
+  /** The step's form, and the second-factor prompt while it stands. */
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const stepUpRef = useRef<HTMLDivElement | null>(null);
+  const stepUpOpen = step === "window" && stepUpFor !== null && stepUpFor === mailboxId && host.stepUp !== undefined;
+  /* FOCUS STANDS WHERE ↵ BELONGS, after every commit: on open, on a step change, as the code prompt
+     opens and closes and as a shut ↵ control opens. Left on the card, ↵ reached no form. A place the
+     person chose inside the step stays theirs. The decision (its verbs are letters) holds the card. */
+  const landed = useRef<Element | null>(null);
+  const landingIn = (): HTMLElement | null => (confirm !== null || cardRef.current === null ? null
+    : (stepUpOpen ? stepUpRef.current : null) ?? formRef.current ?? cardRef.current);
+  useCommitEffect(() => {
+    const target = landingIn();
+    if (target === null) return;
+    const at = document.activeElement;
+    if (at !== null && at !== target && at !== landed.current && target.contains(at)) return;
+    const want = stepEntry(target);
+    if (at !== want) want.focus({ preventScroll: true });
+    landed.current = document.activeElement;
+  });
+  /* A click on the dialog's text focuses the card, where ↵ reaches no form: it goes on to the entry. */
+  const focusToEntry = (e: ReactFocusEvent<HTMLDivElement>): void => {
+    const target = landingIn();
+    const at: EventTarget = e.target;
+    if (target === null || (at !== e.currentTarget && at !== formRef.current)) return;
+    const want = stepEntry(target);
+    if (want !== at) want.focus({ preventScroll: true });
+    landed.current = document.activeElement;
+  };
 
   /* ── THE MAILBOX FORM ──────────────────────────────────────────────────────────────── */
 
@@ -1156,13 +1202,13 @@ export function FirstRun({
    * button runs, so the two cannot drift.
    */
   const screen = (submit: () => void, body: ReactNode) => (
-    <form onSubmit={(e) => { e.preventDefault(); if (!busy) submit(); }}>{body}</form>
+    <form ref={formRef} tabIndex={-1} onSubmit={(e) => { e.preventDefault(); if (!busy) submit(); }}>{body}</form>
   );
 
   return (
     <div className="ob-stage">
       <div ref={cardRef} className="login-card ob-card set-pane" role="dialog" aria-modal="true"
-        aria-labelledby={`${ids}-title`} tabIndex={-1}>
+        aria-labelledby={`${ids}-title`} tabIndex={-1} onFocus={focusToEntry}>
         <span className="wordmark"><b><em>oh</em>mail</b></span>
 
         {/* NO RAIL ON EITHER SCREEN THAT IS NOT A PHASE. `vanished` is not in the walk, so
@@ -1620,7 +1666,7 @@ export function FirstRun({
         {/* THE DOOR'S SECOND-FACTOR PROMPT, outside the step's form (it carries its own). A verified
             factor runs the same press once more; Cancel leaves the sentence above standing. */}
         {step === "window" && stepUpFor !== null && stepUpFor === mailboxId && host.stepUp ? (
-          <div className="ob-stepup">
+          <div className="ob-stepup" ref={stepUpRef}>
             {host.stepUp.prompt({
               onVerified: () => { setStepUpFor(null); agree(true); },
               onCancel: () => setStepUpFor(null),
@@ -1753,7 +1799,7 @@ export function FirstRun({
             {resumed ? <SettingsVerdict state="wait" headline={t("pullResumed")} /> : null}
             {foot({
               primary: (
-                <Button variant="ghost" type="submit" disabled={busy}>{t("pullLeave")}</Button>
+                <Button variant="ghost" type="submit" data-focus-entry disabled={busy}>{t("pullLeave")}</Button>
               ),
             })}
           </>
@@ -1762,7 +1808,8 @@ export function FirstRun({
         {step === "decide" && decide ? (
           <>
             <h1 id={`${ids}-title`}>{t("decideTitle")}</h1>
-            <p className="sub">{t("decideLead")}</p>
+            {/* The Screener's count, the rail's; the card on screen is one waiting sender at least. */}
+            <p className="sub">{t("decideLead", { count: Math.max(1, decide.waiting) })}</p>
             <div className="ob-sender">
               <div className="who">
                 <span className="av" aria-hidden="true">{decide.name.slice(0, 1).toUpperCase()}</span>
@@ -1926,7 +1973,7 @@ export function FirstRun({
             {/* IT STAMPS NOTHING. The summary's "Open ohmail" is what finishes the flow; this
                 screen is offered after it and skipping it must not look like abandoning setup. */}
             {foot({ cancel: false, primary: (
-              <Button variant="ghost" type="submit">{t("pairLater")}</Button>
+              <Button variant="ghost" type="submit" data-focus-entry>{t("pairLater")}</Button>
             ) })}
           </>
         )) : null}
