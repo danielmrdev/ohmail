@@ -1237,6 +1237,15 @@ input.tag-manage-input { /* by element: the row is the width, the field gives */
     padding-bottom: 10px;
   }
 }
+/* …and at any width where a row's Accept also names the unsubscribe it asks for: that word beside the
+   text crushed the sender's name to a letter at 1440, so its verbs stand under the text too. */
+.view-screener .row-slot:has(.scn-act-yes-unsub) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.view-screener .row-slot:has(.scn-act-yes-unsub) > .row-actions {
+  justify-content: flex-end;
+  padding-bottom: 10px;
+}
 
 /* ================= ohbox multi-select ============================
    THE PICKED-ROW MARKER, and that is all this block is now.

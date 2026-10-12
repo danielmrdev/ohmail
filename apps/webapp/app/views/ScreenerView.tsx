@@ -473,8 +473,9 @@ function RowActions({
       {accept ? (
         <button
           type="button"
-          className="scn-act scn-act-yes"
-          /* The visible word is short because the row already says WHERE — the suggestion chip
+          className={acceptUnsub ? "scn-act scn-act-yes scn-act-yes-unsub" : "scn-act scn-act-yes"}
+          /* The visible word is short because the row already says WHERE (one naming the unsubscribe
+             moves the verbs under the row's text, app.css) — the suggestion chip
              is one line above it. The accessible name is not allowed that context: a screen
              reader user arriving on this button hears it alone, so it names the pile. */
           aria-label={t("rowAcceptAria", { dest: t(PILE_KEY[accept]) })}
