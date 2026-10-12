@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import {
   messages,
+  mailboxes,
   folderState,
   routingDecisions,
   claimIdempotencyKey, settleIdempotencyKey, releasePendingIdempotencyKey,
@@ -126,6 +127,13 @@ export interface ScreenerDeps {
      */
     onScreenOut(ctx: ServiceContext, messageIds: string[]): Promise<{ considered: number }>;
   };
+  /**
+   * A READING INSTALL LISTS THE GATE AS FILED — the local door sets it. While this install
+   * organizes none of the account's mailboxes its own screening answer is not in force (the
+   * organizer's is, and it lives on the organizer), and the window retired senders the organizer
+   * still holds at the gate, so the reader's count fell short. Absent: the hosted rule.
+   */
+  readerQueueIsTheGate?: boolean;
 }
 
 /**
@@ -907,12 +915,15 @@ export class ScreenerReadService {
      * the two surfaces that show the same number.
      */
     const preference = await getScreeningPreference(ctx);
-    const cutline = resolveCutline({
+    const resolved = resolveCutline({
       baselineAt: preference.screeningBaselineAt,
       dormancyDays: preference.dormancyDays,
       scope: preference.screeningScope,
       now: ctx.now(),
     });
+    // A reading install: the gate as the organizer filed it ({@link ScreenerDeps.readerQueueIsTheGate}).
+    const cutline = this.deps.readerQueueIsTheGate === true && !(await this.organizesAny(ctx))
+      ? { ...resolved, allTime: true } : resolved;
     const windowed = await this.heldSenderPage(ctx, { after, limit: limit + 1, cutline });
     const unfiltered = windowed.slice(0, limit);
 
@@ -1664,6 +1675,14 @@ export class ScreenerReadService {
       .limit(opts.limit);
 
     return rows.map(toScreenerRow);
+  }
+
+  /** Does this install organize any of the account's mailboxes? One indexed read, first page only. */
+  private async organizesAny(ctx: ServiceContext): Promise<boolean> {
+    // scoped-by: eq(mailboxes.accountId, ctx.accountId)
+    const [row] = await ctx.db.select({ id: mailboxes.id }).from(mailboxes)
+      .where(and(eq(mailboxes.accountId, ctx.accountId), eq(mailboxes.organizerRole, "organizer"))).limit(1);
+    return row !== undefined;
   }
 
   /**
