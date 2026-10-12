@@ -203,6 +203,24 @@ export interface OrganizerProfilePayload {
   signatureHtml?: string | null;
 }
 
+/**
+ * THE ORGANIZER'S SCREENING WINDOW — an ENVELOPE fact, never payload: it is the organizer's own
+ * operating state (a takeover stamps its own baseline, it never imports one), so it stays out of
+ * the canonical form and the fingerprint, and a document differing only here is no import question.
+ * `dormancyDays` is the organizer's RESOLVED number, never null; `baselineAt: null` is a sliding
+ * window. Absent from the document means UNSTATED (an older organizer). `PROFILE_VERSION` does not
+ * move: field-level compatible both ways.
+ */
+export interface ProfileScreening {
+  baselineAt: string | null;
+  dormancyDays: number;
+  scope: "window" | "all_time";
+}
+
+/** The window bounds the write site enforces (`dormancy_days` is 1-365); the parser refuses outside. */
+const SCREENING_DAYS_MIN = 1;
+const SCREENING_DAYS_MAX = 365;
+
 /** The payload wrapped in its versioned envelope — the document as written. */
 export interface OrganizerProfileDoc extends OrganizerProfilePayload {
   v: number;
@@ -218,6 +236,8 @@ export interface OrganizerProfileDoc extends OrganizerProfilePayload {
      */
     stamped?: true;
   };
+  /** The organizer's screening window ({@link ProfileScreening}); absent = unstated. */
+  screening?: ProfileScreening;
 }
 
 /** A payload with nothing in it — what a mailbox with no configuration serializes to. */
@@ -655,7 +675,7 @@ export function compareProfileFingerprints(a: string, b: string): "same" | "diff
  */
 export function makeProfileDoc(
   payload: OrganizerProfilePayload,
-  meta: { updatedAt: Date; producer: { kind: string; version: string } },
+  meta: { updatedAt: Date; producer: { kind: string; version: string }; screening?: ProfileScreening },
   version: number = PROFILE_VERSION,
 ): OrganizerProfileDoc {
   const canonical = canonicalizeProfilePayload(payload, version);
@@ -664,6 +684,10 @@ export function makeProfileDoc(
     updatedAt: meta.updatedAt.toISOString(),
     // Every copy this build writes is one whose rules carry their stamps — see `producer.stamped`.
     producer: { kind: meta.producer.kind, version: meta.producer.version, stamped: true },
+    // ENVELOPE, beside `producer`: never canonicalised, never fingerprinted. Absent unless supplied.
+    ...(meta.screening === undefined ? {} : {
+      screening: { baselineAt: meta.screening.baselineAt, dormancyDays: meta.screening.dormancyDays, scope: meta.screening.scope },
+    }),
     screener: canonical.screener,
     rules: canonical.rules,
     notifyRules: canonical.notifyRules,
@@ -718,6 +742,9 @@ const PLAIN_STRING_VALUES: ReadonlySet<string> = new Set([
   "updatedAt", "producer.kind", "producer.version", "screener[].source", "rules[].kind", "rules[].provenance", "rules[].personDecidedAt",
   "notifyRules[].kind", "awayResponder.audience", "awayResponder.throttle",
   "awayResponder.startsAt", "awayResponder.endsAt", "awayResponder.piles[]",
+  /* An instant and an enum, written plain: an older holder then reads its copy as not-as-written and
+     rewrites it once without the key, so a stale window never outlives the organizer that wrote it. */
+  "screening.baselineAt", "screening.scope",
 ]);
 
 const hex4 = (unit: number): string => `\\u${unit.toString(16).padStart(4, "0")}`;
@@ -828,6 +855,11 @@ export interface ParsedProfileMessage {
    * the holder rewrites it once. Absent on a `newer` document.
    */
   encoded?: boolean;
+  /**
+   * The envelope's `screening` key was PRESENT and unreadable — named, and the document carries no
+   * `screening`: a reader then reads the window as unstated rather than as a value nobody wrote.
+   */
+  screeningRefused?: string;
 }
 
 export type ProfileRecord = ParsedProfileMessage | MalformedProfile;
@@ -842,6 +874,26 @@ const asString = (v: unknown): string | null => (typeof v === "string" ? v : nul
 function isWrittenInstant(s: string): boolean {
   const t = Date.parse(s);
   return Number.isFinite(t) && new Date(t).toISOString() === s;
+}
+
+/**
+ * THE ENVELOPE'S SCREENING KEY, well-formed only: absent ⇒ `undefined`; present and readable ⇒ the
+ * window; present and anything else ⇒ the reason, and no window. Read the same at every `v`.
+ */
+export function readProfileScreening(raw: unknown): ProfileScreening | { refused: string } | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return { refused: "screening is not an object" };
+  const o = raw as Record<string, unknown>;
+  const base = o.baselineAt;
+  if (base !== null && !(typeof base === "string" && isWrittenInstant(base))) {
+    return { refused: "screening.baselineAt is neither null nor the ISO form ohmail writes" };
+  }
+  const days = o.dormancyDays;
+  if (typeof days !== "number" || !Number.isInteger(days) || days < SCREENING_DAYS_MIN || days > SCREENING_DAYS_MAX) {
+    return { refused: "screening.dormancyDays is not a whole number of days in range" };
+  }
+  if (o.scope !== "window" && o.scope !== "all_time") return { refused: "screening.scope is not a known mode" };
+  return { baselineAt: base as string | null, dormancyDays: days, scope: o.scope };
 }
 
 /** The tolerant reader of one section entry. Drops entries missing their natural key. */
@@ -1017,6 +1069,8 @@ export function parseProfileMessage(raw: string, ref?: unknown): ProfileRecord |
   if (!isWrittenInstant(updatedAt)) return malformed("updatedAt is not the ISO form ohmail writes");
 
   const payload = readPayload(rawDoc);
+  const screening = readProfileScreening(rawDoc.screening);
+  const screeningRefused = screening !== undefined && "refused" in screening ? screening.refused : undefined;
   const producerRaw = typeof rawDoc.producer === "object" && rawDoc.producer !== null
     ? rawDoc.producer as Record<string, unknown> : {};
   const doc: OrganizerProfileDoc = {
@@ -1028,9 +1082,14 @@ export function parseProfileMessage(raw: string, ref?: unknown): ProfileRecord |
       // Only the literal `true` states complete stamps; anything else reads as an older copy.
       ...(producerRaw.stamped === true ? { stamped: true as const } : {}),
     },
+    ...(screening === undefined || screeningRefused !== undefined ? {} : { screening: screening as ProfileScreening }),
     ...payload,
   };
-  return { status: "ok", doc, v, installId, encoded: isEncodedAsWritten(slice, rawDoc), ...(ref === undefined ? {} : { ref }) };
+  return {
+    status: "ok", doc, v, installId, encoded: isEncodedAsWritten(slice, rawDoc),
+    ...(screeningRefused === undefined ? {} : { screeningRefused }),
+    ...(ref === undefined ? {} : { ref }),
+  };
 }
 
 /** Is this document slice exactly what this build writes for it — escapes, layout, key order? */
@@ -1629,6 +1688,8 @@ export type ProfileReadResult =
      * ParsedProfileMessage.encoded}); only `false` asks the holder to rewrite it, so absent writes nothing.
      */
     encoded?: boolean;
+    /** The chosen document's `screening` key was present and unreadable ({@link ParsedProfileMessage.screeningRefused}). */
+    screeningRefused?: string;
     /**
      * The generation `ref` was read under (mail 0094's mirror writer needs it). `ref` alone is a
      * uid, and storing one without its generation is the defect this pair prevents. This value
@@ -2062,6 +2123,7 @@ export async function readOrganizerProfile(
   return {
     state: "found", doc: newest.doc!, installId: newest.installId, ref: newest.ref,
     encoded: newest.encoded === true,
+    ...(newest.screeningRefused === undefined ? {} : { screeningRefused: newest.screeningRefused }),
     /* THE ONE THE UID WAS READ UNDER — taken from the messages this read parsed, never from the
        connection at this moment. */
     generation,

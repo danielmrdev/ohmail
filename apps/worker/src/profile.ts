@@ -26,7 +26,7 @@ import {
   localSaysWhatAFingerprintSays, profileFingerprint, profileGateView, readOrganizerProfile, tidyOrganizerProfile,
   writeOrganizerProfile,
   type OrganizerProfileDoc, type OrganizerProfilePayload, type ProfileGateView, type ProfileIo, type ProfileOp,
-  type ProfileReadResult, type ProfileTidyMode, type ProfileLocator, profileLocatorOf,
+  type ProfileReadResult, type ProfileTidyMode, type ProfileLocator, profileLocatorOf, type ProfileScreening,
 } from "@trafficflow/core/adapters/organizer-profile";
 
 /** (install, mailbox, folder generation) the holder has re-encoded a plain settings message under. */
@@ -124,7 +124,7 @@ export function sweepHeld(c: SweepClearance): boolean | "unread" {
  * must be the same serialization as this dirty check, and the service layer may not import an
  * application). Re-exported so this composition's callers and tests keep their one name for it.
  */
-export { serializeOrganizerProfile };
+export { serializeOrganizerProfile, serializeOrganizerProfileCounted };
 
 export interface OrganizerProfileSyncDeps {
   db: Tx;
@@ -193,6 +193,11 @@ export class OrganizerProfileSync {
    */
   private holdSince: Date | null = null;
   private lastWrittenFingerprint: string | null = null;
+  /**
+   * THE WINDOW THE LAST WRITE PUBLISHED ({@link screeningKeyOf}), `null` while unknown. The envelope
+   * is outside the fingerprint, so a dial moved with an unchanged payload is dirty only through this.
+   */
+  private lastWrittenScreening: string | null = null;
   /**
    * A TIDY OF `ohmail/_meta` IS OWED: the seed, a read's residue or a write's failed removal said
    * so. Cleared when a pass leaves nothing removable (in `count` mode, after each logged plan).
@@ -966,7 +971,8 @@ export class OrganizerProfileSync {
       /* THE PINNED CONNECTION, not the live getter — see the parameter. Correct wherever this
          line moves to, and no longer dependent on nothing awaiting above it. */
       const io = adapter.profileIo({ installId: deps.self.installId, mailboxId: deps.mailboxId });
-      const { payload, leftOut } = await serializeOrganizerProfileCounted(deps.db, deps.accountId, deps.mailboxId);
+      const { payload, leftOut, screening } = await serializeOrganizerProfileCounted(deps.db, deps.accountId, deps.mailboxId);
+      const screeningKey = screeningKeyOf(screening);
       this.sayBounded(leftOut, payload, deps.mailboxId, log);
       const fp = profileFingerprint(payload);
 
@@ -1115,12 +1121,13 @@ export class OrganizerProfileSync {
       // confirm surface to answer. Every arm of the hold blocks above returns without writing,
       // except a standing found hold, which writes beside its held record below.
       if (this.blockedByNewer) return;
-      if (fp === this.lastWrittenFingerprint) {
+      // THE SECOND TRIGGER: the window travels in the envelope, outside `fp`.
+      if (fp === this.lastWrittenFingerprint && screeningKey === this.lastWrittenScreening) {
         // Nothing to write — but LOOK once per interval anyway. This is what owes a tidy for the
         // residue of a transient organizer overlap (two documents from two writers, neither of
         // which will ever change its store again) and what notices a document appearing
         // under an established organizer without any local change.
-        await this.verifyFolder(io, payload, log);
+        await this.verifyFolder(io, payload, screening, log);
         return;
       }
       // A mailbox that has said nothing gets no document: writing an empty payload into a fresh
@@ -1131,7 +1138,8 @@ export class OrganizerProfileSync {
       // organizer it must carry the held-marker surfacing a late-landing travelling document
       // needs — or the routing hold the evaluator computes would be a question no surface could
       // ever offer for answering. Flush cadence, self-guarded.
-      if (this.lastWrittenFingerprint === null && isEmptyProfilePayload(payload)) {
+      // A CONSENTED organizer (a baseline) always publishes: its window is what a reader applies.
+      if (this.lastWrittenFingerprint === null && isEmptyProfilePayload(payload) && screening.baselineAt === null) {
         await this.armHoldFromFolder();
         return;
       }
@@ -1139,6 +1147,7 @@ export class OrganizerProfileSync {
       const doc = makeProfileDoc(payload, {
         updatedAt: now,
         producer: { kind: deps.self.kind, version: deps.producerVersion },
+        screening,
       });
       /* ONE WRITE, and a second one only from the never-owned `foreign` arm, which holds the
          document it met and then publishes this install's own settings beside it. */
@@ -1158,6 +1167,7 @@ export class OrganizerProfileSync {
         });
         if (result.written) {
           this.lastWrittenFingerprint = fp;
+          this.lastWrittenScreening = screeningKey;
           this.seenForeignFingerprints.clear();
           if (result.owed === true) this.tidyOwed = true;
           log("organizer_profile_written", {
@@ -1423,6 +1433,8 @@ export class OrganizerProfileSync {
           detected("found");
           return;
         }
+        // Our own copy says which window it published; a foreign one's never stands for ours.
+        if (ours) this.lastWrittenScreening = screeningKeyOf(read.doc.screening);
         if (ours || localSaysWhatTheDocumentSays(local, read.doc)) {
           // Our own previous write (stale or not), or a foreign one that says exactly what we
           // would say: seed the dirty check from it and let write-behind do its ordinary work.
@@ -1464,6 +1476,7 @@ export class OrganizerProfileSync {
   private async verifyFolder(
     io: ProfileIo,
     local: OrganizerProfilePayload,
+    screening: ProfileScreening,
     log: (event: string, detail: Record<string, unknown>) => void,
   ): Promise<void> {
     const { deps } = this;
@@ -1504,7 +1517,7 @@ export class OrganizerProfileSync {
         // The held record is the question this organizer asks, never mid-flight residue.
         if (this.holdFingerprint !== null && docFingerprint === this.holdFingerprint) return;
         if (localSaysWhatTheDocumentSays(local, read.doc)) {
-          if (read.encoded === false) await this.reencodeOnce(io, local, read, log);
+          if (read.encoded === false) await this.reencodeOnce(io, local, screening, read, log);
           return;
         }
         if (ours) {
@@ -1534,6 +1547,7 @@ export class OrganizerProfileSync {
   private async reencodeOnce(
     io: ProfileIo,
     local: OrganizerProfilePayload,
+    screening: ProfileScreening,
     read: Extract<ProfileReadResult, { state: "found" }>,
     log: (event: string, detail: Record<string, unknown>) => void,
   ): Promise<void> {
@@ -1542,7 +1556,7 @@ export class OrganizerProfileSync {
     if (REENCODED.has(key)) return;
     REENCODED.add(key);
     const now = (deps.now ?? ((): Date => new Date()))();
-    const doc = makeProfileDoc(local, { updatedAt: now, producer: { kind: deps.self.kind, version: deps.producerVersion } });
+    const doc = makeProfileDoc(local, { updatedAt: now, producer: { kind: deps.self.kind, version: deps.producerVersion }, screening });
     const keep = this.retained();
     const result = await writeOrganizerProfile({
       io, doc, installId: deps.self.installId, tidyMode: deps.tidyMode ?? "remove", now,
@@ -1556,6 +1570,7 @@ export class OrganizerProfileSync {
     });
     if (result.written) {
       this.lastWrittenFingerprint = profileFingerprint(doc);
+      this.lastWrittenScreening = screeningKeyOf(screening);
       if (result.owed === true) this.tidyOwed = true;
     } else if (result.reason === "cleanup_owed") {
       this.tidyOwed = true;
@@ -1885,10 +1900,22 @@ export async function applyProfileRead(
     mailboxId: deps.mailboxId, accountId: deps.accountId,
     generation: String(generation), uid, residue: read.residue,
   });
+  /* A window the organizer wrote and this build cannot read: stored without it, so the reader
+     says it is unstated. The reason is the parser's own sentence, never a document value. */
+  if (read.screeningRefused !== undefined) {
+    deps.log("profile_mirror_screening_refused", {
+      mailboxId: deps.mailboxId, accountId: deps.accountId, reason: read.screeningRefused,
+    });
+  }
   return { state: "written", generation, uid };
 }
 
 export { PROFILE_VERSION };
+
+/** One string per window, `absent` for a document that states none — the dirty check's key. */
+export function screeningKeyOf(s: ProfileScreening | undefined): string {
+  return s === undefined ? "absent" : JSON.stringify([s.baselineAt, s.dormancyDays, s.scope]);
+}
 export type { OrganizerProfileDoc, OrganizerProfilePayload };
 
 /**

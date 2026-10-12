@@ -42,7 +42,8 @@ One RFC822 message in `ohmail/_meta`:
   substring from the body's first `{` to its last `}` — the preamble is
   guaranteed not to contain `{`. Every string value except the format fields
   (`updatedAt`, `producer`, rule and notification kinds, a rule's provenance
-  and decision date, the away reply's audience, rate, dates and piles) is written as JSON
+  and decision date, the away reply's audience, rate, dates and piles, the
+  screening window's baseline and scope) is written as JSON
   `\uXXXX` escapes; any JSON parser reads the same values. The body is 7-bit ASCII
   (`Content-Transfer-Encoding: 7bit`).
 
@@ -56,6 +57,11 @@ One RFC822 message in `ohmail/_meta`:
     "kind": "local" | "cloud" | …, // an open set; readers must tolerate unknown kinds
     "version": "<build label>",
     "stamped": true                // optional: this copy's rules carry who decided them
+  },
+  "screening": {                   // optional: the organizer's screening window
+    "baselineAt": "<ISO 8601 or null>",
+    "dormancyDays": 60,
+    "scope": "window" | "all_time"
   },
   "screener": [                    // senders this mailbox has SCREENED IN (admitted)
     { "address": "<sender email, lowercased>", "name": "<display name, optional>", "source": "person" }
@@ -100,6 +106,7 @@ The envelope:
 | `v` | integer ≥ 1 | Format version. Required. This page documents version 2; ohmail reads version 1 as well, and always will. The number names the field set **and** the canonical ordering the document is written in — see versioning. |
 | `updatedAt` | ISO 8601 string | When this copy was written, by the writer's clock. Readers coalesce duplicate messages by it — newest wins. |
 | `producer` | object | Provenance, never identity: `kind` is an open set (`"local"`, `"cloud"`, a future value — readers must tolerate unknown kinds), `version` is the writer's build label. `stamped`, optional, is `true` when the copy's rules carry the date you decided them (`personDecidedAt`) wherever ohmail knows it. A copy written by an older ohmail has no `stamped`, so an import treats a promoted rule there that files a sender listed in that copy's `screener` into `INBOX`, `ohmail/News` or `ohmail/Receipts` as decided by you, unless this install already holds a rule for that sender or the rule is narrowed by a subject or body term. Only the value `true` counts. |
+| `screening` | object, optional | The screening window of the install that organizes the mailbox: `baselineAt` (when it finished screening its backlog, or `null` for a window measured from now), `dormancyDays` (a whole number from 1 to 365) and `scope` (`"window"`, or `"all_time"` to screen every sender). A device that only reads the mailbox applies this window to its Screener. Absent means the organizer did not state one; a reader then lists everyone in the Screener folder. It describes the organizer, not the configuration, so it is not part of the payload you compare. |
 
 **`screener`** — an array of senders this mailbox has screened **in**:
 
@@ -278,8 +285,8 @@ The format: versioned JSON, documented in ohmail's published source
 
 Things to notice: every list is sorted by its natural key (the payload is
 canonicalized before writing, so identical configuration produces an
-identical payload — compare the JSON below the three metadata fields, or a
-hash of it; the envelope's `updatedAt` and `producer` and the message's own
+identical payload — compare the JSON below the envelope fields, or a
+hash of it; the envelope's `updatedAt`, `producer` and `screening` and the message's own
 `Date` header are write metadata with no stability guarantee in either
 direction, so whole documents are not byte-comparable); the second rule is a spam verdict (a promoted rule to
 `ohmail/Quarantine`), the last a screen-out (`ohmail/Screened`) that was later
