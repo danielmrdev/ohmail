@@ -58,6 +58,7 @@ import { useKeyBindings, type KeyBinding } from "../shell/keymap";
 import { useZoneNav } from "../shell/zone-nav";
 import { ShortcutHint } from "../shell/ShortcutHint";
 import { readColumnHidden, watchNarrow } from "../shell/narrow";
+import { useRowMenuFit } from "../shell/row-menu-fit";
 import { useListWindow } from "../shell/list-window";
 /* The reader surfaces' own bound on "still coming" — one mechanism, not a second one shaped like
    it. See {@link useBodyStalled} for why the deadline is derived from the engine's rather than
@@ -465,6 +466,10 @@ function RowActions({
   exiting: boolean;
 }) {
   const t = useTranslations("screener");
+  const menuRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLButtonElement>(null);
+  // The menu's 4px gap is `.scn-act-menu`'s `top: calc(100% + 4px)`; capped, the note leads.
+  const fit = useRowMenuFit(menuRef, moreRef, open && !exiting, 4);
   if (exiting) return null;
   // ACCEPTING A DEMOTING SUGGESTION IS A SCREEN-OUT PRESS: its word says so where one is sent.
   const acceptUnsub = accept !== null && DECISION_QUIET.has(accept) ? unsub : null;
@@ -487,6 +492,7 @@ function RowActions({
       ) : null}
       <button
         type="button"
+        ref={moreRef}
         className="scn-act scn-act-more"
         aria-expanded={open}
         aria-haspopup="menu"
@@ -497,7 +503,14 @@ function RowActions({
         <Icon name="chev" className="chev" />
       </button>
       {open ? (
-        <div className="scn-act-menu" role="menu" aria-label={t("rowMoreAria")}>
+        <div
+          ref={menuRef}
+          className="scn-act-menu"
+          role="menu"
+          aria-label={t("rowMoreAria")}
+          style={fit.style}
+          data-capped={fit.capped || undefined}
+        >
           {(["ohbox", "reads", "receipts", "screened", "spam"] as DecisionDestination[]).map((d) => (
             <button
               key={d}

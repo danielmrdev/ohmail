@@ -47,6 +47,7 @@ import {
   type FolderTreeRow,
 } from "./folders";
 import { UI_KEYS, usePersistedFlag, usePersistedIdSet } from "./persisted-ui";
+import { useRowMenuFit } from "./row-menu-fit";
 
 const branchKey = (mailboxId: string, path: string): string => `${mailboxId}|${path}`;
 
@@ -147,6 +148,9 @@ export function FoldersRailGroup({
   /** The honest sentence under whichever input is active; cleared on every keystroke. */
   const [problem, setProblem] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLButtonElement>(null);
+  // `.fmenu`'s `top: calc(100% + 2px)`: a low folder's menu opens upward or scrolls, never off screen.
+  const menuFit = useRowMenuFit(menuRef, moreRef, menuFor, 2);
 
   /** Mailboxes in a stable order, each with its sorted tree — entity-derived, then the
    *  account's own list merged in so a mailbox with zero folders still has a section (its
@@ -442,6 +446,7 @@ export function FoldersRailGroup({
           {verbs && !f.op ? (
             <button
               type="button"
+              ref={menuFor === f.id ? moreRef : undefined}
               className="fmore"
               aria-haspopup="menu"
               aria-expanded={menuFor === f.id}
@@ -485,7 +490,13 @@ export function FoldersRailGroup({
 
   /** The … menu, anchored in the row; Delete swaps it for the ask-first confirm. */
   const menu = (mb: { id: string; label: string; folders: FolderEntity[] }, f: FolderEntity) => (
-    <div ref={menuRef} className="scn-act-menu fmenu" role="menu" aria-label={t("folderMenuAria", { name: folderLeafOf(f.name) })}>
+    <div
+      ref={menuRef}
+      className="scn-act-menu fmenu"
+      role="menu"
+      aria-label={t("folderMenuAria", { name: folderLeafOf(f.name) })}
+      style={menuFit.style}
+    >
       {confirm === null ? (
         <>
           <button

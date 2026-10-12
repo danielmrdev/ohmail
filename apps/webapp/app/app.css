@@ -1603,6 +1603,11 @@ input.tag-manage-input { /* by element: the row is the width, the field gives */
   line-height: 1.4;
   color: var(--ink2);
 }
+/* A menu capped to the room it has (`row-menu-fit.ts`) scrolls; the note leads, so it is read first. */
+.scn-act-menu[data-capped] .scn-act-unsub {
+  order: -1;
+  margin: 2px 8px 4px;
+}
 /* The same sentence beside the two bulks. */
 .scn-bulk-unsub {
   margin: 6px 0 0;
