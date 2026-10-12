@@ -85,6 +85,44 @@ a sent request cannot be taken back.
   after a click on the dialog's text.
 - The first decision in setup says how many senders are waiting in the Screener instead of always one.
 
+### The AI features move to Anthropic's 5.5 models
+<!-- changes: fix-026-claude-5-5-defaults.md -->
+
+On ohmail Cloud, and on a self-hosted server with an Anthropic API key, mail sorting and the Screener's suggestions
+now use Anthropic's Haiku 5.5 model, and reply drafts its Sonnet 5.5. The desktop and phone apps keep the models
+chosen in their own AI settings. Contributed by Paweł Orzech.
+
+When the model declines a request, that answer now stays with the one message: the message is sorted as it would be
+with AI off, the Screener says which sender the model declined, a declined reply draft says so, and any credit the
+request used is returned.
+
+### Layout fixes for replies, touch screens, large text and the iPad
+<!-- changes: fix-026-layout-sizes-r2.md -->
+
+With a reply open, the message's actions sit in one row at the letter's width above the editor, and the editor
+opens where it no longer covers them or the letter's last lines. On a touch screen every rail row, Compose, the
+consent buttons, Undo and the sender sheet's choices are at least 44 px tall at every width, and folder names
+keep their room beside their controls. Settings notes no longer sit on the line above them, the reply's
+recipient address is no longer squeezed on a small phone, the Screener's delivered-to address gives way to the
+subject, the sign-up steps name the current step in full when the window is narrow, and the reader's Back no
+longer covers the sender at high zoom. The desktop window can be made as short as 400 px. On the phone, the
+dock's unread count stays readable at the largest text sizes, the reply sheet stays below the status bar with
+the keyboard up, on an iPad in Split View or Slide Over the window controls no longer cover Back, and an iPad's
+wording names an iPad. On iPhone and iPad, Settings → New mail no longer mentions push distributors.
+
+### Organize here starts organizing within seconds
+<!-- changes: fix-026-organize-here-wakes-the-pass.md -->
+
+Pressing Organize here no longer waits for the organizer's next scheduled pass. On a server and in the desktop
+app the mailbox is organized within seconds, and the offer to file letters that arrived in between follows.
+
+### The Screener's row menu stays on screen on small phones
+<!-- changes: fix-026-screener-menu-stays-on-screen.md -->
+
+A row's menu in the Screener no longer runs past the bottom of a small phone's screen, so the note that
+Screen out and Spam also ask the sender to unsubscribe you is always shown in full before you press. The
+folder list's menu follows the same rule.
+
 ### Still to come
 
 Signed installers — a real Apple Developer ID and an Authenticode certificate. See
