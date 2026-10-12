@@ -56,9 +56,9 @@ another device organizes the mailbox goes away once that device hands it back.
 ### The phone's Screener counts every waiting sender
 <!-- changes: fix-026-phone-screener-counts-every-waiting-sender.md -->
 
-On a phone that reads a mailbox another device organizes, the Screener left out senders whose mail
-was all older than 60 days and already read, so its count was lower than the organizing device's. The
-phone now lists and counts every sender waiting in the Screener folder.
+On a phone that only reads a mailbox another device organizes, the Screener left out senders whose
+mail was all older than 60 days and already read, so its count was lower than the organizing device's.
+Such a phone now lists and counts every sender waiting in the Screener folder.
 
 ### Still to come
 
