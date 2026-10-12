@@ -39,6 +39,7 @@ import {
   type EntityReader,
   type MutationResult,
   pressVerdict,
+  screeningDegrade,
   type Folder,
   type OhmailView,
   type SearchHit,
@@ -1225,9 +1226,13 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTranspor
    * one authority, so the two cannot drift.
    */
   const settingsStamp = useMemo(() => {
-    const rows = engine.read().entries<{ updatedAt?: string }>("settings");
-    if (rows.length === 0) return null;
-    return String(rows[0]?.entity?.updatedAt ?? "");
+    const read = engine.read();
+    const rows = read.entries<{ updatedAt?: string }>("settings");
+    /* …AND EACH MAILBOX_PROFILE ROW'S SEQ (RULING-026): a new organizer document can move a mailbox's
+       window, which `GET /consent` answers in `screeningByMailbox`; the row is the doorbell, never read. */
+    const profiles = read.entries("mailbox_profile").map((e) => `${e.id}:${e.seq}`).sort().join(",");
+    if (rows.length === 0 && profiles === "") return null;
+    return `${String(rows[0]?.entity?.updatedAt ?? "")}|${profiles}`;
     // `derived` is the subscription; the reader object is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine, derived]);
@@ -2677,6 +2682,7 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTranspor
               <ScreenerView
                 state={screener}
                 notOrganizingYet={demo ? null : nothingOrganizesOf(facts)}
+                screeningDegrade={demo ? null : screeningDegrade(consent.screeningByMailbox)}
                 /* Which address of yours a stranger wrote to, above one mailbox — the resolver
                    Reads is handed; the view draws the badge and the sheet's sentence from it. */
                 mailboxLabelOf={mailboxLabelOf}

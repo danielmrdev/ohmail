@@ -88,6 +88,8 @@ import {
   mirrorSettled,
   presentedWorld,
   scheduleLabel,
+  answersPerMailbox,
+  widestWindowOfAnswer,
   screeningAnswered,
   SCREENING_UNANSWERED,
   SCREENING_UNSUPPLIED,
@@ -1604,8 +1606,9 @@ export function WorldProvider({ children }: { children: ReactNode }) {
     /* ONLY AN ANSWER IS A CUTLINE. `unanswered` is the read still outstanding and `unsupplied` is
        a server that carries none of the three fields — neither is a cutoff, and handing the engine
        one built from either is the wide guess this posture exists to stop. */
+    // Each mailbox's organizer's window where the answer says (RULING-026): the phone's own row is inert.
     engine.setCutline(screening.state === "answered"
-      ? { dormancyDays: screening.answer.dormancyDays, scope: screening.answer.scope }
+      ? widestWindowOfAnswer(screening) ?? { dormancyDays: screening.answer.dormancyDays, scope: screening.answer.scope }
       : null);
   }, [engine, screening]);
 
@@ -1639,7 +1642,10 @@ export function WorldProvider({ children }: { children: ReactNode }) {
     /* THE STANDALONE DOOR HAS NOBODY TO ASK — this app IS the engine there and `GET /consent` is
        a route this session does not dial. Waiting for an answer that can never arrive would
        withhold the Screener for the life of the session, so that door is `unsupplied`. */
-    const posture: ScreeningPosture = session.standalone ? SCREENING_UNSUPPLIED : screening;
+    /* …UNLESS ITS OWN ENGINE ANSWERED WITH EACH MAILBOX'S WINDOW (RULING-026): the map names the
+       organizer's window for every mailbox, so the standalone door partitions by it too. */
+    const posture: ScreeningPosture = !session.standalone || answersPerMailbox(screening)
+      ? screening : SCREENING_UNSUPPLIED;
     return projector.project({
       engine, worldKey: session.ownerKey, standalone: session.standalone, bearer: session.bearer,
       /* Whose mail this is, in words a person reads: a paired door names its server's host and the

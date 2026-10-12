@@ -2360,6 +2360,16 @@ export const screenerAutoFiled = {
 };
 
 /** What `GET /consent` answers: where an account stands in onboarding, and the dial it counts with. */
+/** One `screeningByMailbox` entry of `GET /consent`. */
+export interface ScreeningWindowWire {
+  baselineAt: string | null;
+  dormancyDays: number;
+  scope: "window" | "all_time";
+  source: "own" | "organizer" | "unread" | "unstated";
+  holder: { kind: string | null; name: string | null; since: string | null } | null;
+  asOf: string | null;
+}
+
 export interface ConsentStateWire {
   /** ISO timestamp, or null while the seed review has never been confirmed. */
   seedConfirmedAt: string | null;
@@ -2508,6 +2518,12 @@ export interface ConsentStateWire {
    * partitions its mirror differently from the server that counted for it.
    */
   screeningScope?: "window" | "all_time";
+  /**
+   * THE WINDOW EACH MAILBOX IS SCREENED BY, and whose (RULING-026): `own` where this door's install
+   * organizes it, `organizer` the organizer's published window, `unread`/`unstated` the folder
+   * whole. Absent from an older server, which partitions with the three fields above.
+   */
+  screeningByMailbox?: Record<string, ScreeningWindowWire>;
   /** The server's sender counts — present only when the read asked for them with `?counts=1`. */
   counts?: {
     decidedSenders: number;

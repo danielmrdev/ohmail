@@ -1,4 +1,4 @@
-import type { ConsentOptions } from "@ohmail/client-engine";
+import type { ConsentOptions, MailboxScreening, ScreeningSource } from "@ohmail/client-engine";
 
 /** What the shell knows about the account's cutline, as `consent-state.ts` holds it. */
 export interface ShellConsentFacts {
@@ -8,6 +8,8 @@ export interface ShellConsentFacts {
   screeningBaselineAt: string | null;
   screeningScope: "window" | "all_time";
   foldersEnabled: boolean;
+  /** Each mailbox's window (RULING-026); absent or `null` partitions with the three fields above. */
+  screeningByMailbox?: Readonly<Record<string, MailboxScreening & ScreeningSource>> | null;
 }
 
 /**
@@ -30,11 +32,20 @@ export function shellConsentOptions(
     // router has honoured `all_time` since the column landed; this partition is what the Screener
     // queue and the History placement are built from on the client.
     screeningScope: consent.screeningScope,
+    // EACH MAILBOX BY ITS ORGANIZER'S WINDOW where the server says whose: the fields above then go unread.
+    ...(consent.screeningByMailbox == null ? {} : { byMailbox: windowsOf(consent.screeningByMailbox) }),
     ownAddresses,
     // The History-lens gate (spec §16.5): the CONSENT answer, not the mirror's folder entities —
     // stale entities after a missed disable must not keep the lens on.
     foldersEnabled: consent.foldersEnabled,
   };
+}
+
+/** The windows alone: whose each one is stays out of the partition's options (ARCH-R902). */
+function windowsOf(by: Readonly<Record<string, MailboxScreening>>): Record<string, MailboxScreening> {
+  const out: Record<string, MailboxScreening> = {};
+  for (const [id, w] of Object.entries(by)) out[id] = { baselineAt: w.baselineAt, dormancyDays: w.dormancyDays, scope: w.scope };
+  return out;
 }
 
 /** Each mailbox's first-import stamp by id (`ConsentOptions.firstImportDoneAt`). */

@@ -831,6 +831,18 @@ const TABLE = {
    */
   metaWaitingOnDevice: (n: number) =>
     `${n} first-time sender${n === 1 ? "" : "s"} waiting, counted on this phone`,
+  /** Beside a folder-whole count: the organizer's window has not been read yet. */
+  screeningUnread: (holder: string) =>
+    `Showing everyone in the Screener folder — ${holder}’s screening settings haven’t been read yet.`,
+  screeningUnreadNoName:
+    "Showing everyone in the Screener folder — the organizing device’s screening settings haven’t been read yet.",
+  /** Beside a folder-whole count: the organizer is an older ohmail that states no window. */
+  screeningUnstated: (holder: string) =>
+    `${holder} runs an older ohmail that doesn’t share its screening window — showing everyone in the Screener folder.`,
+  screeningUnstatedNoName:
+    "The organizing device runs an older ohmail that doesn’t share its screening window — showing everyone in the Screener folder.",
+  /** A count with the sentence that qualifies it. */
+  metaWithReason: (count: string, reason: string) => `${count}. ${reason}`,
   metaItems: (n: number) => `${n} item${n === 1 ? "" : "s"}`,
   /** A mail row, spoken. The trailing state is a clause rather than a word glued to a stop. */
   mailRowAria: (from: string, subject: string, time: string, unread: boolean) =>

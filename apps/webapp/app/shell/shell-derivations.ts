@@ -36,7 +36,9 @@ import {
   type EntityReader,
   type Folder,
   type FolderEntity,
+  type MailboxScreening,
   type OhmailEngine,
+  widestWindowOf,
   type TagDTO,
 } from "@ohmail/client-engine";
 import { readBootCache, writeBootCache } from "./boot-cache";
@@ -127,6 +129,7 @@ export interface ShellDerivationsInput {
     screeningBaselineAt: string | null;
     screeningScope: "window" | "all_time";
     foldersEnabled: boolean;
+    screeningByMailbox?: Readonly<Record<string, MailboxScreening>> | null;
     folderMailboxesOff: Record<string, string>;
   };
   route: { view: ViewId; folderId: string | null };
@@ -246,10 +249,14 @@ export function useShellDerivations({
    * retention to cover the cutline (`maxRows` still decides the size), read from the SAME
    * `consent` fields the partition is keyed on, so the two cannot be measured differently.
    */
+  // Each live read is a new object: the partition's memo and the cutline key on what the map SAYS.
+  const screeningByMailboxKey = JSON.stringify(consent.screeningByMailbox ?? null);
   useEffect(() => {
     if (demo || !(consent.known || consent.standalone)) return;
-    engine.setCutline({ dormancyDays: consent.dormancyDays, scope: consent.screeningScope });
-  }, [engine, demo, consent.known, consent.standalone, consent.dormancyDays, consent.screeningScope]);
+    // Each mailbox's organizer's window where the server says (RULING-026): the reader's own row is inert.
+    engine.setCutline(widestWindowOf(consent.screeningByMailbox)
+      ?? { dormancyDays: consent.dormancyDays, scope: consent.screeningScope });
+  }, [engine, demo, consent.known, consent.standalone, consent.dormancyDays, consent.screeningScope, screeningByMailboxKey]);
   const consentView: ConsentPartition | null = useMemo(
     // The demo is not partitioned — consent derives from rules and the fixture world has none, so
     // the partition would empty the curated world into History. RULES NEVER WAIT FOR THE READ: until
@@ -266,7 +273,8 @@ export function useShellDerivations({
         : consentPartition(reader, shellConsentOptions(consent, now, ownAddresses, firstImportDoneAt)),
     [
       demo, consent.known, consent.standalone, reader, derived, now, consent.dormancyDays,
-      consent.screeningBaselineAt, consent.screeningScope, ownAddresses, firstImportDoneAt, consent.foldersEnabled,
+      consent.screeningBaselineAt, consent.screeningScope, screeningByMailboxKey, ownAddresses, firstImportDoneAt,
+      consent.foldersEnabled,
     ],
   );
   /**

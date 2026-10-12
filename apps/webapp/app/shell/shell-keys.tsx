@@ -15,6 +15,7 @@ import type { useTranslations } from "next-intl";
 import {
   countWhen,
   forwardOffered,
+  screeningDegrade,
   sendAndDonePlanFor,
   type EngineMessage,
   type EntityReader,
@@ -52,6 +53,7 @@ import type { ShellDerivations } from "./shell-derivations";
 import type { ShellDispatch } from "./shell-dispatch";
 import type { ShellOpenState } from "./shell-open-state";
 import type { ShellVerbs } from "./shell-verbs";
+import { degradeSentence } from "./screening-degrade";
 import { useStableCallback } from "./stable-callback";
 import { useSwitchEnd } from "./ui-vitals";
 import { currentZone, leaveRailAfterGoTo, setRailSummon } from "./zone-nav";
@@ -116,7 +118,7 @@ export interface ShellKeysInput {
   /** Pull new mail, as the host offers it — `p`'s own gate and its palette row. */
   pullBinding: Pick<PullBinding, "available" | "pull" | "pulling">;
   /** The four flags the rail groups and the folder chords read (`consent-state.ts`). */
-  consent: Pick<ConsentState, "foldersEnabled" | "foldersStorable" | "known" | "signaturesKnown">;
+  consent: Pick<ConsentState, "foldersEnabled" | "foldersStorable" | "known" | "signaturesKnown" | "screeningByMailbox">;
   /** Whether the first drain is still running — the folders group renders skeletons under it. */
   syncStatus: { bootstrapping: boolean };
   /** Has the mail state settled, and is a catch-up still owed? The switch marks and the rail's counts read both. */
@@ -1031,6 +1033,8 @@ export function useShellKeys({
      catch-up is still changing, so the three streams' badges and tooltips say nothing until the
      views may state theirs. An absent count renders nothing, never a zero. */
   const mayCount = countWhen({ settled: mailState.settled, count: 0, pending: mailState.owed }, true) === true;
+  // A folder-whole count says so on the rail too (RULING-026): the title carries the sentence.
+  const railDegrade = degradeSentence(t, screeningDegrade(consent.screeningByMailbox), "screener.");
   const railGroups: RailGroup[] = useMemo(
     () => [
       {
@@ -1065,7 +1069,9 @@ export function useShellKeys({
             label: t("rail.screener"),
             count: screener.waitingCount,
             hot: true,
-            title: t("rail.screenerTitle", { count: screener.waitingCount }),
+            title: railDegrade === null
+              ? t("rail.screenerTitle", { count: screener.waitingCount })
+              : `${t("rail.screenerTitle", { count: screener.waitingCount })}. ${railDegrade}`,
           },
         ],
       },
@@ -1241,7 +1247,7 @@ export function useShellKeys({
       },
     ],
     [
-      t, ohboxUnread, readsNew, receiptsNew, mayCount, screener.waitingCount, piles,
+      t, ohboxUnread, readsNew, receiptsNew, mayCount, screener.waitingCount, railDegrade, piles,
       tagGroups, tags, createTagAlone, consent.foldersEnabled, consent.known, folders,
       folderUnread, folderVerbs, folderMailboxes, demo, syncStatus.bootstrapping, route.view,
       route.folderId, facts,

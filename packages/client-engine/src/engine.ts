@@ -6367,7 +6367,11 @@ export class OhmailEngine {
     if (!w.armed || w.dirty) return;
     const gate = FOLDER_OF_VIEW.screener;
     for (const ch of changes) {
-      if (ch.type === "rule" || ch.type === "settings" || ch.type === "mailbox") { w.dirty = true; return; }
+      // A mailbox_profile change can move an organizer's window (RULING-026), which the store's queue reads.
+      if (ch.type === "rule" || ch.type === "settings" || ch.type === "mailbox" || ch.type === "mailbox_profile") {
+        w.dirty = true;
+        return;
+      }
       if (ch.type !== "message") continue;
       const now = ch.entity as EngineMessage | undefined;
       const was = this.store.record("message", ch.id)?.entity as EngineMessage | null | undefined;

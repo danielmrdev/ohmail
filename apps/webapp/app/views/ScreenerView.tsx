@@ -82,6 +82,7 @@ import { isSharedProviderDomain } from "@trafficflow/core/rule-order";
 import { MessageBody } from "../components/MessageBody";
 import { BlockNoticeGloss, type BlockNotice } from "../components/BlockNotice";
 import { useManagedService } from "../shell/managed-service";
+import { degradeSentence, withDegrade, type ScreeningDegrade } from "../shell/screening-degrade";
 
 
 /**
@@ -649,6 +650,7 @@ export function ScreenerView({
   full,
   onFull,
   notOrganizingYet = null,
+  screeningDegrade = null,
 }: {
   state: ScreenerState;
   /**
@@ -764,6 +766,8 @@ export function ScreenerView({
   onFull: (full: boolean) => void;
   /** Mailboxes nobody agreed to organize (`notOrganizingYetOf`); absent or null claims nothing new. */
   notOrganizingYet?: NotOrganizingYet | null;
+  /** A mailbox screened by no stated window (`screeningDegrade`): its count is the folder whole, said. */
+  screeningDegrade?: ScreeningDegrade | null;
 }) {
   const t = useTranslations("screener");
   /* The delivery badge's own words, from the namespace that already owns them — "Delivered to
@@ -1557,9 +1561,9 @@ export function ScreenerView({
                 count: notOrganizingYet.mailboxes.length,
                 address: displayAddress(notOrganizingYet.mailboxes[0]?.address ?? ""),
               }))
-            : state.waitingSource === "device"
+            : withDegrade(state.waitingSource === "device"
               ? t("metaWaitingOnDevice", { count: state.waitingCount })
-              : t("metaWaiting", { count: state.waitingCount }),
+              : t("metaWaiting", { count: state.waitingCount }), degradeSentence(t, screeningDegrade)),
         )}
         header={
           <div className="scn-head">

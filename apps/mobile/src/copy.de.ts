@@ -509,6 +509,15 @@ export const DE: Deck = {
     `${n} ${n === 1 ? "Erstabsender wartet" : "Erstabsender warten"}`,
   metaWaitingOnDevice: (n: number) =>
     `${n} ${n === 1 ? "Erstabsender wartet" : "Erstabsender warten"}, auf diesem Telefon gezählt`,
+  screeningUnread: (holder: string) =>
+    `Alle im Screener-Ordner werden angezeigt – die Screening-Einstellungen von ${holder} wurden noch nicht gelesen.`,
+  screeningUnreadNoName:
+    "Alle im Screener-Ordner werden angezeigt – die Screening-Einstellungen des organisierenden Geräts wurden noch nicht gelesen.",
+  screeningUnstated: (holder: string) =>
+    `Auf ${holder} läuft eine ältere ohmail-Version, die ihr Screening-Zeitfenster nicht teilt – alle im Screener-Ordner werden angezeigt.`,
+  screeningUnstatedNoName:
+    "Auf dem organisierenden Gerät läuft eine ältere ohmail-Version, die ihr Screening-Zeitfenster nicht teilt – alle im Screener-Ordner werden angezeigt.",
+  metaWithReason: (count: string, reason: string) => `${count}. ${reason}`,
   metaItems: (n: number) => `${n} ${n === 1 ? "Eintrag" : "Einträge"}`,
   mailRowAria: (from: string, subject: string, time: string, unread: boolean) =>
     `${from}. ${subject.trim() === "" ? "" : `${subject}. `}${time}.${unread ? " Ungelesen." : ""}`,

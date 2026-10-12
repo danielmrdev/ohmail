@@ -98,6 +98,11 @@ import {
   intentOf,
   releasePlanAt,
   sendAndDonePlanFor,
+  readScreeningByMailbox,
+  screeningDegrade,
+  widestWindowOf,
+  type MailboxScreening,
+  type ScreeningSource,
   type SendAndDonePlan,
   type TagDTO,
   type TrashRowWire,
@@ -353,6 +358,8 @@ export function presentedOptions(
             : { dormancyDays: screening.answer.dormancyDays }),
           baselineAt: screening.answer.baselineAt,
           screeningScope: screening.answer.scope,
+          // The windows alone, by mailbox: whose each is stays out of the options (ARCH-R902).
+          ...(mapOf(screening) === null ? {} : { byMailbox: windowsOnly(mapOf(screening)!) }),
         }
       : { screeningScope: "all_time" as const }),
     /* Absent ⇒ `consentPartition` falls back to the mirror's `mailbox` entities, and this
@@ -360,6 +367,33 @@ export function presentedOptions(
        appear in their own queue. Passed whenever the mailbox read has landed. */
     ...(ownAddresses === undefined ? {} : { ownAddresses }),
   };
+}
+
+/** The answer's per-mailbox map, read by the engine package's one reader; `null` without one. */
+function mapOf(screening: ScreeningPosture): Readonly<Record<string, MailboxScreening & ScreeningSource>> | null {
+  return screening.state === "answered" ? readScreeningByMailbox(screening.answer.byMailbox) : null;
+}
+
+/** Does the answer carry each mailbox's window — the standalone door partitions by it when it does. */
+export function answersPerMailbox(screening: ScreeningPosture): boolean {
+  return mapOf(screening) !== null;
+}
+
+/** Whose window is missing, for the sentence beside a folder-whole count ({@link screeningDegrade}). */
+export function screeningDegradeOf(screening: ScreeningPosture): ReturnType<typeof screeningDegrade> {
+  return screeningDegrade(mapOf(screening));
+}
+
+/** The widest of the answer's per-mailbox windows, for the mirror's prune; `null` without a map. */
+export function widestWindowOfAnswer(screening: ScreeningPosture): ReturnType<typeof widestWindowOf> {
+  return widestWindowOf(mapOf(screening));
+}
+
+/** Each mailbox's window without whose it is. */
+function windowsOnly(by: Readonly<Record<string, MailboxScreening>>): Record<string, MailboxScreening> {
+  const out: Record<string, MailboxScreening> = {};
+  for (const [id, w] of Object.entries(by)) out[id] = { baselineAt: w.baselineAt, dormancyDays: w.dormancyDays, scope: w.scope };
+  return out;
 }
 
 /**
