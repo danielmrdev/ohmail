@@ -4,6 +4,7 @@ import {
   CLASSIFY_RESULT_SCHEMA, SCREENING_PREFIX, SCREENING_RESULT_SCHEMA, TAXONOMY_PREFIX,
   classifyUserPayload, coerceClassifierResult, coerceScreeningResult,
 } from "../classify-prompt.js";
+import { thinkingOffFor } from "./model-rules.js";
 
 /**
  * The AI classifier seam. The PORT lives in core so the pipeline can depend on it without a
@@ -81,17 +82,18 @@ export function buildClassifyParams(input: ClassifierInput, opts: HaikuClassifie
   // Screens FIRST and throws — see `classifyUserPayload`. Nothing below runs on a refused
   // payload, which is what keeps a refused one from ever existing as an assembled object.
   const userPayload = classifyUserPayload(input);
+  const model = opts.model ?? DEFAULT_MODEL;
   const params: Record<string, unknown> = {
-    model: opts.model ?? DEFAULT_MODEL,
+    model,
     max_tokens: opts.maxTokens ?? 512,
     /**
      * Thinking OFF. Haiku 5.5 thinks by default, and `max_tokens` caps thinking plus the JSON
      * TOGETHER — at 512 a thinking pass can eat the budget before the verdict is written, a
-     * truncated classification on the per-message path. `disabled` is legal on Haiku 5.5 at
-     * effort `high` or below; this file sets no effort (default `medium`), so it is legal — an
-     * `xhigh`/`max` effort added here must remove this line, or the API answers 400.
+     * truncated classification on the per-message path. The value is the model's own row in
+     * `MODEL_REQUEST_RULES`: `disabled` on Haiku 5.5, legal at effort `high` or below, and this
+     * file sets no effort (default `medium`). A model that cannot turn thinking off is refused.
      */
-    thinking: { type: "disabled" },
+    thinking: thinkingOffFor(model),
     system: [
       { type: "text", text: TAXONOMY_PREFIX, cache_control: { type: "ephemeral" } },
     ],
@@ -131,10 +133,11 @@ function extractJsonText(content: unknown): string {
  */
 export function buildScreeningParams(input: ClassifierInput, opts: HaikuClassifierOpts): Record<string, unknown> {
   const userPayload = classifyUserPayload(input);
+  const model = opts.model ?? DEFAULT_MODEL;
   const params: Record<string, unknown> = {
-    model: opts.model ?? DEFAULT_MODEL,
+    model,
     max_tokens: opts.maxTokens ?? 512,
-    thinking: { type: "disabled" },                      // see `buildClassifyParams`
+    thinking: thinkingOffFor(model),                     // see `buildClassifyParams`
     system: [
       { type: "text", text: SCREENING_PREFIX, cache_control: { type: "ephemeral" } },
     ],
@@ -163,6 +166,8 @@ async function ask(
 }
 
 export function makeHaikuClassifier(opts: HaikuClassifierOpts): ClassifierPort {
+  // At construction, so a model with no thinking-off shape fails the boot and not the first message.
+  thinkingOffFor(opts.model ?? DEFAULT_MODEL);
   return {
     async classify(input: ClassifierInput, call?: AiCallOptions): Promise<ClassifierResult> {
       return coerceClassifierResult(await ask(buildClassifyParams(input, opts), opts, call));

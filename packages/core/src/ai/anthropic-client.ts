@@ -38,27 +38,37 @@ const DEFAULT_BACKOFF_MS = 500;
 /** Never honour an absurd `retry-after`; a 20-minute sleep inside a sync cycle is an outage. */
 const MAX_RETRY_AFTER_MS = 20_000;
 
+/** One model's list price. A cache write bills at 1.25x `input` (5-minute TTL) on every row. */
+export interface ModelPrice {
+  /** USD per million input tokens. */
+  readonly input: number;
+  /** USD per million output tokens; thinking bills as output. */
+  readonly output: number;
+  /** A cache hit, as a multiple of `input`. The model's own rate, never one rate for all. */
+  readonly cacheReadMultiplier: number;
+}
+
 /**
- * Published list prices, USD per million tokens, as of 2026-10-11. Haiku 5.5's row is its
- * price for prompts up to 100K tokens (classify and screening prompts are far below that).
+ * Published list prices, USD per million tokens, as of 2026-10-12; a cache hit is 0.05x input on
+ * Sonnet 5.5 and Opus 5.5, 0.1x elsewhere. Haiku 5.5's row is its price for prompts up to 100K
+ * tokens, cache included: classify and screening prompts measured 2,045 tokens at most.
  *
  * Hard-coded deliberately and narrowly: the alternative is that per-action cost is unknowable at
  * the moment of spend, which is the state this table exists to end. A model absent from this
  * table reports `costMicroUsd: null` rather than a wrong number — silence beats a fabricated
  * margin. Re-check when a model id or a list price changes.
  */
-export const MODEL_PRICES_USD_PER_MTOK: Readonly<Record<string, { input: number; output: number }>> = {
-  "claude-haiku-4-5": { input: 1, output: 5 },
-  "claude-haiku-4-5-20251001": { input: 1, output: 5 },
-  "claude-sonnet-5": { input: 2, output: 10 },
-  "claude-opus-5": { input: 5, output: 25 },
-  "claude-haiku-5-5": { input: 0.1, output: 0.5 },
-  "claude-sonnet-5-5": { input: 2, output: 10 },
-  "claude-opus-5-5": { input: 4, output: 20 },
+export const MODEL_PRICES_USD_PER_MTOK: Readonly<Record<string, ModelPrice>> = {
+  "claude-haiku-4-5": { input: 1, output: 5, cacheReadMultiplier: 0.1 },
+  "claude-haiku-4-5-20251001": { input: 1, output: 5, cacheReadMultiplier: 0.1 },
+  "claude-sonnet-5": { input: 2, output: 10, cacheReadMultiplier: 0.1 },
+  "claude-opus-5": { input: 5, output: 25, cacheReadMultiplier: 0.1 },
+  "claude-haiku-5-5": { input: 0.1, output: 0.5, cacheReadMultiplier: 0.1 },
+  "claude-sonnet-5-5": { input: 2, output: 10, cacheReadMultiplier: 0.05 },
+  "claude-opus-5-5": { input: 4, output: 20, cacheReadMultiplier: 0.05 },
 };
 
-/** Cache reads bill at ~0.1× input; cache writes at ~1.25× input (5-minute TTL). */
-const CACHE_READ_MULTIPLIER = 0.1;
+/** Cache writes bill at 1.25x input (5-minute TTL) on every row of the published table. */
 const CACHE_WRITE_MULTIPLIER = 1.25;
 
 /**
@@ -79,7 +89,7 @@ export function estimateCostMicroUsd(
   // (tokens / 1e6) * usdPerMTok * 1e6 micro-dollars-per-usd  ⇒  tokens * usdPerMTok.
   const usdMicros =
     input * price.input +
-    cacheRead * price.input * CACHE_READ_MULTIPLIER +
+    cacheRead * price.input * price.cacheReadMultiplier +
     cacheWrite * price.input * CACHE_WRITE_MULTIPLIER +
     output * price.output;
   return Math.round(usdMicros);

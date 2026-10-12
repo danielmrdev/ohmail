@@ -3,6 +3,7 @@ import type { DraftCallOptions, DraftInput, DraftPort, DraftResult } from "../dr
 import {
   DRAFT_PREFIX, DRAFT_RESULT_SCHEMA, coerceDraftResult, draftUserPayload,
 } from "../draft-prompt.js";
+import { thinkingOffFor } from "./model-rules.js";
 
 /**
  * The drafter implementation — the model half of the seam in `../draft-port.ts`, mirroring the
@@ -55,24 +56,20 @@ export function buildDraftParams(input: DraftInput, opts: SonnetDrafterOpts = {}
   // Asserts the redaction allow-list FIRST and throws — see `draftUserPayload`. Nothing below
   // runs on a violating input, so a raw body is never assembled into a request object at all.
   const userPayload = draftUserPayload(input);
+  const model = opts.model ?? DEFAULT_MODEL;
   const params: Record<string, unknown> = {
-    model: opts.model ?? DEFAULT_MODEL,
+    model,
     max_tokens: opts.maxTokens ?? 1024,
     /**
-     * Thinking OFF — a billing decision before a quality one. Sonnet runs adaptive thinking by
-     * default, and `max_tokens` caps thinking plus response TOGETHER. Measured live on Sonnet 5:
-     * an ordinary business reply came back 259 thinking + 539 text of 1024, so a longer reply
-     * silently loses its ending — a truncated draft the customer paid for. And every thinking
-     * token is margin whose count is the model's decision — unpriceable until `onUsage` produces
-     * real numbers. Deterministic first, tuned second: keeping thinking and raising `max_tokens`
-     * is deferred to a re-pricing decision made WITH measurements.
-     *
-     * On Sonnet 5.5 `{ type: "disabled" }` is a 400; `between_tools` is its thinking-off mode,
-     * legal at effort `high` or below (the default, which this file keeps) and with no other field
-     * beside `type`. Only Sonnet 5.5 accepts it — an `opts.model` naming another model must send
-     * `disabled` instead, or the API answers 400.
+     * Thinking OFF — a billing decision before a quality one. Sonnet thinks by default, and
+     * `max_tokens` caps thinking plus response TOGETHER: measured live on Sonnet 5, an ordinary
+     * reply came back 259 thinking + 539 text of 1024, so a longer one silently loses its ending,
+     * and every thinking token is margin the model decides. Raising `max_tokens` instead waits for
+     * a re-pricing decision made WITH measurements. The value is the model's own row in
+     * `MODEL_REQUEST_RULES`: `between_tools` on Sonnet 5.5, where `disabled` is a 400, and legal at
+     * effort `high` or below — the default, which this file keeps. An override gets its own value.
      */
-    thinking: { type: "between_tools" },
+    thinking: thinkingOffFor(model),
     system: [
       { type: "text", text: DRAFT_PREFIX, cache_control: { type: "ephemeral" } },
     ],
@@ -107,6 +104,8 @@ function extractJsonText(content: unknown): string {
  * import lives in this module — the SDK is a deployment concern.
  */
 export function makeSonnetDrafter(client: AnthropicLike, opts: SonnetDrafterOpts = {}): DraftPort {
+  // At construction, so a model with no thinking-off shape fails the boot and not a person's draft.
+  thinkingOffFor(opts.model ?? DEFAULT_MODEL);
   return {
     async draft(input: DraftInput, call?: DraftCallOptions): Promise<DraftResult> {
       const params = buildDraftParams(input, opts);

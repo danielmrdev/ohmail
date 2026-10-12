@@ -3,6 +3,7 @@ import type { AiCallOptions } from "../../ai-call-report.js";
 import {
   ALLOWED_TOOLS, type ToolName, type WorkflowStep, type WorkflowTrigger,
 } from "../../workflow-shapes.js";
+import { requestRulesFor } from "../model-rules.js";
 
 /**
  * The AI WorkflowPort seam — mirrors the classifier and drafter: the PORT lives in core so the
@@ -162,20 +163,21 @@ function assertRedacted(patterns: WorkflowPattern[]): void {
 export function buildProposeParams(patterns: WorkflowPattern[], opts: OpusProposerOpts = {}): Record<string, unknown> {
   assertRedacted(patterns);
   const userPayload = { patterns };
+  const model = opts.model ?? DEFAULT_MODEL;
+  const rules = requestRulesFor(model);
   const params: Record<string, unknown> = {
-    model: opts.model ?? DEFAULT_MODEL,
+    model,
     /**
-     * Thinking as LOW as it goes — `draft.ts`'s decision, as far as this model allows. Opus is the
-     * most expensive model this product calls; one proposal pass costs one credit whatever it
-     * spends, and the pass is cron-driven — an unbounded per-call token spend multiplied by every
-     * account is the one cost with no natural ceiling. But Opus 5.5 cannot turn thinking off:
-     * `{ type: "disabled" }` is a 400 at every effort, so there is no `thinking` field here and
-     * effort is the only lever. Its default is `medium`, so `low` is set explicitly in
-     * `output_config` below. Thinking still shares `max_tokens` with the proposal list, so the
-     * budget is 8192 rather than Opus 5's 2048 — enough that thinking cannot truncate the JSON
-     * array mid-list.
+     * Thinking as LOW as the model allows — `draft.ts`'s decision. Opus is the most expensive model
+     * this product calls; one proposal pass costs one credit whatever it spends, and the pass is
+     * cron-driven, so an unbounded per-call spend multiplied by every account is the one cost with
+     * no natural ceiling. Opus 5.5 cannot turn thinking off (`disabled` is a 400 at every effort):
+     * its row has no thinking value, so the field is omitted and effort `low` is the lever, below
+     * its `medium` default. Thinking shares `max_tokens` with the list, hence 8192 where Opus 5
+     * had 2048. A model that can turn thinking off gets its own value from `MODEL_REQUEST_RULES`.
      */
     max_tokens: opts.maxTokens ?? 8192,
+    ...(rules.thinkingOff ? { thinking: { ...rules.thinkingOff } } : {}),
     system: [
       { type: "text", text: PROPOSE_PREFIX, cache_control: { type: "ephemeral" } },
     ],
@@ -183,7 +185,7 @@ export function buildProposeParams(patterns: WorkflowPattern[], opts: OpusPropos
       { role: "user", content: JSON.stringify(userPayload) },
     ],
     output_config: {
-      effort: "low",
+      ...(rules.effort ? { effort: "low" } : {}),
       format: { type: "json_schema", schema: RESULT_SCHEMA },
     },
   };
@@ -244,6 +246,8 @@ function coerceStep(raw: unknown): WorkflowStep {
  * turn simply yields no suggestions, never a broken cron).
  */
 export function makeOpusProposer(client: AnthropicLike, opts: OpusProposerOpts = {}): WorkflowPort {
+  // At construction, so a model with no row fails the boot and not the proposal cron.
+  requestRulesFor(opts.model ?? DEFAULT_MODEL);
   return {
     async propose(patterns: WorkflowPattern[], call?: AiCallOptions): Promise<WorkflowProposal[]> {
       if (patterns.length === 0) return [];
