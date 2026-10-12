@@ -400,6 +400,10 @@ export abstract class BaseMirrorStore implements MirrorStore {
     this.unflushed.clear();
     this.unflushedMeta.clear();
     this.unflushedCursor = null;
+    // A claim a mirror kept over a letter it already holds as deleted — written before the
+    // cascade below existed — leaves at the first load. A failed write rides the next flush.
+    const healed = this.cascadeGoneLetterClaims(null);
+    if (healed.length > 0) await this.flush(healed, null, []).catch(() => undefined);
   }
 
   /** Read persisted state into `records`/`meta`/`cursor`. Reached only through {@link load}. */
@@ -873,12 +877,57 @@ export abstract class BaseMirrorStore implements MirrorStore {
     return out;
   }
 
+  /**
+   * A LETTER THAT LEFT TAKES ITS PILE CLAIM WITH IT. The server keeps a letter's `message_states`
+   * row when it tombstones the letter, so a letter that comes back returns to its pile; the
+   * mirror kept the standalone record as well, and the piles filed it with no letter — a row
+   * titled by its id, counted on the rail. A claim whose letter is a TOMBSTONE here goes, at the
+   * higher of the two seqs; an absent letter is an eviction or one not yet arrived, and keeps it.
+   * `scope` names the letters a page touched (a delete, or a claim written), `null` asks of all;
+   * a page that deleted no letter asks only the claims it wrote, never the whole mirror.
+   */
+  private cascadeGoneLetterClaims(
+    scope: ReadonlySet<string> | null, written: readonly MirrorRecord[] | null = null,
+  ): MirrorRecord[] {
+    if (scope !== null && scope.size === 0) return [];
+    const out: MirrorRecord[] = [];
+    const rows = written === null ? this.records.values() : written;
+    for (const rec of rows) {
+      if (rec.type !== "message_state" || rec.entity === null) continue;
+      const key = recordKey(rec.type, rec.id);
+      if (this.records.get(key) !== rec) continue;
+      const named = (rec.entity as { messageId?: unknown }).messageId;
+      const letter = typeof named === "string" ? named : rec.id;
+      if (scope !== null && !scope.has(letter)) continue;
+      const held = this.records.get(recordKey("message", letter));
+      if (held === undefined || held.entity !== null) continue;
+      const seq = rec.seq === 0 ? 0 : Math.max(rec.seq, held.seq);
+      const next: MirrorRecord = { type: rec.type, id: rec.id, seq, entity: null };
+      this.records.set(key, next);
+      out.push(next);
+    }
+    return out;
+  }
+
+  /** {@link cascadeGoneLetterClaims} over one page: the letters it deleted or wrote a claim for. */
+  private claimsOfGoneLetters(applied: MirrorRecord[]): MirrorRecord[] {
+    const scope = new Set<string>();
+    let deleted = false;
+    for (const r of applied) {
+      if (r.type === "message" && r.entity === null) { scope.add(r.id); deleted = true; }
+      if (r.type !== "message_state" || r.entity === null) continue;
+      const named = (r.entity as { messageId?: unknown }).messageId;
+      scope.add(typeof named === "string" ? named : r.id);
+    }
+    return this.cascadeGoneLetterClaims(scope, deleted ? null : applied);
+  }
+
   async applyChanges(changes: SyncChange[]): Promise<void> {
     const threads = this.threadsOfDeletes(changes);
     const applied = applyToRecords(this.records, changes);
     const dirty = [
       ...applied, ...this.cascadeLocalDeletes(changes, applied), ...this.cascadeMailboxRemoval(applied),
-      ...this.cascadeEmptiedThreads(threads, applied),
+      ...this.cascadeEmptiedThreads(threads, applied), ...this.claimsOfGoneLetters(applied),
     ];
     this.highSeq = Math.max(this.highSeq, maxSeqOf(changes));
     if (dirty.length > 0) {
@@ -1065,7 +1114,7 @@ export abstract class BaseMirrorStore implements MirrorStore {
     const applied = applyToRecords(this.records, changes);
     const dirty = [
       ...applied, ...this.cascadeLocalDeletes(changes, applied), ...this.cascadeMailboxRemoval(applied),
-      ...this.cascadeEmptiedThreads(threads, applied),
+      ...this.cascadeEmptiedThreads(threads, applied), ...this.claimsOfGoneLetters(applied),
     ];
     this.highSeq = Math.max(this.highSeq, maxSeqOf(changes));
     this.cursor = resp.cursor;

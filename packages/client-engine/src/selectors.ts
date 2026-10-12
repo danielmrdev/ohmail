@@ -2020,12 +2020,15 @@ export function triagePiles(reader: EntityReader): TriagePiles {
   for (const st of winningStates(reader).values()) {
     const pile = pileOf(st.state);
     if (!pile) continue;
+    // A CLAIM WITH NO LETTER IS NO ROW: the letter left the server, waits out a delete's undo,
+    // or has not arrived. It is not drawn and not counted — its id was drawn as a dead row.
     const msg = reader.get<EngineMessage>("message", st.messageId);
+    if (msg === undefined) continue;
     pile.push({ msg, entry: {
       messageId: st.messageId,
-      title: msg?.from.name || msg?.from.address || st.messageId,
-      ...(msg?.subject ? { subtitle: msg.subject } : {}),
-      ...(msg?.snippet ? { preview: msg.snippet } : {}),
+      title: msg.from.name || msg.from.address || st.messageId,
+      ...(msg.subject ? { subtitle: msg.subject } : {}),
+      ...(msg.snippet ? { preview: msg.snippet } : {}),
       ...(st.bubbleUpAt ? { resurfaceAt: st.bubbleUpAt } : {}),
     } });
   }

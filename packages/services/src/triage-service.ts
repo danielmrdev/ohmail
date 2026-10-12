@@ -307,7 +307,11 @@ export class TriageService {
     const rows = await ctx.db.select({
       messageId: messageStates.messageId, bubbleUpAt: messageStates.bubbleUpAt, key: at,
     }).from(messageStates)
-      .innerJoin(messages, and(eq(messages.id, messageStates.messageId), eq(messages.accountId, ctx.accountId)))
+      // A tombstoned letter (expunged, or gone from every folder read) keeps its state row so a
+      // return finds its pile, and is in no pile while it is gone.
+      .innerJoin(messages, and(
+        eq(messages.id, messageStates.messageId), eq(messages.accountId, ctx.accountId), isNull(messages.deletedAt),
+      ))
       .where(and(...filters)).orderBy(...order).limit(limit + 1);
 
     const pageRows = rows.slice(0, limit);
