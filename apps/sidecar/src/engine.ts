@@ -1901,6 +1901,15 @@ export function withPullKick(
   onGapPress: (mailboxId: string) => void = () => undefined,
 ): Route[] {
   return routes.map((r) => {
+    /* "ORGANIZE HERE" RINGS ITS OWN MAILBOX: the next gated pass re-reads the stamp and the lease
+       decides, so the claim is not left to the next poll. */
+    if (r.method === "POST" && r.pattern === "/mailboxes/:id/organize") {
+      return { ...r, handler: async (req, deps, params) => {
+        const res = await r.handler(req, deps, params);
+        if (res.status === 202) runtimeFor(params.id ?? "")?.ring();
+        return res;
+      } };
+    }
     /* THE GAP PRESS (mail 0151) RINGS ITS OWN MAILBOX: the organizer's next drain files the set. */
     if (r.method === "POST" && r.pattern === "/mailboxes/:id/gap-letters") {
       return { ...r, handler: async (req, deps, params) => {
@@ -9916,8 +9925,14 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
             verdict: result.outcome,
             disabledReason: result.previousReason,
             reason: "a person asked for this machine to organize this mailbox; the lease is " +
-              "still the authority and is read on the next launch",
+              "still the authority and is read on the next gated pass",
           });
+          /* THE PRESS WAKES THE GATE, as the consent door's does: the next gated pass re-reads the
+             stamp and the lease decides. Fire-and-forget; the drain reports its own failures. */
+          if (result.outcome === "authorized") {
+            void runtimes.get(mailboxId)?.syncUntilQuiet(undefined, { force: true })
+              .catch(() => { /* the drain reports its own failures; a press must not crash the host */ });
+          }
           return new Response(
             JSON.stringify({ outcome: result.outcome, previousReason: result.previousReason }),
             {

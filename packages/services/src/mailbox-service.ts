@@ -973,9 +973,10 @@ export async function decryptCredential(
  */
 /**
  * The doorbell of a mailbox the worker does not serve yet, spread into the write that makes it one:
- * a create, an OAuth connect or reconnect, a re-enable. `sync-kick.ts` answers it with a roster pass
- * instead of the next interval. The DATABASE's clock, as every writer of this column. A census in
- * this package's tests holds the four call sites.
+ * a create, an OAuth connect or reconnect, a re-enable — and the "Organize here" press, whose
+ * pending stamp the kick scan answers with a roster pass so the gate reads it at once. The
+ * DATABASE's clock, as every writer of this column. A census in this package's tests holds the
+ * five call sites.
  */
 function newMailboxDoorbell(db: unknown): { syncRequestedAt: SQL } {
   return { syncRequestedAt: dialect(db).now() };
@@ -2444,6 +2445,9 @@ export class MailboxService {
         organizerReleasedAt: null,
         // Mail 0135 — the press is the stamp now; a wall's resume has nothing left to ask.
         organizerParkedAt: null,
+        // The doorbell, so the worker's kick scan answers the press in seconds, not at the next
+        // roster pass. It only ASKS for a pass: the fenced lease gate still decides who organizes.
+        ...newMailboxDoorbell(ctx.db),
         // The block is this process's report about the worker's relationship to the mailbox, and
         // this request invalidates it in both directions — the same rule `update` applies. The
         // worker re-writes it within one roster pass if it is still true.
