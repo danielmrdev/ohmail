@@ -3763,6 +3763,28 @@ input.set-tag-input {
   color: var(--ink);
   font-weight: 600;
 }
+/* NARROW: six names cannot share 320px ("Acc… Pas… Rec…"). The dots stay — they are
+   the progress — and the current step is named once, whole, under them; the first-run card's
+   rule (`.ob-step`). Keyed on the CARD, so a zoomed desktop window gets it as a phone does. */
+.join-card {
+  container: join-card / inline-size;
+}
+@container join-card (max-width: 420px) {
+  .join-rail {
+    position: relative;
+    padding-bottom: 20px;
+  }
+  .join-rail-label {
+    display: none;
+  }
+  .join-rail li[data-state="now"] .join-rail-label {
+    display: block;
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    max-width: 100%;
+  }
+}
 /* ── THE DOOR CHOOSER'S THREE TILES ───────────────────────────────────────────
    A STACK and not a grid, unlike the provider picker's tiles beside it, and the
    difference is what the tile carries. A provider tile holds a name and a host —
@@ -4559,7 +4581,10 @@ input.set-tag-input {
   box-shadow: var(--lift-1);
   overflow: hidden;
 }
-.set-row {
+/* THE LIST'S ROWS, BY THEIR PARENT. Written as a bare `.set-row` these rules reached every settings
+   pane's rows (packages/ui settings.css shares the class) at every width: 6px foot padding, a rule
+   drawn as the row's own bottom shadow, and every note's -9px tuck crossing it. */
+.set-rows > .set-row {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -4575,17 +4600,17 @@ input.set-tag-input {
   cursor: pointer;
   box-shadow: inset 0 -1px 0 var(--hair-soft);
 }
-.set-row:last-child {
+.set-rows > .set-row:last-child {
   box-shadow: none;
 }
-.set-row:active {
+.set-rows > .set-row:active {
   background: var(--tint);
 }
 .set-row-label {
   flex: 1 1 auto;
   min-width: 0;
 }
-.set-row .chev {
+.set-rows > .set-row .chev {
   flex: none;
   width: 12px;
   height: 12px;
@@ -6079,17 +6104,23 @@ input.set-tag-input {
   max-height: 104px;
   overflow-y: auto;
 }
+/* THE HEAD WRAPS RATHER THAN CRUSH. On one line at 320 the name took three lines and the address
+   one character: each part asks for its whole width and goes to the next line when
+   it cannot have it there, so the address is cut only when it is wider than the editor. */
 .reply-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  gap: 2px 8px;
   font-size:calc(12.5px + var(--type-up));
   margin-bottom: 10px;
 }
 .reply-head b {
   font-weight: 600;
+  min-width: 0;
 }
 .reply-head small {
+  flex: 1 1 auto;
   color: var(--ink3);
   font-size:calc(11.5px + var(--type-up));
   min-width: 0;
@@ -7340,6 +7371,7 @@ input.reply-subject-input { /* by element: this width and type outrank the line 
   .ohx-notice button{min-height:44px}
   .rn-verbs button{min-height:44px}
   .draft-open{min-height:44px}
+  .rail-desktop-cta-x{min-width:44px;min-height:44px}
 }
 /* UNDER A COARSE POINTER, the controls that were each the only way to their action measured under
    44px. Drawn to 44 where a sideways strip would overlap the control beside it, the strip where
@@ -7349,6 +7381,14 @@ input.reply-subject-input { /* by element: this width and type outrank the line 
   .msg-more{min-width:44px;min-height:44px}
   .frow .ftw{flex-basis:44px;width:44px}
   .frow .fmore{min-width:44px;min-height:44px}
+  /* THE NAME KEEPS ITS ROOM BESIDE TWO 44px CONTROLS. On a 200px rail the twisty and the ⋯ left a
+     folder name 35px ("Pro…" for Projects and Projekte). A branch's twisty column
+     stands where its folder glyph was; a leaf's spacer is that column less the glyph and its gap,
+     so every label still starts at one x. An empty count takes no gap. */
+  .frow span.ftw{flex-basis:25px;width:25px}
+  .frow:has(> button.ftw) .fglyph{display:none}
+  .frow .cnt:empty{display:none}
+  .rail-desktop-cta-x{min-width:44px;min-height:44px}
   .set-nav button{min-width:44px}
   /* The first row's strip was clipped 4px by the settings scroller's top edge. */
   .set-nav{padding-top:5px}

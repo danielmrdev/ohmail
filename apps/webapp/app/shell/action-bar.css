@@ -150,6 +150,14 @@
   max-width: none;
   margin-inline: calc(50% - var(--abar-room, 100%) / 2);
 }
+/* WITH A REPLY OPEN THE ROW IS THE LETTER'S WIDTH AGAIN. The stand-down draws the bar as a plain
+   full-width row (packages/ui message.css); on the pane-wide row above that put Reply ~940px left
+   of the letter at 1920 and the More chevron on the pane's edge at 1280.
+   The admission measures this box, so the verbs that do not fit fold into More. */
+.msg:has(.reply) > .msg-actions {
+  width: auto;
+  margin-inline: 0;
+}
 .msg-actions > .abar {
   container-type: normal;
   width: fit-content;

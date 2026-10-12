@@ -51,6 +51,16 @@ export const PILL_PADDING_PX = 12;
 export const ROOM_VAR = "--abar-room";
 const PANE_SELECTOR = ".read-col";
 
+/**
+ * The pane whose width is a message bar's room, or null where the bar's own box is the room. With a
+ * reply open the bar stands down into a plain row at the LETTER's width (action-bar.css), so the room
+ * is that row's own box.
+ */
+export function roomPaneOf(container: Element): Element | null {
+  const msg = container.closest(".msg");
+  return msg && !msg.querySelector(".reply") ? container.closest(PANE_SELECTOR) : null;
+}
+
 /** The row's gap between row groups, when the computed style cannot be read (jsdom). */
 export const FALLBACK_GAP_PX = 6;
 
@@ -250,7 +260,7 @@ export function useBarDensity(): {
     /* THE ROOM. The reading pane's content box when this bar is the message pane's — see
        `ROOM_VAR` — and the container's own box everywhere else (the selection pill in the list
        column's foot, a stream card's bar), which is what those mounts have always measured. */
-    const pane = container.closest(".msg") ? container.closest(PANE_SELECTOR) : null;
+    const pane = roomPaneOf(container);
     let room = rect.width
       - (parseFloat(style.paddingLeft) || 0)
       - (parseFloat(style.paddingRight) || 0);

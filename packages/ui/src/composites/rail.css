@@ -330,6 +330,15 @@ button.ftw:hover{color:var(--ink)}
   .fmore{position:relative;top:auto;right:auto;translate:none}
   .fmore::before{content:"";position:absolute;left:0;right:0;top:50%;height:44px;translate:0 -50%;z-index:1}
 }
+/* A THUMB ON A TABLET IS THE SAME THUMB. Wider than 640 the rows above kept the pointer's 29-35px
+   under a coarse pointer; the drawn 44 follows the pointer too. The group toggles
+   draw 44 rather than take a strip, because the first row of the group sits right under them. */
+@media (pointer:coarse){
+  .ritem{min-height:44px}
+  .compose-cta{min-height:44px}
+  .fdismiss{min-height:44px}
+  .rlabel-toggle{min-height:44px}
+}
 
 /* ── THE TRANSIENT TRASH ENTRY ──────────────────────────────────────────────────────────────
    Present in the rail only while Trash is the route (`AppShell`'s `railGroups` spreads it

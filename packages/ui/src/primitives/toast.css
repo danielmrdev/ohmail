@@ -17,3 +17,9 @@
 .toast-slot{position:fixed;left:50%;bottom:calc(72px + env(safe-area-inset-bottom,0px));translate:-50% 12px;opacity:0;pointer-events:none}
 .toast.toast-held{translate:-50% calc(12px - var(--toast-lift,0px))}
 .toast.toast-held.on{translate:-50% calc(0px - var(--toast-lift,0px))}
+/* UNDO IS A THUMB'S SIZE: drawn 32×20 inside the capsule, it takes an invisible
+   44px strip both ways — the sentence beside it holds no control and nothing else is near. */
+@media (max-width: 640px), (pointer: coarse){
+  .toast-act{position:relative}
+  .toast-act::before{content:"";position:absolute;left:50%;top:50%;width:max(100%,44px);height:44px;translate:-50% -50%}
+}

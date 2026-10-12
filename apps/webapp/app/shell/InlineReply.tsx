@@ -58,7 +58,8 @@ import {
 import { SignatureBlock } from "./SignatureBlock";
 import { SIG_FOLLOWING, type SignatureState } from "./signature";
 import { durableSessionSet } from "./durable";
-import { scrollIntoViewProgrammatically } from "./programmatic-scroll";
+import { scrollIntoViewProgrammatically, scrollProgrammatically } from "./programmatic-scroll";
+import { stuckDockScroller } from "./reply-dock";
 
 /*
  * The scratch-buffer helpers and `canSend` used to live here and now live in `mail-send.ts`,
@@ -459,7 +460,14 @@ export function InlineReply({
    * `immediatelyRender: false` means there is no editor at all during the commit this effect runs in.
    */
   useEffect(() => {
-    if (box.current) scrollIntoViewProgrammatically(box.current, { block: "end" });
+    const el = box.current;
+    if (!el) return;
+    /* A STUCK DOCK IS ALREADY "IN VIEW", so `scrollIntoView` does nothing and the dock covers the
+       action row and the letter's last lines until the column is scrolled. The dock
+       is the column's last thing, so its own place is the column's end: go there. */
+    const scroller = stuckDockScroller(el);
+    if (scroller) scrollProgrammatically(scroller, scroller.scrollHeight);
+    else scrollIntoViewProgrammatically(el, { block: "end" });
   }, [message.id]);
 
 

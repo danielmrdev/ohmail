@@ -17,7 +17,7 @@ import { useTheme } from "../theme";
 import { useKeyboardLift } from "./keyboard-lift";
 import { separatingVerticalHinge, usePosture } from "./posture";
 import { detailPaneRect, scaffoldPlan } from "./scaffold/plan";
-import { sheetPanelBounds } from "./sheet-bounds";
+import { sheetPanelBounds, sheetRoom } from "./sheet-bounds";
 import { Tap, Txt } from "./base";
 import { Icon, type IconName } from "./Icon";
 
@@ -114,7 +114,7 @@ export function Sheet({
       {avoidKeyboard ? (
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={{ flex: 1, justifyContent: "flex-end", paddingBottom: keyboardLift }}
+          style={sheetRoom(insets.top, keyboardLift)}
         >
           {body}
         </KeyboardAvoidingView>

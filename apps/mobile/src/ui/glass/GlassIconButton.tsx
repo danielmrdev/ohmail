@@ -5,12 +5,13 @@
  * icons with no names is a rail a screen reader cannot drive — and the badge joins it through
  * the caller's label (the dock passes `Copy.ariaLabelCount`).
  */
-import { Platform, View } from "react-native";
+import { Platform, View, useWindowDimensions } from "react-native";
 import { Text } from "react-native";
 import { useTheme } from "../../theme";
 import { Icon, type IconName } from "../Icon";
 import { Tap } from "../base";
 import { a11yRole } from "../a11y-role";
+import { badgeAtScale } from "../../theme/type";
 
 export function GlassIconButton({
   icon,
@@ -42,6 +43,7 @@ export function GlassIconButton({
   testID?: string;
 }) {
   const t = useTheme();
+  const badgeSize = badgeAtScale(useWindowDimensions().fontScale);
   const color = accent ? t.c.onAccent : on ? t.c.accentInk : t.c.ink2;
   return (
     <Tap
@@ -70,8 +72,8 @@ export function GlassIconButton({
             position: "absolute",
             top: 0,
             right: 0,
-            minWidth: 16,
-            height: 16,
+            minWidth: badgeSize.height,
+            height: badgeSize.height,
             paddingHorizontal: 4,
             borderRadius: t.radius.pill,
             alignItems: "center",
@@ -81,11 +83,19 @@ export function GlassIconButton({
             borderColor: t.c.float,
           }}
         >
+          {/* The scale is applied here, from the same number as the pill, not by the OS. */}
           <Text
             maxFontSizeMultiplier={t.textCap}
+            allowFontScaling={false}
             style={[
               t.type.badge,
-              { color: badgeHot ? t.c.onAccent : t.c.ink3, fontVariant: ["tabular-nums"] },
+              badgeSize.text,
+              {
+                includeFontPadding: false,
+                textAlignVertical: "center",
+                color: badgeHot ? t.c.onAccent : t.c.ink3,
+                fontVariant: ["tabular-nums"],
+              },
             ]}
           >
             {badge}

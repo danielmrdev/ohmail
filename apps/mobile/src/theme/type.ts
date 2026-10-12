@@ -168,3 +168,19 @@ export const type = {
 } as const;
 
 export type TypeRole = keyof typeof type;
+
+/**
+ * THE DOCK BADGE AT A TEXT SCALE: its digits' style and the pill's height, from one number. The pill
+ * used to be a fixed 16 around digits the OS scaled, so at iOS Accessibility XL they were cut at the
+ * top and at Android font 2.0 they printed below it. The scale is capped: a count that grew as far as
+ * body text would cover the 44pt button's icon. The OS scales nothing on top (`allowFontScaling`).
+ */
+export const BADGE_SCALE_CAP = 1.5;
+const BADGE_RING = 1.5;
+
+export function badgeAtScale(fontScale: number): { text: TextStyle; height: number } {
+  const s = Number.isFinite(fontScale) ? Math.min(Math.max(fontScale, 1), BADGE_SCALE_CAP) : 1;
+  const fontSize = Math.round(size.micro * s * 10) / 10;
+  const lineHeight = Math.ceil(fontSize * 1.2);
+  return { text: { fontSize, lineHeight }, height: Math.max(16, lineHeight + 2 * BADGE_RING) };
+}

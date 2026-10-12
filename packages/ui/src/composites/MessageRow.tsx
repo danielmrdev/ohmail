@@ -397,7 +397,7 @@ export function MessageRow(props: MessageRowProps) {
     );
   if (mailbox)
     tail.push(
-      <Badge key="mailbox" variant="place" title={mailboxTitle}>
+      <Badge key="mailbox" variant="place" className="mbx" title={mailboxTitle}>
         {mailbox}
       </Badge>,
     );

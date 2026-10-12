@@ -15,7 +15,7 @@ import { Platform, View } from "react-native";
 import { buildCommit, buildLabel } from "../src/build-info";
 import { Copy } from "../src/copy";
 import { refuse, sayRefusal, type Refusal } from "../src/refusal";
-import { type WakeState } from "../src/net/push";
+import { wakeSentence } from "../src/ui/wake-sentence";
 import { useWake } from "../src/state/wake";
 import {
   accountGovernsFace,
@@ -147,26 +147,6 @@ function LanguagePanel() {
   );
 }
 
-/**
- * The one sentence the New mail block renders, chosen from the wake state.
- *
- * Exported nowhere and pure, so `test/wake-copy.test.ts` can assert that every state has a
- * sentence and that none of them claims a wake this build can deliver. A `switch` over the union
- * rather than a lookup, because adding a state to {@link WakeState} then fails to compile here
- * instead of silently rendering nothing.
- */
-export function wakeSentence(state: WakeState): string {
-  switch (state.k) {
-    case "no_distributor": return Copy.wakeNoDistributor;
-    case "not_supported_here": return Copy.wakeDesktopHost;
-    case "server_has_no_key": return Copy.wakeServerNoKey;
-    case "on": return Copy.wakeOn;
-    // `row_remains` is not "we could not set it up" — it is "we could not take it back", and the
-    // two have different sentences and different remedies.
-    case "off": return state.reason === "row_remains" ? Copy.wakeRowRemains : Copy.wakeOff(state.reason);
-  }
-}
-
 function SettingsBody() {
   /* Subscribed: this is the screen the switch is made ON, so it is the screen that must redraw
      under the finger rather than on the next navigation. */
@@ -285,7 +265,7 @@ function SettingsBody() {
         <Panel style={{ paddingVertical: 18, marginBottom: 14 }}>
           <View style={{ paddingHorizontal: 20, gap: 6 }}>
             <Txt variant="settingsLabel">{Copy.wake}</Txt>
-            <Txt variant="note" tone="ink2">{wakeSentence(wake.state)}</Txt>
+            <Txt variant="note" tone="ink2">{wakeSentence(wake.state, Platform.OS)}</Txt>
           </View>
 
           {wake.choices.length > 0 && (

@@ -1489,6 +1489,13 @@ const TABLE = {
     "No push distributor is chosen on this phone, so nothing wakes this app between visits. "
     + "UnifiedPush distributors are separate apps you choose yourself — no Google or Apple push "
     + "service is involved either way. Mail arrives when you open the app or pull to refresh.",
+  /**
+   * The same state on iOS, which has no UnifiedPush and where this build asks Apple for no push:
+   * nothing to choose, so nothing about choosing.
+   */
+  wakeNoPushIos:
+    "Nothing wakes this app between visits on this phone. Mail arrives when you open the app or "
+    + "pull to refresh.",
   /** The desktop-host arm. Same shape: what happens instead, not what is missing. */
   wakeDesktopHost:
     "Wake notifications need a hosted server. Paired with a desktop, this app syncs when you open "

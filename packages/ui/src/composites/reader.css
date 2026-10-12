@@ -57,6 +57,10 @@ body.reading .shell{opacity:.05;transform:scale(.994);pointer-events:none}
      defect, both themes. `--canvas` because a full-screen reading surface is a PAGE of the
      app, on the app's own ground, themed with it. */
   .reader{padding:4vh 12px 10vh;background:var(--canvas)}
+  /* THE LETTER STARTS UNDER THE WAY OUT. 4vh is 8-16px on a short window (a 200%/400% zoom), and
+     the from-line then ran under the fixed ✕, covering the sender's avatar: the
+     floor keeps the card's first line below the button's 54px foot and the notch. */
+  .reader{padding-top:max(4vh, calc(28px + env(safe-area-inset-top, 0px)))}
   .reader .msg{padding:30px 22px 26px}
   /* THE BAR ENDS THE LETTER HERE AND NEVER STANDS ON IT. Pinned, it stopped short of the
      overlay's bottom padding and sat over the letter's last lines, and the exhale above kept its

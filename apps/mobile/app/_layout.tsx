@@ -11,10 +11,11 @@
 // FIRST, before anything can hold a Blob: RN's Blob lacks `arrayBuffer()` (see the module).
 import "../src/polyfills/blob-arraybuffer";
 import { useMemo } from "react";
+import { Platform } from "react-native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { PostureCanvas, PostureProvider } from "../src/ui/posture";
+import { PostureCanvas, PostureProvider, WindowControlsInsets } from "../src/ui/posture";
 import { NavRail } from "../src/ui/nav-rail";
 import { ThemeProvider, resolveFace, useTheme } from "../src/theme";
 import { ConnectionProvider } from "../src/net/connection";
@@ -28,6 +29,7 @@ import { LocaleProvider, useLocale } from "../src/i18n/LocaleProvider";
 import { secureKV } from "../src/state/servers-native";
 import { registerBundledPhoneEngine } from "../src/engine/engine-bundle-native";
 import { installNativeEngineLogWriter } from "../src/engine/engine-log-native";
+import { setPadDevice } from "../src/i18n/device";
 
 /* Before the first render, for the reason in the header. The answer is the registry's — `false`
    would mean a second engine, which one artifact cannot produce — and it is read by nothing, so
@@ -39,12 +41,16 @@ registerBundledPhoneEngine();
    line nobody can read off a shipped phone. `engine-log-native.ts` for what is behind it. */
 installNativeEngineLogWriter();
 
+/* An iPad's sentences name an iPad, not a phone (`src/i18n/device.ts`); set before any copy is read. */
+setPadDevice(Platform.OS === "ios" && Platform.isPad === true);
+
 export default function RootLayout() {
   /* One keystore binding for the app's lifetime, like the profile store's. The provider holds it
      in a ref, so a fresh object per render would be harmless — this is tidiness, not correctness. */
   const kv = useMemo(secureKV, []);
   return (
     <SafeAreaProvider>
+      <WindowControlsInsets>
       {/* The posture sits above every screen: one derivation (window + the fold API + the
           OHMAIL_POSTURE override) that the tab nav and every pane layout read. */}
       <PostureProvider>
@@ -71,6 +77,7 @@ export default function RootLayout() {
       </LocaleProvider>
       </PostureCanvas>
       </PostureProvider>
+      </WindowControlsInsets>
     </SafeAreaProvider>
   );
 }

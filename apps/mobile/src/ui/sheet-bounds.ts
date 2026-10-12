@@ -33,3 +33,14 @@ export function sheetPanelBounds(
   }
   return { alignSelf: "center", width: "100%", maxWidth: 560, maxHeight: tall };
 }
+
+/**
+ * THE ROOM A SHEET RISES IN: the window under the status bar, above the keyboard. The panel's own
+ * `maxHeight` is the window less the top inset, which binds only while the keyboard is down; with it
+ * up the room is the window less the keyboard, measured from y=0, and at accessibility text sizes the
+ * reply sheet's head rose under the clock. The top inset is the room's own padding, so
+ * it holds on both platforms whatever lifts the foot.
+ */
+export function sheetRoom(top: number, keyboardLift: number): ViewStyle {
+  return { flex: 1, justifyContent: "flex-end", paddingTop: Math.max(0, top), paddingBottom: keyboardLift };
+}

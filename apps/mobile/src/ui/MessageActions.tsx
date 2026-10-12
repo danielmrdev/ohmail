@@ -101,6 +101,7 @@ import type { MailtoPrefill } from "./mailto";
 import { Segmented } from "./Segmented";
 import { Sheet, SheetBackdrop, SheetRow, useModalKey, useSheetPanelBounds } from "./Sheet";
 import { useFocusKeeper } from "./keep-focus";
+import { sheetRoom } from "./sheet-bounds";
 import { composeBodyMin, notesPinned, pinnedNotesMax } from "./compose-fit";
 import { SurfaceBoundary } from "./ErrorBoundary";
 import { sendPressAct } from "./send-press";
@@ -1622,7 +1623,7 @@ export function ComposeSheet({
     <Modal key={modalKey} transparent animationType={t.reduceMotion ? "none" : "slide"} visible onRequestClose={closeComposer} onShow={focusKeeper.onShow}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={{ flex: 1, justifyContent: "flex-end", paddingBottom: keyboardLift }}
+        style={sheetRoom(insets.top, keyboardLift)}
       >
         <SheetBackdrop label={Copy.replyCancel} onPress={closeComposer} />
         <View

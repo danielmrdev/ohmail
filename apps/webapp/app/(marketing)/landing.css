@@ -4580,6 +4580,23 @@ html[data-analytics] .l-consent {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+/* UNDER A THUMB, CHANGE IS A THUMB'S SIZE. A word in a sentence, it drew 19px on every touch width;
+   it keeps its line and takes an invisible 44px strip, the sentence holding no other control. (The
+   consent pair already draws 44 there: Accept is a primary button, and Decline stretches to it.) */
+@media (max-width: 640px), (pointer: coarse) {
+  .l-consent-change {
+    position: relative;
+  }
+  .l-consent-change::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 44px;
+    translate: 0 -50%;
+  }
+}
 @media (max-width: 600px) {
   .l-consent {
     gap: 6px 12px;

@@ -9,7 +9,8 @@
  */
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Dimensions, Platform, View, useWindowDimensions } from "react-native";
-import { SafeAreaInsetsContext } from "react-native-safe-area-context";
+import { SafeAreaInsetsContext, useSafeAreaInsets } from "react-native-safe-area-context";
+import { topInsetWithControls } from "../window-controls";
 import {
   derivePosture,
   parsePostureOverride,
@@ -195,4 +196,24 @@ export function useStatusCluster(): { bottom: number } | null {
     };
   }, [canvas, dims.width]);
   return canvas !== null ? null : cluster;
+}
+
+/* ─────────────────────────────── the iPad's window controls ─────────────────────────────── */
+
+/**
+ * Every reader of the safe area below this sees the iPad's window controls as top inset, so the
+ * bars, the list heads and the sheets clear them without a rule of their own (`window-controls.ts`).
+ */
+export function WindowControlsInsets({ children }: { children: ReactNode }) {
+  const insets = useSafeAreaInsets();
+  const dims = useWindowDimensions();
+  const screen = Dimensions.get("screen");
+  const top = topInsetWithControls(insets.top, {
+    isPad: Platform.OS === "ios" && Platform.isPad === true,
+    window: { width: dims.width, height: dims.height },
+    screen: { width: screen.width, height: screen.height },
+  });
+  const value = useMemo(() => ({ ...insets, top }), [insets, top]);
+  /* Always the provider, so a window entering Split View re-renders and never remounts. */
+  return <SafeAreaInsetsContext.Provider value={value}>{children}</SafeAreaInsetsContext.Provider>;
 }

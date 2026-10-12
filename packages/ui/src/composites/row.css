@@ -101,6 +101,11 @@
 .row .badges > *{flex:none}
 .row .badges > .bdg-tail{display:inline-flex;gap:6px;flex:0 1 auto;min-width:0;overflow:hidden;padding:2px;margin:-2px}
 .row .badges > .bdg-tail > *{flex:none}
+/* THE DELIVERED-TO ADDRESS IS BOUNDED. Whole, it took ~180px and left the subject its 6ch floor
+   ("Introdu…"); past 12ch it ends in an ellipsis, and its title says it in full. No subject floor:
+   the give-way order above is what keeps the heaviest row inside its track. */
+.row .badges > .bdg-tail > .badge.mbx{display:block;flex:0 1 auto;min-width:4ch;max-width:12ch;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
 
 /* WHERE A RESTORE WOULD PUT IT — the Trash row's destination gloss (`MessageRowProps
    .destination`). The FIRST thing to yield: `flex:0 1 auto` with `min-width:0` after a subject

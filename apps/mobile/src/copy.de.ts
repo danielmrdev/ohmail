@@ -955,6 +955,9 @@ export const DE: Deck = {
     + "deinen Besuchen. UnifiedPush-Verteiler sind eigene Apps, die du selbst wählst — ein Push-"
     + "Dienst von Google oder Apple ist so oder so nicht beteiligt. Post kommt an, wenn du die App "
     + "öffnest oder zum Aktualisieren ziehst.",
+  wakeNoPushIos:
+    "Zwischen deinen Besuchen weckt nichts diese App auf diesem Telefon. Post kommt an, wenn du "
+    + "die App öffnest oder zum Aktualisieren ziehst.",
   wakeDesktopHost:
     "Weckrufe brauchen einen gehosteten Server. Mit einem Desktop gekoppelt synchronisiert diese "
     + "App, wenn du sie öffnest und wenn du zum Aktualisieren ziehst.",

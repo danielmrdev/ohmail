@@ -748,3 +748,14 @@ input.sm-edit-input {
 /* The identity fact (mail 0148): body ink behind the shield, the reader line's and the Screener row's mark. */
 .sm-check{display:flex;gap:8px;margin:0;padding:8px 12px 0;font-size:calc(12px + var(--type-up));font-weight:600;line-height:1.45;color:var(--ink)}
 .sm-check svg{color:var(--accent-ink);flex:none;margin-top:2px}
+
+/* UNDER A THUMB, EVERY DOOR AND BOTH VERBS ARE 44: the destinations drew 39px and
+   the confirm pair 31.5px at 390. Drawn, not stripped — the rows and the pair sit edge to edge. */
+@media (max-width: 640px), (pointer: coarse) {
+  .senderm li {
+    min-height: 44px;
+  }
+  .sm-confirm-row button {
+    min-height: 44px;
+  }
+}

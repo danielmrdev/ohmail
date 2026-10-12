@@ -12,6 +12,7 @@
 import { EN, type Deck } from "./copy.en";
 import { DE } from "./copy.de";
 import { activeLocale, type AppLocale } from "./i18n/locale";
+import { deviceNoun, isPadDevice } from "./i18n/device";
 
 export type { Deck };
 
@@ -24,20 +25,27 @@ export const DECKS: Record<AppLocale, Deck> = { en: EN, de: DE };
 
 type AnyDeck = Record<string, string | ((...args: never[]) => string)>;
 
+/** A sentence as this device reads it: the deck's own words, the phone named as an iPad on one. */
+function named(text: string, locale: AppLocale): string {
+  return isPadDevice() && typeof text === "string" ? deviceNoun(text, locale) : text;
+}
+
 function liveDeck(): Deck {
   const out: Record<string, unknown> = {};
   for (const key of Object.keys(EN)) {
     if (typeof (EN as unknown as AnyDeck)[key] === "function") {
       out[key] = (...args: never[]): string => {
-        const member = (DECKS[activeLocale()] as unknown as AnyDeck)[key];
-        return (member as (...a: never[]) => string)(...args);
+        const locale = activeLocale();
+        const member = (DECKS[locale] as unknown as AnyDeck)[key];
+        return named((member as (...a: never[]) => string)(...args), locale);
       };
       continue;
     }
     Object.defineProperty(out, key, {
       enumerable: true,
       get(): string {
-        return (DECKS[activeLocale()] as unknown as AnyDeck)[key] as string;
+        const locale = activeLocale();
+        return named((DECKS[locale] as unknown as AnyDeck)[key] as string, locale);
       },
     });
   }
