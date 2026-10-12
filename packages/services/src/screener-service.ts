@@ -2151,19 +2151,32 @@ export class ScreenerService extends ScreenerReadService {
        * the obligation is written first, so a release the program never receives leaves a debt
        * the drain settles; a `settled` receipt closes it. `drafter_failed` is the closed set's word
        * for a spend whose model call produced nothing kept (a decline, or a store that faulted).
+       * A debt that cannot be written is named, and the refund is still TRIED: skipping the release
+       * there lost a refund the door used to send and held the claim to its TTL.
        */
       const releaseClaim = async (): Promise<void> => {
         if (!gate || !claimed || released) return;
         released = true;
         const meta = { messageId: r.messageId };
         const refunding = chargedAttempt;
+        /** Only a debt on record is settled; one whose write failed has nothing to settle. */
+        let owed = false;
         if (refunding !== null && opts.obligations) {
-          await opts.obligations.owe({
-            accountId: ctx.accountId, action: "screener", attemptKey, attempt: refunding, reason: "drafter_failed", meta,
-          });
+          try {
+            await opts.obligations.owe({
+              accountId: ctx.accountId, action: "screener", attemptKey, attempt: refunding, reason: "drafter_failed", meta,
+            });
+            owed = true;
+          } catch (err) {
+            suggestLog.warn("screener_suggest_refund_unrecorded", {
+              accountId: ctx.accountId, attempt: refunding, err,
+              reason: "the refund obligation could not be written; the refund is still tried, and a lost "
+                + "release would leave this charge with nothing to reverse it",
+            });
+          }
         } else if (refunding !== null) {
           suggestLog.warn("screener_suggest_refund_unrecorded", {
-            accountId: ctx.accountId, messageId: r.messageId,
+            accountId: ctx.accountId, attempt: refunding,
             reason: "a refund is owed and no obligation store was composed beside the gate, so a lost "
               + "release would leave this charge with nothing to reverse it",
           });
@@ -2172,7 +2185,7 @@ export class ScreenerService extends ScreenerReadService {
           ? { action: "screener", attemptKey, refund: false, meta, ...usage.field() }
           : { action: "screener", attemptKey, refund: true, attempt: refunding, meta, ...usage.field() });
         if (declined && refunding !== null && receipt === "settled") charged -= price ?? 0;
-        if (refunding !== null && receipt === "settled") await opts.obligations?.settle(ctx.accountId, refunding);
+        if (owed && refunding !== null && receipt === "settled") await opts.obligations!.settle(ctx.accountId, refunding);
       };
       try {
         if (gate) {
