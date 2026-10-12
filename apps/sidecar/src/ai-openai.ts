@@ -2,7 +2,7 @@ import {
   CLASSIFY_RESULT_SCHEMA, DRAFT_PREFIX, DRAFT_RESULT_SCHEMA,
   SCREENING_PREFIX, SCREENING_RESULT_SCHEMA, TAXONOMY_PREFIX,
   classifyUserPayload, coerceClassifierResult, coerceDraftResult, coerceScreeningResult,
-  draftUserPayload,
+  draftUserPayload, ModelDeclinedError,
 } from "@trafficflow/core/mail";
 import type {
   ClassifierInput, ClassifierResult, DraftInput, DraftResult,
@@ -69,13 +69,14 @@ export const NOT_CHAT_MODELS = new RegExp([
  * walk, which is the main structural difference from the Anthropic response. A refusal is a
  * distinct field rather than a status: a model that declines under its own safety policy answers
  * 200 with `content: null` and `refusal` set, and reading that as "no content" would report a
- * deliberate decision as a malformed response.
+ * deliberate decision as a malformed response. It is thrown as `ModelDeclinedError`, the message's
+ * own answer, so the background port never counts it as a fault.
  */
 function extractJsonText(json: unknown, what: string): string {
   const choice = (json as { choices?: Array<{ message?: unknown }> }).choices?.[0];
   const message = choice?.message as { content?: unknown; refusal?: unknown } | undefined;
   if (typeof message?.refusal === "string" && message.refusal !== "") {
-    throw new Error(`${what}: the model declined to answer`);
+    throw new ModelDeclinedError("refusal", null);
   }
   if (typeof message?.content !== "string" || message.content === "") {
     throw new Error(`${what}: response carried no message content`);
