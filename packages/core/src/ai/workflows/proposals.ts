@@ -2,8 +2,10 @@ import { and, eq, isNotNull, or, sql } from "drizzle-orm";
 import {
   messages, rules, learningSignals, workflowProposals, fencedAccountWrite, type Tx,
 } from "@trafficflow/db";
-import { validateSteps, validateTrigger, type WorkflowStep, type WorkflowTrigger } from "../../workflow-shapes.js";
-import type { WorkflowPattern, WorkflowProposal, WorkflowPort } from "./propose.js";
+import type { WorkflowStep, WorkflowTrigger } from "../../workflow-shapes.js";
+import { canonicalDestination, DESTINATIONS } from "../../types.js";
+import type { Logger } from "../../log.js";
+import { deriveProposals, type WorkflowPattern, type WorkflowPort } from "./propose.js";
 
 // Pattern ASSEMBLY + proposal GENERATION. In CORE (db-coupled, worker-importable — the executor's
 // seam) so the worker's `proposal-cron` and the services `ProposalsService` both delegate here
@@ -105,12 +107,16 @@ export async function assembleWorkflowPatterns(
   }
 
   // 4. Sensitive exclusion — drop any pattern whose sender/domain touches sensitive mail.
-  return patterns.filter((p) => {
+  // 5. Canonical destinations only: a pattern routed anywhere else (Junk, Trash, a folder of the
+  //    person's own) is never offered to the model, so no proposal can name one.
+  return patterns.flatMap((p) => {
     const addr = (p.senderAddress ?? "").toLowerCase();
     const dom = (p.senderDomain ?? "").toLowerCase();
-    if (addr && sensitiveSenders.has(addr)) return false;
-    if (dom && sensitiveDomains.has(dom)) return false;
-    return true;
+    if (addr && sensitiveSenders.has(addr)) return [];
+    if (dom && sensitiveDomains.has(dom)) return [];
+    const destination = p.destination === undefined ? undefined : canonicalDestination(p.destination);
+    if (destination === undefined || !(DESTINATIONS as readonly string[]).includes(destination)) return [];
+    return [{ ...p, destination }];
   });
 }
 
@@ -141,13 +147,15 @@ export interface GenerateProposalsDeps {
    * worse than showing yesterday's.
    */
   authorize?: (patterns: WorkflowPattern[]) => Promise<boolean>;
+  /** Where the dropped answers are counted, by class and never by content. Absent ⇒ silent. */
+  log?: Logger;
 }
 
 /**
  * Generate proposals for one account. Assemble redacted patterns → ask for
  * authorization to spend, but only if there is anything to spend ON → ask the injected port →
- * DROP any proposal whose steps declare a non-allowlisted tool or whose trigger is
- * malformed → REPLACE the account's OPEN proposals in one tx so a re-run never piles up
+ * DERIVE each answer's trigger and step args from the pattern it names, dropping and counting
+ * every answer that is not exactly the schema's shape (`deriveProposals`) → REPLACE the account's OPEN proposals in one tx so a re-run never piles up
  * duplicates. `materialized`/`dismissed` rows are untouched (a dismissed suggestion is never
  * resurrected). Proposals are INERT storage — this never creates or enables a workflow.
  */
@@ -162,9 +170,11 @@ export async function generateProposals(
   if (patterns.length > 0 && deps.authorize && !(await deps.authorize(patterns))) return [];
   const proposals = patterns.length === 0 ? [] : await deps.port.propose(patterns);
 
-  // The allowlist gate: keep only proposals whose every step is an allowlisted tool + valid trigger.
-  const valid = proposals.filter((p: WorkflowProposal) =>
-    p.name.trim().length > 0 && validateSteps(p.steps).ok && validateTrigger(p.trigger).ok);
+  // BEFORE the write below: an answer that cannot be stored must never cost the open set.
+  const { proposals: valid, dropped } = deriveProposals(proposals, patterns);
+  for (const [reason, count] of Object.entries(dropped)) {
+    deps.log?.info("proposal_dropped", { accountId, reason, count });
+  }
 
   const now = deps.now?.() ?? new Date();
   /* THROUGH THE SEAM. The proposal pass reads correspondent patterns and then AWAITS A MODEL —
@@ -176,13 +186,13 @@ export async function generateProposals(
     await tx.delete(workflowProposals)
       .where(and(eq(workflowProposals.accountId, accountId), eq(workflowProposals.status, "open")));
     if (valid.length === 0) return [];
-    const rows = await tx.insert(workflowProposals).values(valid.map((p, i) => ({
+    const rows = await tx.insert(workflowProposals).values(valid.map((p) => ({
       accountId,
       name: p.name,
       rationale: p.rationale,
       trigger: p.trigger,
       steps: p.steps,
-      sourcePattern: patterns[i] ?? null,   // best-effort provenance hint (audit/UI only)
+      sourcePattern: p.sourcePattern,      // the pattern the answer named, by index
       status: "open",
       createdAt: now,
     }))).returning();

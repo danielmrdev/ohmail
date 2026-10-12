@@ -1,9 +1,10 @@
 import type { AnthropicLike } from "../classify.js";
 import type { AiCallOptions } from "../../ai-call-report.js";
 import {
-  ALLOWED_TOOLS, type ToolName, type WorkflowStep, type WorkflowTrigger,
+  MAX_WORKFLOW_STEPS, type ToolName, type WorkflowStep, type WorkflowTrigger,
 } from "../../workflow-shapes.js";
 import { declineOf } from "../../model-declined.js";
+import { DESTINATIONS } from "../../types.js";
 import { requestRulesFor } from "../model-rules.js";
 
 /**
@@ -30,22 +31,35 @@ const ALLOWED_PATTERN_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * A proposed automation the model returns. INERT: it is stored in `workflow_proposals`
- * and only becomes a (disabled, provenance='proposed') workflow when the user
- * explicitly `POST /workflows { fromProposalId }`. `steps` may only declare the three
- * allowlisted tools — the caller runs `validateSteps` and DROPS any proposal that
- * declares a tool outside file_message/draft_reply/add_kb_entry.
+ * What the model answers for one proposal: a pattern by its position in the list it was given, a
+ * name, a rationale, and the tools in order — nothing a step needs to run. The schema is closed
+ * everywhere, but this is still the MODEL's word, so {@link deriveProposals} reads each answer as
+ * `unknown` and drops anything else (a `trigger`, an `args`, a `messageId`) rather than store it.
+ */
+export interface ProposalAnswer {
+  pattern: number;
+  name: string;
+  rationale: string;
+  steps: Array<{ tool: string }>;
+}
+
+/**
+ * A proposal as stored: INERT in `workflow_proposals` until the person materializes it. The server
+ * DERIVES `trigger` and every step's `args` from `sourcePattern` through {@link PROPOSAL_TOOLS}; no
+ * field here is the model's except `name` and `rationale`. No `messageId` anywhere: every tool
+ * needs one per run, and nothing binds an arriving message to an `event` workflow yet.
  */
 export interface WorkflowProposal {
   name: string;
   rationale: string;
   trigger: WorkflowTrigger;
   steps: WorkflowStep[];
+  sourcePattern: WorkflowPattern;
 }
 
 export interface WorkflowPort {                          // injected into the proposal cron / service
   /** `call` is this one call's usage hook ({@link AiCallOptions}); a port may ignore it. */
-  propose(patterns: WorkflowPattern[], call?: AiCallOptions): Promise<WorkflowProposal[]>;
+  propose(patterns: WorkflowPattern[], call?: AiCallOptions): Promise<ProposalAnswer[]>;
 }
 
 export interface OpusProposerOpts {
@@ -73,6 +87,34 @@ export interface OpusProposerOpts {
 const DEFAULT_MODEL = "claude-opus-5-5";
 
 /**
+ * THE ONE TABLE of what a proposal may do — the schema's tool enum, the prompt's tool list and the
+ * server's derivation all read it. Each row derives a step's `args` from the pattern alone; `null`
+ * means this pattern cannot carry the tool, and the proposal is dropped. `add_kb_entry` is absent
+ * on purpose: its args are a title and content, and the model sees metadata only, so anything it
+ * wrote would be invented and stored as the person's own words.
+ */
+export const PROPOSAL_TOOLS = {
+  file_message: {
+    says: "file the arriving message into the pattern's destination folder",
+    args: (p: WorkflowPattern): Record<string, unknown> | null =>
+      p.destination !== undefined && (DESTINATIONS as readonly string[]).includes(p.destination)
+        ? { toFolder: p.destination } : null,
+  },
+  draft_reply: {
+    says: "prepare a reply draft for the person to review; it is never sent",
+    args: (): Record<string, unknown> | null => ({}),
+  },
+} as const satisfies Partial<Record<ToolName, {
+  says: string; args: (p: WorkflowPattern) => Record<string, unknown> | null;
+}>>;
+
+type ProposalTool = keyof typeof PROPOSAL_TOOLS;
+const PROPOSAL_TOOL_NAMES = Object.keys(PROPOSAL_TOOLS) as ProposalTool[];
+
+/** At most this many proposals are stored per pass, one per pattern; the rest are dropped. */
+export const MAX_PROPOSALS_PER_PASS = 10;
+
+/**
  * The FIXED task/policy prefix. Stable across every propose call so it can be cached
  * (a `system` block with `cache_control:{type:"ephemeral"}`); the volatile per-run
  * pattern list goes in the user turn, after the cache breakpoint.
@@ -85,22 +127,28 @@ const PROPOSE_PREFIX = [
   "subjects, or snippets.",
   "",
   "Propose a small number of useful, SAFE automations the owner may CHOOSE to enable.",
-  "Each proposal is a workflow: a name, a one-line rationale, a trigger, and an ordered",
-  "list of steps. A step may ONLY use one of these three typed, reversible tools:",
-  `  ${ALLOWED_TOOLS.join(", ")}.`,
+  "Each proposal names ONE pattern by its zero-based position in the `patterns` list, and gives",
+  "a short name, a one-line rationale, and an ordered list of steps. Each one runs when mail from",
+  "that pattern's sender or domain arrives. A step names one of these tools and nothing else:",
+  ...PROPOSAL_TOOL_NAMES.map((t) => `  ${t}: ${PROPOSAL_TOOLS[t].says}.`),
   "There is NO send, forward, or any exfiltrating tool — never propose one.",
   "",
   "Rules:",
   "- Only propose automations grounded in the recurring patterns you were given.",
-  "- Prefer a `time` trigger (with an ISO `nextRunAt`) or a `manual` trigger.",
+  "- At most one proposal per pattern.",
+  "- A pattern whose provenance is \"rule\" is already filed by a rule the owner set; propose",
+  "  for it only if the proposal does more than file it.",
   "- A proposal is INERT: it is stored for the owner to review and explicitly enable;",
   "  it is never created or run automatically.",
   "Respond ONLY with the structured JSON object.",
 ].join("\n");
 
-// json_schema structured output. The top-level must be an object, so proposals are
-// nested under a `proposals` array (mirrors the classifier/drafter RESULT_SCHEMA).
-const RESULT_SCHEMA = {
+/**
+ * The json_schema the propose request carries. CLOSED EVERYWHERE, every property required: the API
+ * refuses `additionalProperties: true` with a 400, which is how the first shape never ran once.
+ * Nothing in it can name a message, a folder or a trigger — the server derives those.
+ */
+export const PROPOSE_RESULT_SCHEMA = {
   type: "object",
   additionalProperties: false,
   required: ["proposals"],
@@ -110,26 +158,18 @@ const RESULT_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["name", "rationale", "trigger", "steps"],
+        required: ["pattern", "name", "rationale", "steps"],
         properties: {
+          pattern: { type: "integer" },
           name: { type: "string" },
           rationale: { type: "string" },
-          trigger: {
-            type: "object",
-            additionalProperties: true,
-            required: ["kind"],
-            properties: { kind: { type: "string", enum: ["manual", "time", "event"] } },
-          },
           steps: {
             type: "array",
             items: {
               type: "object",
               additionalProperties: false,
-              required: ["tool", "args"],
-              properties: {
-                tool: { type: "string", enum: ALLOWED_TOOLS as unknown as string[] },
-                args: { type: "object", additionalProperties: true },
-              },
+              required: ["tool"],
+              properties: { tool: { type: "string", enum: PROPOSAL_TOOL_NAMES } },
             },
           },
         },
@@ -170,8 +210,8 @@ export function buildProposeParams(patterns: WorkflowPattern[], opts: OpusPropos
     model,
     /**
      * Thinking as LOW as the model allows — `draft.ts`'s decision. Opus is the most expensive model
-     * this product calls; one proposal pass costs one credit whatever it spends, and the pass is
-     * cron-driven, so an unbounded per-call spend multiplied by every account is the one cost with
+     * this product calls; one proposal pass costs one credit whatever it spends, and the pass
+     * sweeps every served account, so an unbounded per-call spend multiplied by them is the one cost with
      * no natural ceiling. Opus 5.5 cannot turn thinking off (`disabled` is a 400 at every effort):
      * its row has no thinking value, so the field is omitted and effort `low` is the lever, below
      * its `medium` default. Thinking shares `max_tokens` with the list, hence 8192 where Opus 5
@@ -187,7 +227,7 @@ export function buildProposeParams(patterns: WorkflowPattern[], opts: OpusPropos
     ],
     output_config: {
       ...(rules.effort ? { effort: "low" } : {}),
-      format: { type: "json_schema", schema: RESULT_SCHEMA },
+      format: { type: "json_schema", schema: PROPOSE_RESULT_SCHEMA },
     },
   };
   if (opts.inferenceGeo) params.inference_geo = opts.inferenceGeo;
@@ -208,37 +248,6 @@ function extractJsonText(content: unknown): string {
   throw new Error("proposer: response carried no text content block");
 }
 
-/** Coerce one raw proposal object into a well-formed {@link WorkflowProposal}. */
-function coerceProposal(raw: unknown): WorkflowProposal {
-  const o = (raw ?? {}) as Record<string, unknown>;
-  const name = typeof o.name === "string" ? o.name : "";
-  const rationale = typeof o.rationale === "string" ? o.rationale : "";
-  const trigger = coerceTrigger(o.trigger);
-  const steps = Array.isArray(o.steps) ? o.steps.map(coerceStep) : [];
-  return { name, rationale, trigger, steps };
-}
-
-function coerceTrigger(raw: unknown): WorkflowTrigger {
-  const o = (raw ?? {}) as Record<string, unknown>;
-  const kind = o.kind === "time" || o.kind === "event" ? o.kind : "manual";
-  const trigger: WorkflowTrigger = { kind };
-  if (typeof o.nextRunAt === "string") trigger.nextRunAt = o.nextRunAt;
-  if (o.match && typeof o.match === "object" && !Array.isArray(o.match)) {
-    trigger.match = o.match as Record<string, unknown>;
-  }
-  if (typeof o.intervalMs === "number") (trigger as unknown as Record<string, unknown>).intervalMs = o.intervalMs;
-  return trigger;
-}
-
-/** Coerce one raw step; the caller's `validateSteps` is the authoritative allowlist gate. */
-function coerceStep(raw: unknown): WorkflowStep {
-  const o = (raw ?? {}) as Record<string, unknown>;
-  const tool = (typeof o.tool === "string" ? o.tool : "") as ToolName;
-  const args = o.args && typeof o.args === "object" && !Array.isArray(o.args)
-    ? (o.args as Record<string, unknown>) : {};
-  return { tool, args };
-}
-
 /**
  * The injected-client Opus proposer (mirrors `makeSonnetDrafter`). `client` is a real
  * `new Anthropic()` in prod, a canned-JSON fake in tests. No `@anthropic-ai/sdk`
@@ -251,7 +260,7 @@ export function makeOpusProposer(client: AnthropicLike, opts: OpusProposerOpts =
   // At construction, so a model with no row fails the boot and not the proposal cron.
   requestRulesFor(opts.model ?? DEFAULT_MODEL);
   return {
-    async propose(patterns: WorkflowPattern[], call?: AiCallOptions): Promise<WorkflowProposal[]> {
+    async propose(patterns: WorkflowPattern[], call?: AiCallOptions): Promise<ProposalAnswer[]> {
       if (patterns.length === 0) return [];
       const params = buildProposeParams(patterns, opts);
       const resp = await (call ? client.messages.create(params, call) : client.messages.create(params));
@@ -265,9 +274,9 @@ export function makeOpusProposer(client: AnthropicLike, opts: OpusProposerOpts =
       } catch {
         return [];
       }
-      const list = (parsed as { proposals?: unknown }).proposals;
-      if (!Array.isArray(list)) return [];
-      return list.map(coerceProposal);
+      const list = (parsed as { proposals?: unknown } | null)?.proposals;
+      // Handed on unread: `deriveProposals` is the one validator, and it reads each as `unknown`.
+      return Array.isArray(list) ? (list as ProposalAnswer[]) : [];
     },
   };
 }
@@ -279,7 +288,89 @@ export function makeOpusProposer(client: AnthropicLike, opts: OpusProposerOpts =
  * wired by deployment.
  */
 export const unconfiguredProposer: WorkflowPort = {
-  async propose(): Promise<WorkflowProposal[]> {
+  async propose(): Promise<ProposalAnswer[]> {
     return [];
   },
 };
+
+/** Why an answer was not stored. Counted per pass and logged by class, never with content. */
+export const PROPOSAL_DROP_CLASSES = [
+  "malformed", "foreign_key", "pattern_out_of_range", "empty_steps", "too_many_steps",
+  "tool_not_offered", "duplicate_pattern", "pattern_unbound", "destination_not_canonical",
+  "rule_duplicate", "over_cap",
+] as const;
+export type ProposalDropClass = typeof PROPOSAL_DROP_CLASSES[number];
+
+const ANSWER_KEYS: ReadonlySet<string> = new Set(["pattern", "name", "rationale", "steps"]);
+const STEP_KEYS: ReadonlySet<string> = new Set(["tool"]);
+
+const plainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+const onlyKeys = (o: Record<string, unknown>, allowed: ReadonlySet<string>): boolean =>
+  Object.keys(o).every((k) => allowed.has(k));
+
+/** The event trigger a pattern implies: its own sender, else its own domain, else none. */
+function triggerFor(p: WorkflowPattern): WorkflowTrigger | null {
+  if (p.kind === "sender" && p.senderAddress) return { kind: "event", match: { senderAddress: p.senderAddress } };
+  if (p.kind === "domain" && p.senderDomain) return { kind: "event", match: { senderDomain: p.senderDomain } };
+  return null;
+}
+
+/** One answer, admitted as a stored proposal or refused with its class. Never throws. */
+function deriveOne(
+  raw: unknown, patterns: WorkflowPattern[], taken: ReadonlySet<number>,
+): WorkflowProposal | ProposalDropClass {
+  if (!plainObject(raw)) return "malformed";
+  if (!onlyKeys(raw, ANSWER_KEYS)) return "foreign_key";
+  const { pattern: index, name, rationale, steps } = raw;
+  if (typeof name !== "string" || name.trim().length === 0 || typeof rationale !== "string"
+    || !Array.isArray(steps)) return "malformed";
+  if (typeof index !== "number" || !Number.isInteger(index) || index < 0 || index >= patterns.length) {
+    return "pattern_out_of_range";
+  }
+  if (steps.length === 0) return "empty_steps";
+  if (steps.length > MAX_WORKFLOW_STEPS) return "too_many_steps";
+  const tools: ProposalTool[] = [];
+  for (const step of steps) {
+    if (!plainObject(step)) return "malformed";
+    if (!onlyKeys(step, STEP_KEYS)) return "foreign_key";
+    if (typeof step.tool !== "string" || !Object.hasOwn(PROPOSAL_TOOLS, step.tool)) return "tool_not_offered";
+    tools.push(step.tool as ProposalTool);
+  }
+  if (taken.has(index)) return "duplicate_pattern";
+  const source = patterns[index]!;
+  const trigger = triggerFor(source);
+  if (!trigger) return "pattern_unbound";
+  const derived: WorkflowStep[] = [];
+  for (const tool of tools) {
+    const args = PROPOSAL_TOOLS[tool].args(source);
+    if (!args) return "destination_not_canonical";
+    derived.push({ tool, args });
+  }
+  // The rule already files this sender there; a proposal that only repeats it adds nothing.
+  if (source.provenance === "rule" && tools.length === 1 && tools[0] === "file_message") return "rule_duplicate";
+  return { name, rationale, trigger, steps: derived, sourcePattern: source };
+}
+
+/**
+ * THE DERIVATION, which is also the validation: everything a stored proposal carries beyond its
+ * name and rationale comes from the pattern the answer names, through {@link PROPOSAL_TOOLS}. An
+ * answer that is not exactly the schema's shape, names a pattern out of range or twice, offers no
+ * step, or names a tool the table lacks is DROPPED and counted — never thrown, so one bad answer
+ * neither refunds the pass nor costs the person the proposals that were good.
+ */
+export function deriveProposals(
+  answers: readonly unknown[], patterns: WorkflowPattern[],
+): { proposals: WorkflowProposal[]; dropped: Partial<Record<ProposalDropClass, number>> } {
+  const proposals: WorkflowProposal[] = [];
+  const dropped: Partial<Record<ProposalDropClass, number>> = {};
+  const taken = new Set<number>();
+  for (const raw of answers) {
+    let out = deriveOne(raw, patterns, taken);
+    if (typeof out !== "string" && proposals.length >= MAX_PROPOSALS_PER_PASS) out = "over_cap";
+    if (typeof out === "string") { dropped[out] = (dropped[out] ?? 0) + 1; continue; }
+    taken.add((raw as ProposalAnswer).pattern);
+    proposals.push(out);
+  }
+  return { proposals, dropped };
+}
