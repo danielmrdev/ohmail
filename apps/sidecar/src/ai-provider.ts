@@ -1,6 +1,6 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { SensitivePayloadRefusal } from "@trafficflow/core/mail";
+import { ModelDeclinedError, SensitivePayloadRefusal } from "@trafficflow/core/mail";
 import type {
   ClassifierInput, ClassifierPort, ClassifierResult,
   DraftInput, DraftPort, DraftResult, KeyProvider,
@@ -549,15 +549,16 @@ export async function createLocalAi(opts: LocalAiOptions): Promise<LocalAi> {
    * arriving). So after a few consecutive faults the port is WITHHELD for a cooldown, `planChange`
    * sees no classifier, and mail files on rules; the cooldown doubles to a ceiling and any success
    * resets it. A REFUSAL is not a fault — the outbound sensitivity sink throwing means the product
-   * worked, so it is neutral. This is NOT the hosted worker's breaker (that refunds a credit ledger
-   * this install lacks); what is shared is the SHAPE — withhold the port, never wrap it in a throw. */
+   * worked — and neither is a DECLINE, the model answering for one message: both are neutral. This is
+   * NOT the hosted worker's breaker (that refunds a credit ledger this install lacks); what is shared
+   * is the SHAPE — withhold the port, never wrap it in a throw. */
   let consecutiveFaults = 0;
   /** When the withhold began and for how long; over by `cadenceDue`, so a suspend ends it too. */
   let withheld: { at: CadenceStamp; forMs: number } | null = null;
   let cooldownMs = baseCooldownMs;
 
   const noteFault = (err: unknown): void => {
-    if (err instanceof SensitivePayloadRefusal) return;
+    if (err instanceof SensitivePayloadRefusal || err instanceof ModelDeclinedError) return;
     consecutiveFaults++;
     opts.log("ai_call_failed", {
       err,
@@ -640,8 +641,9 @@ export async function createLocalAi(opts: LocalAiOptions): Promise<LocalAi> {
       } catch (err) {
         noteFault(err);
         // Rethrown UNWRAPPED, deliberately: a refusal at the sensitivity sink is message-scoped
-        // and must not abort the batch, and the loop's own boundary is where it belongs.
-        if (err instanceof SensitivePayloadRefusal) throw err;
+        // and must not abort the batch, and the loop's own boundary is where it belongs. A decline
+        // goes on unwrapped too, and the pipeline files that message as it would with AI off.
+        if (err instanceof SensitivePayloadRefusal || err instanceof ModelDeclinedError) throw err;
         throw new ClassifierFaultError(err);
       }
     },

@@ -1,10 +1,10 @@
 /**
- * WHAT EACH MODEL'S API ACCEPTS, for the three request builders: how it turns thinking off and
- * whether it takes `output_config.effort`. The shapes do not travel between models — `disabled` is
- * a 400 on Sonnet 5.5 and Opus 5.5, `between_tools` a 400 on every model but Sonnet 5.5, and Haiku
- * 4.5 refuses `effort` — so a builder reads the row of the model it is about to call, and a model
- * with no row is refused by name before anything is sent. `MODEL_PRICES_USD_PER_MTOK` keys the
- * same ids.
+ * WHAT EACH MODEL'S API ACCEPTS: how it turns thinking off and whether it takes
+ * `output_config.effort`. The shapes do not travel between models — `disabled` is a 400 on Sonnet
+ * 5.5 and Opus 5.5, `between_tools` a 400 on every model but Sonnet 5.5, and Haiku 4.5 refuses
+ * `effort` — so a builder reads the row of the model it is about to call. The hosted builders refuse
+ * a model with no row; the own-key client keeps its old request for one. A leaf outside `ai/`, so
+ * the desktop's own-key client reads this table too. `MODEL_PRICES_USD_PER_MTOK` keys the same ids.
  */
 
 /** The `thinking` value that turns thinking off. Both are accepted only at effort `high` or below. */
@@ -37,12 +37,16 @@ export class ModelRuleRefusal extends Error {
   }
 }
 
-/** The row for `model`. Own keys only, so `constructor` is a missing row, not a prototype. */
+/** The row for `model`, or `null`. Own keys only, so `constructor` is a missing row, not a prototype. */
+export function knownRequestRules(model: string): ModelRequestRules | null {
+  return Object.prototype.hasOwnProperty.call(MODEL_REQUEST_RULES, model) ? MODEL_REQUEST_RULES[model]! : null;
+}
+
+/** The row for `model`, refused by name when the table has none. */
 export function requestRulesFor(model: string): ModelRequestRules {
-  if (!Object.prototype.hasOwnProperty.call(MODEL_REQUEST_RULES, model)) {
-    throw new ModelRuleRefusal(model, "no_rules");
-  }
-  return MODEL_REQUEST_RULES[model]!;
+  const rules = knownRequestRules(model);
+  if (rules === null) throw new ModelRuleRefusal(model, "no_rules");
+  return rules;
 }
 
 /**

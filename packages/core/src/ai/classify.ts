@@ -5,7 +5,7 @@ import {
   classifyUserPayload, coerceClassifierResult, coerceScreeningResult,
 } from "../classify-prompt.js";
 import { declineOf } from "../model-declined.js";
-import { thinkingOffFor } from "./model-rules.js";
+import { thinkingOffFor } from "../model-rules.js";
 
 /**
  * The AI classifier seam. The PORT lives in core so the pipeline can depend on it without a

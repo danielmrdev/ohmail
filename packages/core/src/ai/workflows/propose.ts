@@ -5,7 +5,7 @@ import {
 } from "../../workflow-shapes.js";
 import { declineOf } from "../../model-declined.js";
 import { DESTINATIONS } from "../../types.js";
-import { requestRulesFor } from "../model-rules.js";
+import { requestRulesFor } from "../../model-rules.js";
 
 /**
  * The AI WorkflowPort seam — mirrors the classifier and drafter: the PORT lives in core so the

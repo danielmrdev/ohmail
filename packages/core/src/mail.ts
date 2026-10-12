@@ -70,6 +70,9 @@ export * from "./classify-prompt.js";
 // A MODEL'S DECLINE, by class: the services catch it beside the question they ask, so the error
 // lives with the question and not with the model half that raises it.
 export * from "./model-declined.js";
+// WHAT EACH MODEL ACCEPTS: the desktop's own-key client shapes its request from the same table
+// the hosted builders read, so a model chosen there is sent the thinking value it takes.
+export * from "./model-rules.js";
 // WHO THE MAIL IS REALLY FROM — the deterministic sender check that runs before the model and
 // bounds what its answer may say, plus the curated brand dictionary it compares against.
 // Mail-half by the same test as `pipeline.js`: it names no model, reads no store and no clock,
