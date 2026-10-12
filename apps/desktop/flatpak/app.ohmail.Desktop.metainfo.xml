@@ -74,6 +74,25 @@
   </screenshots>
 
   <releases>
+    <release version="0.25.23" date="2026-10-13">
+      <description>
+        <ul>
+          <li>Layout fixes on tablets and phones</li>
+          <li>A first search after a pause on ohmail Cloud reads less from disk</li>
+          <li>Android foldables keep the reply through every posture</li>
+          <li>The offer to file letters that arrived after a hand-back is shown</li>
+          <li>Mailboxes nothing organizes say so in the Ohbox and on the sender sheets</li>
+          <li>The phone's Screener counts every waiting sender</li>
+          <li>A deleted letter leaves Answer Later</li>
+          <li>A screen-out says its unsubscribe request before you press</li>
+          <li>Enter works on every setup step</li>
+          <li>The AI features move to Anthropic's 5.5 models</li>
+          <li>Layout fixes for replies, touch screens, large text and the iPad</li>
+          <li>Organize here starts organizing within seconds</li>
+          <li>The Screener's row menu stays on screen on small phones</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.25.22" date="2026-10-12">
       <description>
         <ul>
@@ -141,33 +160,6 @@
       <description>
         <ul>
           <li>Older mail no longer appears in the Screener</li>
-        </ul>
-      </description>
-    </release>
-    <release version="0.25.18" date="2026-10-08">
-      <description>
-        <ul>
-          <li>The phone app's download is smaller</li>
-          <li>Signing out ends that session's live updates within seconds</li>
-          <li>Live updates on the web</li>
-          <li>The buttons in an open message are easier to tap on a tablet</li>
-          <li>The sender's address stays on screen in the Screener and the open message</li>
-          <li>A draft kept by folding the phone keeps its Cc and Bcc</li>
-          <li>Lists keep their subjects readable on fold-width screens, and tabs stay in one row</li>
-          <li>Enter after narrowing the window keeps the message open</li>
-          <li>The desktop app opens its mailbox faster</li>
-          <li>A move or delete pressed offline no longer lands over a newer one a day later</li>
-          <li>Senders you allowed stay yours in settings an older ohmail saved</li>
-          <li>Your own mail is never filed by a rule about your own address</li>
-          <li>A removed rule leaves at once</li>
-          <li>A mailbox keeps syncing after the server sends a message ohmail cannot read</li>
-          <li>Messages set aside no longer slow a mailbox or show a storage error</li>
-          <li>Mark read in the Ohbox marks the whole conversation read, and messages you scroll through are marked read</li>
-          <li>Paused accounts</li>
-          <li>A change made during an ohmail Cloud outage waits for the service</li>
-          <li>A message you open and read moves to the top of Earlier</li>
-          <li>A mail server running on this computer gets time to finish its own sign-in</li>
-          <li>A name claiming a company from another address waits at the Screener</li>
         </ul>
       </description>
     </release>

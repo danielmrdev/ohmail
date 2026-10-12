@@ -13,6 +13,13 @@ See [Status](README.md#status--read-this-first).
 
 ## [Unreleased]
 
+### Still to come
+
+Signed installers — a real Apple Developer ID and an Authenticode certificate. See
+[Roadmap](README.md#roadmap).
+
+## [0.25.23] — 2026-10-13
+
 ### Layout fixes on tablets and phones
 <!-- changes: fix-026-layout-sizes-r1b.md -->
 
@@ -122,11 +129,6 @@ app the mailbox is organized within seconds, and the offer to file letters that 
 A row's menu in the Screener no longer runs past the bottom of a small phone's screen, so the note that
 Screen out and Spam also ask the sender to unsubscribe you is always shown in full before you press. The
 folder list's menu follows the same rule.
-
-### Still to come
-
-Signed installers — a real Apple Developer ID and an Authenticode certificate. See
-[Roadmap](README.md#roadmap).
 
 ## [0.25.22] — 2026-10-12
 
@@ -12203,7 +12205,8 @@ no network in any of them.
   Gatekeeper, SmartScreen and the AppImage's executable bit all need a manual
   step, and that is a real cost of a preview rather than something to gloss over.
 
-[Unreleased]: https://github.com/trafficflowhq/ohmail/compare/v0.25.22...HEAD
+[Unreleased]: https://github.com/trafficflowhq/ohmail/compare/v0.25.23...HEAD
+[0.25.23]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.23
 [0.25.22]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.22
 [0.25.21]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.21
 [0.25.20]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.20
