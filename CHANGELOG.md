@@ -29,6 +29,37 @@ The search page no longer reads each candidate message a second time to sort it,
 data has left the database's memory reads fewer pages from disk. A first search after a long pause
 can still take longer than a search right after another one.
 
+### Android foldables keep the reply through every posture
+<!-- changes: fix-026-foldable-postures-keep-the-reply.md -->
+
+Unfolding an Android foldable with a message open no longer closes the app. A reply being written keeps its
+cursor and keyboard when the phone is unfolded, and stays open, with what was typed, when the phone is half
+folded flat on a table; going back to book or flat keeps it too. Half open like a book, the list and the
+message meet at the fold on inner screens narrower than 700 dp as well, such as the Galaxy Z Fold's; where a
+side is too narrow for a pane, the app keeps to one side of the fold with the navigation rail beside it.
+Settings, Search and the other full-window pages, and the sheets, keep to one side of a book fold.
+
+### The offer to file letters that arrived after a hand-back is shown
+<!-- changes: fix-026-gap-offer-reaches-the-web.md -->
+
+After a mailbox was handed back and organized again, the offer to file the letters that arrived in between
+was counted but not shown. It now appears in the browser, the desktop app and on a paired phone, with File
+and Leave.
+
+### Mailboxes nothing organizes say so in the Ohbox and on the sender sheets
+<!-- changes: fix-026-gap-offer-reaches-the-web.md#2 -->
+
+When nothing organizes your mailboxes, the Ohbox heading says so even when senders wait in the Screener, and
+the sender sheets no longer promise that future mail files where you choose. On the phone, the note that
+another device organizes the mailbox goes away once that device hands it back.
+
+### The phone's Screener counts every waiting sender
+<!-- changes: fix-026-phone-screener-counts-every-waiting-sender.md -->
+
+On a phone that reads a mailbox another device organizes, the Screener left out senders whose mail
+was all older than 60 days and already read, so its count was lower than the organizing device's. The
+phone now lists and counts every sender waiting in the Screener folder.
+
 ### Still to come
 
 Signed installers — a real Apple Developer ID and an Authenticode certificate. See
