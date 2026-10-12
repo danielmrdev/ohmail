@@ -14,7 +14,7 @@ import {
   UNPRICED,
   // 0.14.1, 0.14.1 — the request path. See `screener-apply.ts` and `organizer-role.ts` in
   // `@trafficflow/db` for why the transactional core and the eligibility read live there.
-  resolveCutline, senderIsActiveSql, senderIsDecidedSql, senderIsOwnSql, heldSortKey, type ResolvedCutline,
+  senderIsActiveSql, senderIsDecidedSql, senderIsOwnSql, heldSortKey, type CutlineSet,
   senderHasHeldClaimSql, heldRowById, applyScreenerDecision, AccountErasedError, readAccountErasedAt, domainOf, ruleNamesSenderSql,
   readRequestEligibility, decisionCanBeApplied, readListAddresses,
   listOutstandingForAccount,
@@ -55,6 +55,7 @@ import { materializeRules } from "./dto/materialize.js";
 import { ServiceError, IdempotencyRaceLost } from "./errors.js";
 import { refuseAiSpend, type AiRefusalClass } from "./ai-refusal.js";
 import { getScreeningPreference } from "./screening-preference.js";
+import { cutlinesOf, effectiveScreeningWindows } from "./screening-window.js";
 import { LearningService } from "./learning-service.js";
 import { refuseOwnAddressRule, SHARED_PROVIDER_REFUSAL_SENTENCE } from "./rules-service.js";
 import { isSharedProviderDomain, sharedProviderAllowRefusal } from "@trafficflow/core/rule-order";
@@ -130,13 +131,6 @@ export interface ScreenerDeps {
      */
     onScreenOut(ctx: ServiceContext, messageIds: string[]): Promise<{ considered: number }>;
   };
-  /**
-   * A READING INSTALL LISTS THE GATE AS FILED — the local door sets it. While this install
-   * organizes none of the account's mailboxes its own screening answer is not in force (the
-   * organizer's is, and it lives on the organizer), and the window retired senders the organizer
-   * still holds at the gate, so the reader's count fell short. Absent: the hosted rule.
-   */
-  readerQueueIsTheGate?: boolean;
 }
 
 /**
@@ -919,15 +913,8 @@ export class ScreenerReadService {
      * the two surfaces that show the same number.
      */
     const preference = await getScreeningPreference(ctx);
-    const resolved = resolveCutline({
-      baselineAt: preference.screeningBaselineAt,
-      dormancyDays: preference.dormancyDays,
-      scope: preference.screeningScope,
-      now: ctx.now(),
-    });
-    // A reading install: the gate as the organizer filed it ({@link ScreenerDeps.readerQueueIsTheGate}).
-    const cutline = this.deps.readerQueueIsTheGate === true && !(await this.organizesAny(ctx))
-      ? { ...resolved, allTime: true } : resolved;
+    // EACH MAILBOX BY ITS ORGANIZER'S WINDOW (RULING-026): the one resolver `GET /consent` reads too.
+    const cutline = cutlinesOf(await effectiveScreeningWindows(ctx), ctx.now());
     const windowed = await this.heldSenderPage(ctx, { after, limit: limit + 1, cutline });
     const unfiltered = windowed.slice(0, limit);
 
@@ -1642,7 +1629,7 @@ export class ScreenerReadService {
        * query before it existed, which is what every caller that reads no `account_settings`
        * gets. See below for why it sits in the OUTER query.
        */
-      cutline?: ResolvedCutline;
+      cutline?: CutlineSet;
     },
   ): Promise<ScreenerRow[]> {
     const held = this.heldSenderReps(ctx);
@@ -1681,26 +1668,18 @@ export class ScreenerReadService {
     return rows.map(toScreenerRow);
   }
 
-  /** Does this install organize any of the account's mailboxes? One indexed read, first page only. */
-  private async organizesAny(ctx: ServiceContext): Promise<boolean> {
-    // scoped-by: eq(mailboxes.accountId, ctx.accountId)
-    const [row] = await ctx.db.select({ id: mailboxes.id }).from(mailboxes)
-      .where(and(eq(mailboxes.accountId, ctx.accountId), eq(mailboxes.organizerRole, "organizer"))).limit(1);
-    return row !== undefined;
-  }
-
   /**
    * THE PAGE'S OWN FILTERS — representative, cutline, decided, own — shared with the count below,
    * so `total` and a walk of every page are one predicate and cannot drift apart.
    */
   private waitingFilters(
-    ctx: ServiceContext, held: ReturnType<ScreenerReadService["heldSenderReps"]>, cutline?: ResolvedCutline,
+    ctx: ServiceContext, held: ReturnType<ScreenerReadService["heldSenderReps"]>, cutline?: CutlineSet,
   ): Array<SQL | undefined> {
     const { reps, d } = held;
     const sender = sql`lower(${reps.fromAddress})`;
     // A held claim that keeps its sender waiting (`heldClaimWaitsSql`): dated by who wrote the fact,
     // never by its Date, and skipped for a person's consent only where the gate would not hold it now.
-    const claim = cutline ? senderHasHeldClaimSql(d, ctx.accountId, sender, cutline.cutoff, SCREENING_AUTH_VERDICTS) : undefined;
+    const claim = cutline ? senderHasHeldClaimSql(d, ctx.accountId, sender, cutline, SCREENING_AUTH_VERDICTS) : undefined;
     return [
       eq(reps.rank, 1),
       cutline ? sql`(${senderIsActiveSql(d, ctx.accountId, sender, cutline)} or ${claim})` : undefined,
@@ -1719,7 +1698,7 @@ export class ScreenerReadService {
    * pages) already took. Counted inside the same account-scoped `reps` subquery, and the in-flight
    * test is a subquery too, so no id list leaves the store however many decisions are queued.
    */
-  protected async heldSenderTotal(ctx: ServiceContext, opts: { cutline?: ResolvedCutline }): Promise<number> {
+  protected async heldSenderTotal(ctx: ServiceContext, opts: { cutline?: CutlineSet }): Promise<number> {
     const held = this.heldSenderReps(ctx);
     const { reps, d } = held;
     const sender = sql`lower(${reps.fromAddress})`;

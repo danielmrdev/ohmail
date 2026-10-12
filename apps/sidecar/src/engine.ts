@@ -1057,8 +1057,7 @@ function localServices(
     // wiring exactly. Only an ORGANIZER reaches this path: a consent-less reader's decision is a
     // REQUEST, and requests carry no courtesy. `landing-mailbox-truth.test.ts` reads this call
     // site — the landing's standalone qualifier comes out with it.
-    // While this install only reads, its queue is the gate the organizer filed.
-    screener: makeScreenerService({ unsubscribe, readerQueueIsTheGate: true, ...(classifier ? { classifier } : {}) }),
+    screener: makeScreenerService({ unsubscribe, ...(classifier ? { classifier } : {}) }),
     // `drafting` is ALWAYS present and `drafter` only when there is a model, which is the pairing
     // the route expects rather than an oversight. The two are different things: `drafting`
     // assembles the sensitivity-safe context and stores the result, `drafter` is the model. The

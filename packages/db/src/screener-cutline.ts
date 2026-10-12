@@ -85,6 +85,40 @@ export interface ResolvedCutline {
 }
 
 /**
+ * ONE CUTLINE, OR ONE PER MAILBOX (RULING-026): a reader applies each mailbox's ORGANIZER's window,
+ * so the queue's one predicate carries the window of the mailbox each row sits in. A map whose
+ * values are all one cutline is that cutline, and the SQL is the single form byte for byte.
+ */
+export type CutlineSet = ResolvedCutline | ReadonlyMap<string, ResolvedCutline>;
+
+function sameCutline(a: ResolvedCutline, b: ResolvedCutline): boolean {
+  return a.cutoff.getTime() === b.cutoff.getTime() && a.baselined === b.baselined && a.allTime === b.allTime;
+}
+
+/** The set as one cutline when every mailbox shares it, else its per-mailbox arms (ordered by id). */
+export function cutlineArms(set: CutlineSet): { one: ResolvedCutline } | { arms: Array<[string, ResolvedCutline]> } {
+  if (!(set instanceof Map)) return { one: set as ResolvedCutline };
+  const arms = [...set.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  if (arms.length > 0 && arms.every(([, c]) => sameCutline(c, arms[0]![1]))) return { one: arms[0]![1] };
+  return { arms };
+}
+
+/**
+ * `f` of the cutline the row's mailbox carries: `case <mailbox> when … then … else <admit> end`.
+ * The `else` arm ADMITS (`true` unless the caller names its own admitting form) — a mailbox the set
+ * does not name (added since it was read) is listed whole, never retired by a window nobody stated.
+ * Store-neutral: a boolean CASE in a WHERE or HAVING.
+ */
+export function perMailboxSql(
+  d: Dialect, arms: ReadonlyArray<[string, ResolvedCutline]>, mailboxExpr: SQL, f: (c: ResolvedCutline) => SQL,
+  admit: SQL = sql`true`,
+): SQL {
+  if (arms.length === 0) return admit;
+  const whens = arms.map(([id, c]) => sql`when ${d.castUuid(id)} then (${f(c)})`);
+  return sql`(case ${mailboxExpr} ${sql.join(whens, sql` `)} else (${admit}) end)`;
+}
+
+/**
  * Resolve the stored answers into the three facts the predicate needs.
  *
  * `baselined` is separate from the cutoff on purpose: with a baseline, unread mail counts only
@@ -134,22 +168,26 @@ export function activeSenderExpr(
  * makes this and the counts one rule rather than two that agree today.
  */
 export function senderIsActiveSql(
-  d: Dialect, accountId: string, senderExpr: SQL, c: ResolvedCutline,
+  d: Dialect, accountId: string, senderExpr: SQL, set: CutlineSet,
 ): SQL {
   const folders = sql`(${sql.join(CUTLINE_PRESENTED_FOLDERS.map((f) => sql`${f}`), sql`, `)})`;
   const at = cutlineInstant({ date: sql`mc.date`, arrivedAt: sql`mc.created_at` });
-  const active = activeSenderExpr(d, c, {
+  const activeAt = (c: ResolvedCutline): SQL => activeSenderExpr(d, c, {
     anyUnread: anyOf(sql`mc.unread`),
     anyUnreadInWindow: anyOf(sql`mc.unread and ${at} is not null and ${at} >= ${d.ts(c.cutoff)}`),
     newest: sql`max(${at})`,
   });
+  const split = cutlineArms(set);
+  // Several windows: one group per (sender, mailbox), and the sender is active in ANY of them.
+  const groupBy = "one" in split ? sql`lower(mc.from_address)` : sql`lower(mc.from_address), mc.mailbox_id`;
+  const active = "one" in split ? activeAt(split.one) : perMailboxSql(d, split.arms, sql`mc.mailbox_id`, activeAt);
   return sql`exists (
     select 1 from messages mc
       join folder_state fsc on fsc.message_id = mc.id
      where mc.account_id = ${d.castUuid(accountId)}
        and fsc.desired_folder in ${folders}
        and lower(mc.from_address) = ${senderExpr}
-     group by lower(mc.from_address)
+     group by ${groupBy}
     having ${active}
   )`;
 }
@@ -239,8 +277,16 @@ export function senderIsDecidedSql(d: Dialect, accountId: string, senderExpr: SQ
 export function heldClaimInsideSql(
   d: Dialect,
   r: { folder: SQL; deletedAt: SQL; senderCheck: SQL; by: SQL; date: SQL; arrivedAt: SQL; recordedAt: SQL; mailboxId: SQL },
-  cutoff: Date,
+  cutoff: Date | CutlineSet,
 ): SQL {
+  if (!(cutoff instanceof Date)) {
+    const split = cutlineArms(cutoff);
+    // The row's own mailbox's cutoff: the claim is dated against the window that mailbox is read by.
+    return "one" in split ? heldClaimInsideSql(d, r, split.one.cutoff)
+      : perMailboxSql(d, split.arms, r.mailboxId, (c) => heldClaimInsideSql(d, r, c.cutoff),
+        // Admitting a claim is dating it against no window, never calling every row a claim.
+        heldClaimInsideSql(d, r, new Date(0)));
+  }
   const cut = d.ts(cutoff);
   const importDone = sql`(select mbi.initial_import_completed_at from mailboxes mbi where mbi.id = ${r.mailboxId})`;
   return sql`(${r.folder} = ${CUTLINE_GATE_FOLDER} and ${r.deletedAt} is null and ${r.senderCheck} = 'impersonation'
@@ -256,7 +302,7 @@ export function heldClaimInsideSql(
  * `SCREENING_AUTH_VERDICTS` ({@link personSkipSql}).
  */
 export function senderHasHeldClaimSql(
-  d: Dialect, accountId: string, senderExpr: SQL, cutoff: Date, screening: readonly string[],
+  d: Dialect, accountId: string, senderExpr: SQL, cutoff: Date | CutlineSet, screening: readonly string[],
 ): SQL {
   const waits = heldClaimWaitsSql(d, accountId, {
     folder: sql`hf.desired_folder`, deletedAt: sql`hm.deleted_at`, senderCheck: sql`hm.sender_check`,
@@ -280,7 +326,7 @@ export function senderHasHeldClaimSql(
  */
 export function heldClaimWaitsSql(
   d: Dialect, accountId: string, r: Parameters<typeof heldClaimInsideSql>[1] & { sender: SQL; auth: SQL; brand: SQL },
-  cutoff: Date, screening: readonly string[],
+  cutoff: Date | CutlineSet, screening: readonly string[],
 ): SQL {
   return sql`(${heldClaimInsideSql(d, r, cutoff)} and not ${personSkipSql(d, accountId, r, screening)})`;
 }
