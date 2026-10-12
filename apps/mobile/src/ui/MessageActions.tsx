@@ -100,6 +100,7 @@ import { ComposeCopies } from "./ComposeCopies";
 import type { MailtoPrefill } from "./mailto";
 import { Segmented } from "./Segmented";
 import { Sheet, SheetBackdrop, SheetRow, useModalKey, useSheetPanelBounds } from "./Sheet";
+import { useFocusKeeper } from "./keep-focus";
 import { composeBodyMin, notesPinned, pinnedNotesMax } from "./compose-fit";
 import { SurfaceBoundary } from "./ErrorBoundary";
 import { sendPressAct } from "./send-press";
@@ -1120,6 +1121,11 @@ export function ComposeSheet({
   const heightClass = usePosture().heightClass;
   const windowHeight = useWindowDimensions().height;
   const modalKey = useModalKey();
+  /* An unfold redraws the dialog; the field that held the caret gets it back (`keep-focus.ts`). */
+  const focusKeeper = useFocusKeeper();
+  const toField = useRef<TextInput | null>(null);
+  const subjectField = useRef<TextInput | null>(null);
+  const bodyField = useRef<TextInput | null>(null);
   const letterScroll = useRef<null | ScrollView>(null);
   const [notesHeight, setNotesHeight] = useState<number | null>(null);
   const [attachRow, setAttachRow] = useState({ row: 0, files: 0, photos: 0, hint: 0 });
@@ -1606,7 +1612,7 @@ export function ComposeSheet({
   );
 
   return (
-    <Modal key={modalKey} transparent animationType={t.reduceMotion ? "none" : "slide"} visible onRequestClose={closeComposer}>
+    <Modal key={modalKey} transparent animationType={t.reduceMotion ? "none" : "slide"} visible onRequestClose={closeComposer} onShow={focusKeeper.onShow}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1, justifyContent: "flex-end", paddingBottom: keyboardLift }}
@@ -1670,6 +1676,8 @@ export function ComposeSheet({
                 {Copy.forwardTo}
               </Txt>
               <TextInput
+                ref={toField}
+                {...focusKeeper.bind(toField)}
                 maxFontSizeMultiplier={t.textCap}
                 value={to}
                 onChangeText={editWhileIdle(phase, setTo)}
@@ -1704,6 +1712,8 @@ export function ComposeSheet({
                 {Copy.composeSubject}
               </Txt>
               <TextInput
+                ref={subjectField}
+                {...focusKeeper.bind(subjectField)}
                 maxFontSizeMultiplier={t.textCap}
                 value={subject}
                 onChangeText={editWhileIdle(phase, setSubject)}
@@ -1729,6 +1739,8 @@ export function ComposeSheet({
               press, and an editable field over a sending/queued/unverified state would
               display words the wire will not carry. */}
           <TextInput
+            ref={bodyField}
+            {...focusKeeper.bind(bodyField)}
             maxFontSizeMultiplier={t.textCap}
             value={body}
             onChangeText={editWhileIdle(phase, setBody)}

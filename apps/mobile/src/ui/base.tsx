@@ -27,8 +27,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { listInsets, type ListInsets } from "./list-insets";
 import { useBottomChromeExtent } from "./bottom-chrome";
 import { KeyboardRoom } from "./keyboard-room";
-import { usePosture } from "./posture";
-import { listNavClearance, scaffoldPlan, screenFillsWindow, screenRailClearance, screenSideInsets } from "./scaffold/plan";
+import { useAppWindow, usePosture } from "./posture";
+import { listNavClearance, scaffoldPlan, screenFillsWindow, screenHingeClearance, screenRailClearance, screenSideInsets } from "./scaffold/plan";
 import { useInPane } from "./pane-chrome";
 import { topPad } from "./safe-area";
 import { useTheme, type Theme } from "../theme";
@@ -106,16 +106,21 @@ export function Screen({ children, style, fullWindow }: {
   /* THE RAIL OWNS ITS COLUMN: a screen beside it starts past it — the title, the reader, its bar,
      the composer. A pane of the pair pays nothing here, neither the rail nor the side insets: the
      pair's own Screen paid both, and a side cutout pushed a pane's content in twice. */
-  const plan = scaffoldPlan(usePosture(), Platform.OS === "ios" ? "ios" : "android");
+  const posture = usePosture();
+  const plan = scaffoldPlan(posture, Platform.OS === "ios" ? "ios" : "android");
   const inPane = useInPane();
-  const rail = screenRailClearance(plan, screenFillsWindow(fullWindow, inPane), inPane);
+  const fills = screenFillsWindow(fullWindow, inPane);
+  const rail = screenRailClearance(plan, fills, inPane);
   const side = screenSideInsets(insets, inPane);
+  /* A screen that fills the window keeps to one side of a book fold (`screenHingeClearance`). */
+  const hinge = screenHingeClearance(posture, plan, fills, inPane, useAppWindow().width);
   return (
     <View
       style={[
         {
           flex: 1, backgroundColor: t.c.canvas,
-          paddingLeft: side.left + rail.left, paddingRight: side.right + rail.right,
+          paddingLeft: Math.max(side.left + rail.left, hinge.left),
+          paddingRight: Math.max(side.right + rail.right, hinge.right),
         },
         style,
       ]}

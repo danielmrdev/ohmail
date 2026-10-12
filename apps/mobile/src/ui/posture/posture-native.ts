@@ -25,6 +25,8 @@ export interface PostureNative {
    * windows are, so it answers asynchronously; absent (Android) or null where there is none.
    */
   getWindowFrame?(): Promise<WindowFrame | null>;
+  /** Android: measure React's root again, so it lays out in the current density. */
+  relayoutRoot?(): boolean;
   addListener?(event: string, listener: (payload: { folds: FoldFeature[] }) => void): { remove(): void };
 }
 

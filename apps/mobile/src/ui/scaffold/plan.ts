@@ -8,7 +8,7 @@
  * hinge; unfolded-portrait Duo and iPad: two panes + the pinned ActionBar; a split mirrors the
  * nav to the app's half; search in the nav always; flat=nothing, half=hairlines, hard=bar.
  */
-import type { Posture } from "../posture/derive";
+import { separatingVerticalHinge, type Posture } from "../posture/derive";
 import type { PlatformName } from "../posture/derive";
 
 export type NavKind = "dock" | "rail" | "bars";
@@ -113,6 +113,21 @@ export function screenRailClearance(
   return { left, right };
 }
 
+/**
+ * A SCREEN THAT FILLS THE WINDOW STAYS OFF A SEPARATING VERTICAL HINGE (book posture, a hardware
+ * hinge): its content is confined to the side away from the rail, past the keep-out band, in window
+ * dp. A pane of the pair pays nothing (the pair splits at the hinge), and neither does a flat fold.
+ */
+export function screenHingeClearance(
+  p: Posture, plan: Pick<ScaffoldPlan, "navSide">, fills: boolean, inPane: boolean, winW: number,
+): { left: number; right: number } {
+  const h = separatingVerticalHinge(p.fold, p.hinge);
+  if (h === null || inPane || !fills) return { left: 0, right: 0 };
+  const keep = p.fold === "hard" ? 0 : KEEP_OUT;
+  if (plan.navSide === "right") return { left: 0, right: Math.max(0, Math.round(winW - h.x + keep)) };
+  return { left: Math.round(h.x + h.w + keep), right: 0 };
+}
+
 /** The side safe-area insets a `Screen` pays: all of them, except inside a pane, whose pair paid them. */
 export const screenSideInsets = (
   insets: { left: number; right: number }, inPane: boolean,
@@ -187,12 +202,70 @@ export function detailPaneRect(
   insets: { left: number; right: number },
 ): { x: number; w: number } | null {
   if (plan.panes !== 2 || plan.paneAxis !== "row") return null;
-  const boxW = win.w - insets.left - insets.right;
-  const split = paneSplit(p, plan, boxW, win.h);
+  const box = pairBoxOf(win, insets);
+  const split = paneSplit(p, plan, box.w, box.h);
   if (split === null) return null;
   const pad = pairPadding(plan);
   const lead = pad.left + split.first + split.gap;
-  return { x: insets.left + lead, w: Math.max(0, boxW - lead - pad.right) };
+  return { x: insets.left + lead, w: Math.max(0, box.w - lead - pad.right) };
+}
+
+/**
+ * THE PAIR'S BOX: the window less the side insets the pair's `Screen` pays. The pair splits in it and
+ * a sheet's pane rect is measured in it, so the two cannot disagree; read from the CURRENT window,
+ * never from a measured layout an earlier window left behind.
+ */
+export const pairBoxOf = (
+  win: { w: number; h: number }, insets: { left: number; right: number },
+): { w: number; h: number } => ({ w: Math.max(0, win.w - insets.left - insets.right), h: win.h });
+
+/** What the pair shows: both panes, the reader alone (a fold held it open), or the list alone. */
+export type PairShow = "pair" | "reader" | "list";
+
+/** A slot's box: hidden, a fixed size along the axis, or the rest. */
+export interface SlotStyle {
+  display?: "none";
+  flex?: number;
+  width?: number;
+  height?: number;
+}
+
+export interface PairSlots {
+  /** Tabletop puts the reader above the list by REVERSING the column, never by swapping slots. */
+  direction: "row" | "column-reverse";
+  axis: "row" | "column";
+  list: SlotStyle;
+  seam: SlotStyle;
+  reader: SlotStyle;
+  split: { first: number; gap: number } | null;
+}
+
+const HIDDEN: SlotStyle = { display: "none" };
+const REST: SlotStyle = { flex: 1 };
+
+/**
+ * THE PAIR'S ONE TREE. Its three slots always stand in one order — list, seam, reader — and a
+ * posture change only restyles them. Tabletop used to stack the reader by putting it in the list's
+ * slot, which remounted the reader and the reply open on it; and one pane rendered the list bare
+ * outside the pair, so every unfold moved it into a new parent. `heldAxis` keeps the axis a held
+ * reader had, so a fold never changes the direction under it.
+ */
+export function pairSlots(
+  p: Posture,
+  plan: ScaffoldPlan,
+  box: { w: number; h: number },
+  show: PairShow,
+  heldAxis: "row" | "column" | null,
+): PairSlots {
+  const axis = show === "pair" ? plan.paneAxis : (heldAxis ?? "row");
+  const direction = axis === "row" ? "row" : "column-reverse";
+  if (show === "list") return { direction, axis, list: REST, seam: HIDDEN, reader: HIDDEN, split: null };
+  if (show === "reader") return { direction, axis, list: HIDDEN, seam: HIDDEN, reader: REST, split: null };
+  const split = paneSplit(p, plan, box.w, box.h);
+  if (split === null) return { direction, axis, list: REST, seam: HIDDEN, reader: REST, split: null };
+  return axis === "row"
+    ? { direction, axis, list: { width: split.first }, seam: { width: split.gap }, reader: REST, split }
+    : { direction, axis, list: REST, seam: { height: split.gap }, reader: { height: split.first }, split };
 }
 
 export function scaffoldPlan(p: Posture, platform: PlatformName): ScaffoldPlan {
@@ -247,6 +320,9 @@ export function scaffoldPlan(p: Posture, platform: PlatformName): ScaffoldPlan {
     if (platform === "ios" && p.hasFold) {
       return { ...base, nav: "rail", navSide: "right", railCarriesReaderVerbs: true };
     }
+    /* A book fold too narrow for two panes: the rail at the leading edge, never a dock laid
+       across the crease; every screen keeps to one side of it (`screenHingeClearance`). */
+    if (separatingVerticalHinge(p.fold, p.hinge) !== null) return { ...base, nav: "rail", navSide: "left" };
     if (p.heightClass === "compact") return { ...base, nav: "rail", navSide: "left" };
     return base;
   }

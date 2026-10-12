@@ -7,9 +7,10 @@
  * param the list-detail screens read) — the id survives the move and `pane-memory` restores
  * the scroll, which is the continuity rule: a posture change never loses the open message.
  */
-import { useEffect, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { Platform } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { usePaneMove } from "../../src/ui/pane-move";
 import { useBodyStamp, useWorld } from "../../src/state/world";
 import { Gated } from "../../src/ui/Gated";
 import { ReaderRailHost } from "../../src/ui/list-detail";
@@ -20,7 +21,7 @@ import { scaffoldPlan } from "../../src/ui/scaffold/plan";
 import { useLocale } from "../../src/i18n/LocaleProvider";
 import { DevRenderErrorTrigger } from "../../src/dev/render-error-trigger-door";
 import { SurfaceBoundary } from "../../src/ui/ErrorBoundary";
-import { readerHeldNow, readerMoveDue, subscribeReaderHeld } from "../../src/ui/reader-held";
+import { readerHeldNow, subscribeReaderHeld } from "../../src/ui/reader-held";
 
 /**
  * Gated like the tabs: a deep link (`ohmail://message/<id>`) can mount this route with the
@@ -52,16 +53,11 @@ function MessageRoute() {
   // TWO PANES: this full-screen route yields to the list-detail surface that owns the pair.
   // `replace`, not push — the reader is the same reading, moved, and Back must still leave it.
   const target = plan.panes === 2 && m ? paneRouteFor(m) : null;
-  const targetPath = target?.pathname ?? null;
   /* An open sheet or composer holds the move; it fires when the last one closes. */
   const held = useSyncExternalStore(subscribeReaderHeld, readerHeldNow);
-  useEffect(() => {
-    if (targetPath !== null && target !== null && readerMoveDue(targetPath, held)) {
-      router.replace({ pathname: targetPath, params: target.params });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetPath, target?.params.open, held]);
-
+  /* The move waits for an open sheet or composer, and from the replace on this route draws nothing. */
+  const leaving = usePaneMove(target, held);
+  if (leaving !== null) return leaving;
   return (
     <>
       <MessageReader id={id ?? ""} onClose={() => router.back()} />

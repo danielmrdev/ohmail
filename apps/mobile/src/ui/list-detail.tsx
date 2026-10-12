@@ -9,7 +9,7 @@
  * the route's `open` param, and when the pane goes the reading migrates to the pushed route.
  */
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { Platform, ScrollView, StyleSheet, View, type LayoutChangeEvent } from "react-native";
+import { Platform, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams, usePathname } from "expo-router";
 import { Copy } from "../copy";
@@ -25,7 +25,7 @@ import { InPaneContext, PaneChromeContext } from "./pane-chrome";
 import { useAppWindow, usePosture, useStatusCluster } from "./posture";
 import { useReaderRail } from "./reader-rail";
 import { readerHeldNow, subscribeReaderHeld } from "./reader-held";
-import { pairPadding, paneFootSearch, paneSplit, railHome, scaffoldPlan } from "./scaffold/plan";
+import { pairBoxOf, pairPadding, pairSlots, paneFootSearch, railHome, scaffoldPlan, type PairShow } from "./scaffold/plan";
 
 const platformName = Platform.OS === "ios" ? ("ios" as const) : ("android" as const);
 
@@ -76,22 +76,19 @@ export function ListDetail({
   const insets = useSafeAreaInsets();
   const posture = usePosture();
   const plan = scaffoldPlan(posture, platformName);
+  const win = useAppWindow();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [box, setBox] = useState<{ w: number; h: number } | null>(null);
-  const measure = (e: LayoutChangeEvent) =>
-    setBox({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height });
 
   /* THE PANE WENT (folding mid-read): hand the open message to the pushed route — the same
      reading, moved; the id survives and `pane-memory` restores the scroll. The route is
      pushed BEFORE the param clears so no frame renders the bare list over an open reading. */
-  /* FOLDED WITH A SHEET OR A COMPOSER OPEN: the pair's tree stays (list pane hidden, same axis) so
-     the reader keeps its state; the move fires when the last one closes. */
+  /* FOLDED WITH A SHEET OR A COMPOSER OPEN: the reader keeps its pane (the list's hidden) so it keeps
+     its state; the move fires when the last one closes. */
   const held = useSyncExternalStore(subscribeReaderHeld, readerHeldNow);
   const lastAxis = useRef<"row" | "column" | null>(null);
   const holding = plan.panes !== 2 && open !== null && held && lastAxis.current !== null;
   if (plan.panes === 2) lastAxis.current = plan.paneAxis;
   else if (!holding) lastAxis.current = null;
-  const axis = holding ? lastAxis.current! : plan.paneAxis;
   const twoPane = plan.panes === 2 || holding;
   useEffect(() => {
     if (!twoPane && open !== null) {
@@ -101,25 +98,15 @@ export function ListDetail({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [twoPane, open]);
 
-  if (!twoPane) {
-    /* The transition frame before the effect lands keeps the reader up — never a list flash. */
-    if (open !== null) {
-      return (
-        <Screen>
-          <SurfaceBoundary surface="reader" key={open}>
-            {renderDetail(open, { inPane: false, onClose })}
-          </SurfaceBoundary>
-        </Screen>
-      );
-    }
-    return <>{list}</>;
-  }
-
-  const split = box === null || holding ? null : paneSplit(posture, plan, box.w, box.h);
-  const pad = pairPadding(plan);
+  /* ONE TREE ON EVERY POSTURE (`pairSlots`): the slots are restyled, never swapped or re-parented.
+     The transition frame before the effect lands keeps the reader up — never a list flash. */
+  const show: PairShow = plan.panes === 2 ? "pair" : open !== null ? "reader" : "list";
+  const slots = pairSlots(posture, plan, pairBoxOf({ w: win.width, h: win.height }, insets), show, lastAxis.current);
+  const split = slots.split;
+  const pad = show === "pair" ? pairPadding(plan) : { left: 0, right: 0, top: 0, bottom: 0 };
 
   const listPane = (
-    <InPaneContext.Provider value>
+    <InPaneContext.Provider value={show === "pair"}>
     <PaneChromeContext.Provider value={plan.drawer ? { openDrawer: () => setDrawerOpen(true) } : null}>
       <View style={{ flex: 1 }}>
         <View style={{ flex: 1 }}>{list}</View>
@@ -128,7 +115,7 @@ export function ListDetail({
             navigation). They open `app/search.tsx` and `app/compose.tsx`. Where the nav IS the
             rail its pill already carries both, so the foot stands down rather than render the
             same controls twice (`paneFootSearch`). */}
-        {paneFootSearch(plan, platformName) ? (
+        {show === "pair" && paneFootSearch(plan, platformName) ? (
           <View
             style={{
               flexDirection: "row",
@@ -199,7 +186,7 @@ export function ListDetail({
   const hair = (
     <View
       style={
-        plan.paneAxis === "row"
+        slots.axis === "row"
           ? { width: StyleSheet.hairlineWidth * 2, backgroundColor: t.c.hairSoft }
           : { height: StyleSheet.hairlineWidth * 2, backgroundColor: t.c.hairSoft }
       }
@@ -207,45 +194,40 @@ export function ListDetail({
   );
 
   /* The rail is paid once: on a two-pane posture in the pair's padding, while a fold holds the pair
-     open behind a sheet on this Screen by the one-pane rule; a pane's own Screen never pays it. */
+     open behind a sheet on this Screen by the one-pane rule; a pane's own Screen never pays it. The
+     list alone pays its own (its Screen fills the window), so this one pays nothing then. Every
+     container is `collapsable={false}`: a slot that flattened on one posture and not on the next
+     moved its children to a new native parent, and an open reply's dialog went with them. */
   return (
-    <Screen fullWindow={false}>
-      <View style={{ flex: 1 }} onLayout={measure}>
-        {split !== null || holding ? (
+    <Screen fullWindow={show === "reader"} style={show === "list" ? { paddingLeft: 0, paddingRight: 0 } : undefined}>
+      <View style={{ flex: 1 }} collapsable={false}>
+        <View
+          collapsable={false}
+          style={{
+            flex: 1,
+            flexDirection: slots.direction,
+            paddingTop: pad.top,
+            paddingBottom: pad.bottom,
+            paddingLeft: pad.left,
+            paddingRight: pad.right,
+          }}
+        >
+          <View collapsable={false} style={slots.list}>{listPane}</View>
+          {/* The seam: flat, an empty gutter; half-open, the keep-out band with its
+              hairline pair; a hardware hinge is its own width and nothing is painted. */}
           <View
-            style={{
-              flex: 1,
-              flexDirection: axis,
-              paddingTop: pad.top,
-              paddingBottom: pad.bottom,
-              paddingLeft: pad.left,
-              paddingRight: pad.right,
-            }}
+            collapsable={false}
+            style={[slots.seam, { flexDirection: slots.axis === "row" ? "row" : "column", justifyContent: "space-between" }]}
           >
-            <View style={split === null ? (axis === "column" ? { flex: 1 } : { display: "none" }) : axis === "row" ? { width: split.first } : { height: split.first }}>
-              {axis === "column" ? readerPane : listPane}
-            </View>
-            {/* The seam: flat, an empty gutter; half-open, the keep-out band with its
-                hairline pair; a hardware hinge is its own width and nothing is painted. */}
-            <View
-              style={
-                split === null
-                  ? { display: "none" }
-                  : axis === "row"
-                    ? { width: split.gap, flexDirection: "row", justifyContent: "space-between" }
-                    : { height: split.gap, flexDirection: "column", justifyContent: "space-between" }
-              }
-            >
-              {split !== null && plan.foldPaint === "hairlines" ? (
-                <>
-                  {hair}
-                  {hair}
-                </>
-              ) : null}
-            </View>
-            <View style={split === null && axis === "column" ? { display: "none" } : { flex: 1 }}>{axis === "column" ? listPane : readerPane}</View>
+            {split !== null && plan.foldPaint === "hairlines" ? (
+              <>
+                {hair}
+                {hair}
+              </>
+            ) : null}
           </View>
-        ) : null}
+          <View collapsable={false} style={slots.reader}>{readerPane}</View>
+        </View>
       </View>
 
       {/* The reader's rail (unfolded-landscape Duo, message open): the claim the reader
@@ -259,7 +241,7 @@ export function ListDetail({
           pointerEvents="box-none"
           style={[
             StyleSheet.absoluteFill,
-            split !== null && plan.paneAxis === "row"
+            split !== null && slots.axis === "row"
               ? { right: undefined, width: pad.left + split.first }
               : null,
           ]}

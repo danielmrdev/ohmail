@@ -131,6 +131,21 @@ export const OUTER_FACE_MAX = 700;
  */
 export const ANDROID_TWO_PANE_MIN = 700;
 
+/**
+ * THE BOOK FLOOR, dp per side. A separating vertical fold (half-open or a hardware hinge) splits the
+ * window at the hinge whatever the width floor says, so long as each side holds a pane of this
+ * width; one pane laid across the crease put letter lines, Park and the dock on it (674 dp, the
+ * Galaxy Z Fold's inner panel in book posture). Below it the window keeps one pane, confined to one
+ * side by `screenHingeClearance` (`scaffold/plan.ts`).
+ */
+export const BOOK_SIDE_MIN = 300;
+
+/** The fold when it SEPARATES the window into a left and a right side (book posture, a hard hinge). */
+export function separatingVerticalHinge(fold: FoldState, hinge: HingeRect | null): HingeRect | null {
+  if (hinge === null || (fold !== "half" && fold !== "hard")) return null;
+  return hinge.h >= hinge.w ? hinge : null;
+}
+
 export function derivePosture(input: PostureInput): Posture {
   const { width: w, height: h, platform } = input;
   const orientation: Orientation = w >= h ? "landscape" : "portrait";
@@ -167,10 +182,13 @@ export function derivePosture(input: PostureInput): Posture {
 
   /* Panes, the prototype's own rule: compact width — or a compact height under 440 — is one
      pane; a split window is one pane; everything else holds two. A half-open horizontal fold
-     (tabletop) is two panes stacked, which the width rule already admits. */
+     (tabletop) is two panes stacked, which the width rule already admits. A book fold whose sides
+     each hold a pane splits at the hinge under the Android floor too. */
+  const book = separatingVerticalHinge(fold, hinge);
+  const bookSplits = book !== null && book.x >= BOOK_SIDE_MIN && w - (book.x + book.w) >= BOOK_SIDE_MIN;
   const onePane =
     split !== "full" || outer || sizeClass === "compact" || (heightClass === "compact" && h < 440)
-    || (platform === "android" && w < ANDROID_TWO_PANE_MIN);
+    || (platform === "android" && w < ANDROID_TWO_PANE_MIN && !bookSplits);
 
   return {
     sizeClass,

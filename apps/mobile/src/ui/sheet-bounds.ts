@@ -27,8 +27,9 @@ export function sheetPanelBounds(
   if (pane !== null) {
     return { alignSelf: "flex-start", marginLeft: pane.x, width: pane.w, maxHeight: Math.max(0, tall - SHEET_TOP_ROOM) };
   }
+  /* No pane beside a vertical hinge: the reading side, never a floor that reaches back over the crease. */
   if (hinge !== null) {
-    return { alignSelf: "flex-end", width: Math.max(320, w - (hinge.x + hinge.w)), maxHeight: tall };
+    return { alignSelf: "flex-end", width: Math.max(0, w - (hinge.x + hinge.w)), maxHeight: tall };
   }
   return { alignSelf: "center", width: "100%", maxWidth: 560, maxHeight: tall };
 }

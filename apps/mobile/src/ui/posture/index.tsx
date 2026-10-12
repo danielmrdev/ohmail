@@ -108,6 +108,12 @@ export function PostureProvider({
     logPostureDerived({ width: dims.width, height: dims.height, folds: folds?.length ?? 0, state: value.fold });
   }, [value]);
 
+  /* EVERY WINDOW CHANGE RE-MEASURES THE ROOT: size and density together left the root laid out in
+     the old dp (`relayoutRoot`), and the layout derives from the window as it is now. */
+  useEffect(() => {
+    nativePosture()?.relayoutRoot?.();
+  }, [dims.width, dims.height, dims.scale, dims.fontScale]);
+
   return <PostureContext.Provider value={value}>{children}</PostureContext.Provider>;
 }
 

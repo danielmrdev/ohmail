@@ -6,7 +6,7 @@
  * the selection in its `open` param (and the shelf in `seg`) — the same continuity rule the
  * message route follows.
  */
-import { useEffect } from "react";
+import { useSyncExternalStore } from "react";
 import { Platform } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import type { ScreenerSeg } from "../../../src/state/model";
@@ -16,6 +16,8 @@ import { scaffoldPlan } from "../../../src/ui/scaffold/plan";
 import { SenderDetail } from "../../../src/ui/SenderDetail";
 import { useLocale } from "../../../src/i18n/LocaleProvider";
 import { SurfaceBoundary } from "../../../src/ui/ErrorBoundary";
+import { usePaneMove } from "../../../src/ui/pane-move";
+import { readerHeldNow, subscribeReaderHeld } from "../../../src/ui/reader-held";
 
 /** Gated like the tabs — a deep-linked or restored route must not render the empty world. */
 export default function SenderScreen() {
@@ -43,11 +45,11 @@ function SenderRoute() {
   const posture = usePosture();
   const plan = scaffoldPlan(posture, Platform.OS === "ios" ? "ios" : "android");
   const twoPane = plan.panes === 2;
-  useEffect(() => {
-    if (twoPane && id !== "") {
-      router.replace({ pathname: "/screener", params: { open: id, seg } });
-    }
-  }, [twoPane, id, seg]);
+  const held = useSyncExternalStore(subscribeReaderHeld, readerHeldNow);
+  /* The same door as the pushed reader's (`pane-move.ts`): an open sheet holds it, and from the
+     replace on this route draws nothing. */
+  const leaving = usePaneMove(twoPane && id !== "" ? { pathname: "/screener", params: { open: id, seg } } : null, held);
+  if (leaving !== null) return leaving;
 
   return <SenderDetail seg={seg} routeKey={id} onClose={() => router.back()} />;
 }

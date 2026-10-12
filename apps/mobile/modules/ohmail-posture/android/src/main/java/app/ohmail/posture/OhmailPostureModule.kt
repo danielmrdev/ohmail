@@ -2,6 +2,8 @@ package app.ohmail.posture
 
 import android.app.ActivityManager
 import android.content.Context
+import android.view.View
+import android.view.ViewGroup
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -27,6 +29,18 @@ import kotlinx.coroutines.launch
  * `getNetwork` answers "online" or "offline" from the default network's INTERNET capability, and a
  * default-network callback sends `onNetworkChanged`. Any failure answers "unknown", never a throw.
  */
+/** React's root, by class name: this module does not link react-android. */
+private val REACT_ROOTS = setOf("com.facebook.react.runtime.ReactSurfaceView", "com.facebook.react.ReactRootView")
+
+private fun isReactRoot(v: View): Boolean {
+  var c: Class<*>? = v.javaClass
+  while (c != null) {
+    if (c.name in REACT_ROOTS) return true
+    c = c.superclass
+  }
+  return false
+}
+
 class OhmailPostureModule : Module() {
   private var job: Job? = null
   private var lastFolds: List<Map<String, Any?>> = emptyList()
@@ -84,6 +98,29 @@ class OhmailPostureModule : Module() {
     Function("getHasFold") { sawAnyFold }
     Function("getMemoryClass") { activityManager()?.memoryClass ?: 0 }
     Function("isLowRamDevice") { activityManager()?.isLowRamDevice ?: true }
+    /*
+     * THE ROOT LAYS OUT IN THE CURRENT DENSITY. A size and a density change arriving together left
+     * React's root laid out in the OLD dp at the NEW density (the second change moved no pixel, so
+     * nothing measured again). The provider asks for this on every window change; the forced
+     * measure hands the surface the current density. Idempotent.
+     */
+    Function("relayoutRoot") {
+      val activity = appContext.currentActivity ?: return@Function false
+      activity.runOnUiThread {
+        val content = activity.findViewById<ViewGroup>(android.R.id.content) ?: return@runOnUiThread
+        val queue = ArrayDeque<View>(listOf(content))
+        while (queue.isNotEmpty()) {
+          val v = queue.removeFirst()
+          if (isReactRoot(v)) {
+            v.forceLayout()
+            v.requestLayout()
+            continue
+          }
+          if (v is ViewGroup) for (i in 0 until v.childCount) queue.addLast(v.getChildAt(i))
+        }
+      }
+      true
+    }
     Function("getLaunchOverride") {
       appContext.currentActivity?.intent?.getStringExtra("OHMAIL_POSTURE")
         ?: System.getenv("OHMAIL_POSTURE")
@@ -115,11 +152,13 @@ class OhmailPostureModule : Module() {
     OnActivityEntersForeground {
       val activity = appContext.currentActivity ?: return@OnActivityEntersForeground
       if (job != null) return@OnActivityEntersForeground
-      val density = activity.resources.displayMetrics.density
       job = CoroutineScope(Dispatchers.Main).launch {
         WindowInfoTracker.getOrCreate(activity).windowLayoutInfo(activity).collect { info ->
           val folds = info.displayFeatures.filterIsInstance<FoldingFeature>()
           if (folds.isNotEmpty()) sawAnyFold = true
+          /* The density of THIS reading: one read at foreground put a hinge in old dp after a
+             density change. */
+          val density = activity.resources.displayMetrics.density
           lastFolds = folds.map { featureMap(it, density) }
           sendEvent("onFoldsChanged", mapOf("folds" to lastFolds))
         }

@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Copy } from "../copy";
 import { useTheme } from "../theme";
 import { useKeyboardLift } from "./keyboard-lift";
-import { usePosture } from "./posture";
+import { separatingVerticalHinge, usePosture } from "./posture";
 import { detailPaneRect, scaffoldPlan } from "./scaffold/plan";
 import { sheetPanelBounds } from "./sheet-bounds";
 import { Tap, Txt } from "./base";
@@ -33,7 +33,9 @@ export function useSheetPanelBounds(): ViewStyle {
   const posture = usePosture();
   const insets = useSafeAreaInsets();
   const pane = detailPaneRect(posture, scaffoldPlan(posture, Platform.OS === "ios" ? "ios" : "android"), { w, h }, insets);
-  return sheetPanelBounds(w, h, insets.top, pane, posture.panes === 2 ? posture.hinge : null);
+  /* One pane hands no hinge (a flat fold has no width), except a book fold, which a sheet keeps off. */
+  const hinge = posture.panes === 2 || separatingVerticalHinge(posture.fold, posture.hinge) !== null ? posture.hinge : null;
+  return sheetPanelBounds(w, h, insets.top, pane, hinge);
 }
 
 /**
