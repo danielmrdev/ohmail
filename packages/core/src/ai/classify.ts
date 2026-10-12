@@ -4,6 +4,7 @@ import {
   CLASSIFY_RESULT_SCHEMA, SCREENING_PREFIX, SCREENING_RESULT_SCHEMA, TAXONOMY_PREFIX,
   classifyUserPayload, coerceClassifierResult, coerceScreeningResult,
 } from "../classify-prompt.js";
+import { declineOf } from "../model-declined.js";
 import { thinkingOffFor } from "./model-rules.js";
 
 /**
@@ -39,9 +40,12 @@ export type { ClassifyUserPayload } from "../classify-prompt.js";
  */
 export interface AnthropicLike {
   /** `opts.signal` ends the call, retries and the wait before one included (see `makeAnthropicClient`);
-   *  `opts.onUsage` is that one call's usage hook ({@link AiCallOptions}). */
+   *  `opts.onUsage` is that one call's usage hook ({@link AiCallOptions}). `stop_reason` and
+   *  `stop_details` are the answer's own, read by {@link declineOf} before any content is. */
   messages: {
-    create(params: unknown, opts?: { signal?: AbortSignal } & AiCallOptions): Promise<{ content: unknown; usage?: unknown }>;
+    create(params: unknown, opts?: { signal?: AbortSignal } & AiCallOptions): Promise<{
+      content: unknown; usage?: unknown; stop_reason?: unknown; stop_details?: unknown;
+    }>;
   };
 }
 
@@ -157,6 +161,10 @@ async function ask(
   params: Record<string, unknown>, opts: HaikuClassifierOpts, call?: AiCallOptions,
 ): Promise<unknown> {
   const resp = await (call ? opts.client.messages.create(params, call) : opts.client.messages.create(params));
+  // A refusal (no content) or a cut-off answer is this message's outcome, not a malformed reply:
+  // thrown as its own class so no caller counts it as a provider fault.
+  const declined = declineOf(resp.stop_reason, resp.stop_details);
+  if (declined) throw declined;
   const text = extractJsonText(resp.content);
   try {
     return JSON.parse(text);

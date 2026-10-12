@@ -57,10 +57,16 @@ export function clearedByAccess(err: unknown): boolean {
  * for; the caller then says what it says for any other fault. It is deliberately NOT folded into
  * {@link aiRefusalKey}: that maps a code to one sentence, and this refusal has two.
  */
-export function draftFailureKey(err: unknown): "creditsReturned" | "creditsOwed" | null {
+export function draftFailureKey(
+  err: unknown,
+): "creditsReturned" | "creditsOwed" | "declined" | "declinedCreditsReturned" | "declinedCreditsOwed" | null {
   const e = err as { code?: unknown; details?: { credits?: unknown } } | null | undefined;
+  const credits = e?.details?.credits;
+  // A DECLINE says so, with the same two credit states — and plainly when nothing was charged.
+  if (e?.code === "ai_draft_declined") {
+    return credits === "returned" ? "declinedCreditsReturned" : credits === "owed" ? "declinedCreditsOwed" : "declined";
+  }
   if (e?.code !== "ai_draft_failed") return null;
-  const credits = e.details?.credits;
   if (credits === "returned") return "creditsReturned";
   if (credits === "owed") return "creditsOwed";
   return null;

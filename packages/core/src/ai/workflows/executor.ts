@@ -25,6 +25,7 @@ import type { SpendPort } from "@trafficflow/db";
 import { makeDrizzleRepo, type DrizzleRepo } from "../../adapters/drizzle-repo.js";
 import type { NativeLocator } from "../../ports.js";
 import type { DraftPort, DraftInput, DraftResult } from "../draft.js";
+import { ModelDeclinedError } from "../../model-declined.js";
 import { plainTextToOutboundBody } from "../../outbound-text.js";
 /* The model-sink door. The mail half owns it — `packages/core/src/ai/` is refused from the
  * engine artifact, and `drafting-service.ts` (which the engine DOES mount) screens through the
@@ -326,6 +327,8 @@ const draftReplyTool: Tool = {
           ? { action: "workflow", attemptKey, refund: false, meta }
           : { action: "workflow", attemptKey, refund: true, attempt: chargedAttempt, meta });
       }
+      // A decline is the run's own reason, said by name rather than as an unexplained `error`.
+      if (err instanceof ModelDeclinedError) throw new WorkflowStepError("model_declined");
       throw err;
     }
     return {

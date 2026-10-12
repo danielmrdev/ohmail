@@ -10,7 +10,7 @@ import type {
   AccessPort, AiUsageHost, RefundObligationPort, ReleaseReceipt, SpendPort,
 } from "@trafficflow/db";
 import {
-  createLogger, plainTextToOutboundBody, screenModelInput, MODEL_SINK_REFUSAL_SENTENCE,
+  createLogger, plainTextToOutboundBody, screenModelInput, MODEL_SINK_REFUSAL_SENTENCE, ModelDeclinedError,
   type AiCallOptions, type DraftInput, type DraftPort,
 } from "@trafficflow/core/mail";
 import { usageLines } from "./ai-usage-lines.js";
@@ -380,6 +380,9 @@ export class DraftingService {
     try {
       result = await draftWithin(deps.drafter, input, window?.modelDeadline ?? null, usage.call);
     } catch (err) {
+      // A DECLINE IS SAID AS ONE: a 422 the person can read, never a retryable 503 — pressing again
+      // draws the same refusal. The credits take the same two states as any failed draft.
+      const declined = err instanceof ModelDeclinedError;
       // `refund: true` only for an attempt THIS request charged. A `duplicate` names an earlier
       // attempt whose work may have been delivered, and reversing that one because this request
       // failed would hand back a charge for a draft the customer already has.
@@ -389,9 +392,11 @@ export class DraftingService {
           // stands. A lost release here costs the customer nothing — the attempt stays open and
           // the retry is free.
           await releaseClaim(false);
+          if (declined) throw draftDeclined(null);
           throw err;
         }
         const receipt = await releaseClaim(true);
+        if (declined) throw draftDeclined(receipt === "settled" ? "returned" : "owed");
         // AND THE PERSON IS TOLD WHICH OF THE TWO HAPPENED. Two states, two sentences, never one
         // optional field: `returned` is money already back, `owed` is money a pass will return.
         // The underlying error rides as `cause` — it is what the fault record and the log want —
@@ -406,6 +411,7 @@ export class DraftingService {
           true,
         );
       }
+      if (declined) throw draftDeclined(null);
       throw err;
     }
 
@@ -512,6 +518,20 @@ export class DraftingService {
       .limit(MAX_THREAD_MESSAGES);
     return rows.map((r) => ({ from: r.from, snippet: r.snippet }));
   }
+}
+
+/**
+ * THE MODEL DECLINED THIS DRAFT (a refusal, or a reply cut off at its limit). `credits` is the
+ * failed draft's two states — `returned`, `owed` — or `null` when nothing was charged. Not
+ * retryable: the same letter draws the same answer.
+ */
+function draftDeclined(credits: "returned" | "owed" | null): ServiceError {
+  const message = credits === "returned"
+    ? "the model declined to write this draft; your credits are back"
+    : credits === "owed"
+      ? "the model declined to write this draft; your credits will be returned"
+      : "the model declined to write this draft";
+  return new ServiceError("ai_draft_declined", 422, message, credits === null ? undefined : { credits }, false);
 }
 
 /**

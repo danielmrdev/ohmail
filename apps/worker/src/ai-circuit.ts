@@ -1,6 +1,6 @@
 import type { SpendPort } from "@trafficflow/db";
 import { ClassifierFaultError } from "./classifier-fault.js";
-import { SensitivePayloadRefusal } from "@trafficflow/core";
+import { ModelDeclinedError, SensitivePayloadRefusal } from "@trafficflow/core";
 import type { AiCallOptions, ClassifierPort, ClassifierInput, ClassifierResult, Logger } from "@trafficflow/core";
 
 /**
@@ -227,6 +227,18 @@ export function makeClassifierCircuit(
         // ONE message, so it says nothing about any other mailbox's call — and another
         // mailbox's classification may still be in flight and about to be delivered.
         refundOpenCharges("classifier_sensitive_refusal", mailboxId);
+        throw err;
+      }
+      // A DECLINE IS THE PROVIDER ANSWERING, NOT FAILING — the refusal's door, beside it. A safety
+      // refusal or a cut-off answer speaks for one message, so it is NEUTRAL here: counted, it kept
+      // a mailbox faulting behind one message while other mailboxes' successes kept the breaker
+      // shut. THIS mailbox's charge comes back (its retry would draw the same decline), and the
+      // error goes on UNWRAPPED to `pipeline.ts`, which routes the message as with AI off.
+      if (err instanceof ModelDeclinedError) {
+        log?.info("classifier_declined", {
+          mailboxId, stopReason: err.stopReason, refusalCategory: err.refusalCategory, consecutiveFaults,
+        });
+        refundOpenCharges("classifier_declined", mailboxId);
         throw err;
       }
       consecutiveFaults++;

@@ -49,6 +49,7 @@ import type {
   MessageBodyInput, NativeLocator, StoredMessage,
 } from "./ports.js";
 import type { ClassifierPort, ClassifierResult } from "./classifier-port.js";
+import { ModelDeclinedError } from "./model-declined.js";
 import type { NormalizedMessage } from "./types.js";
 // A VALUE import, and from `types.js` rather than `adapters/imap-types.js` which re-exports it:
 // that module's entry point carries `imapflow`, and this predicate is deliberately kept in a module
@@ -1275,7 +1276,7 @@ async function planFromRaw(change: Change, deps: PlanDeps): Promise<ChangePlan> 
       (credits == null || aiSpendPermitted(
         await credits.spend(accountId, "classify_ingest", attemptKey, { mailboxId })))
     ) {
-      let result: ClassifierResult;
+      let result: ClassifierResult | undefined;
       try {
         result = await classifier.classify({
           from: normalized.from,
@@ -1297,13 +1298,21 @@ async function planFromRaw(change: Change, deps: PlanDeps): Promise<ChangePlan> 
         // re-classify an entire backlog free through an outage. The call sites where the retry is
         // NOT guaranteed — the drafting request (a human may give up) and the proposal cron (a
         // new period bucket) — do refund, re-opening the work for a fresh charge.
-        throw err;
+
+        // A DECLINE IS NOT A FAULT, and it is not rethrown: a refusal or a cut-off answer speaks
+        // for this one message, so it is routed exactly as with AI off — `ai` stays unset and
+        // `desired` is the rules' answer. Rethrown, it stalled the mailbox behind the message
+        // (the retry draws the same decline), so new mail and read state stopped behind it. The
+        // charge comes back where it was metered: the worker's circuit, which owns the open charge.
+        if (!(err instanceof ModelDeclinedError)) throw err;
       }
-      const patternKey = `sender:${normalized.from.address}→${result.destination}`;
-      const graduated = await routing.isGraduated(accountId, patternKey, "route");
-      const autoApplied = graduated && result.confidence >= AUTO_APPLY_CONFIDENCE_BAR;
-      if (autoApplied) desired = result.destination;
-      ai = { result, patternKey, graduated, autoApplied };
+      if (result) {
+        const patternKey = `sender:${normalized.from.address}→${result.destination}`;
+        const graduated = await routing.isGraduated(accountId, patternKey, "route");
+        const autoApplied = graduated && result.confidence >= AUTO_APPLY_CONFIDENCE_BAR;
+        if (autoApplied) desired = result.destination;
+        ai = { result, patternKey, graduated, autoApplied };
+      }
     }
 
     return {

@@ -1,4 +1,5 @@
 import { assertPublicHttpUrlShape } from "../net/ssrf-guard.js";
+import { refusalCategoryOf } from "../model-declined.js";
 import type { AnthropicLike } from "./classify.js";
 import type { Logger } from "../log.js";
 import type { AiCallOptions, AnthropicCallReport } from "../ai-call-report.js";
@@ -80,8 +81,9 @@ export function estimateCostMicroUsd(
   usage: { inputTokens?: number | null; outputTokens?: number | null;
            cacheReadTokens?: number | null; cacheWriteTokens?: number | null },
 ): number | null {
-  const price = MODEL_PRICES_USD_PER_MTOK[model];
-  if (!price) return null;
+  // Own keys only: `constructor` is a model with no price, not the prototype's function.
+  if (!Object.prototype.hasOwnProperty.call(MODEL_PRICES_USD_PER_MTOK, model)) return null;
+  const price = MODEL_PRICES_USD_PER_MTOK[model]!;
   const input = usage.inputTokens ?? 0;
   const output = usage.outputTokens ?? 0;
   const cacheRead = usage.cacheReadTokens ?? 0;
@@ -93,6 +95,20 @@ export function estimateCostMicroUsd(
     cacheWrite * price.input * CACHE_WRITE_MULTIPLIER +
     output * price.output;
   return Math.round(usdMicros);
+}
+
+/**
+ * The refusal categories Anthropic bills when the refusal arrives before any output (its refusals
+ * page, read 2026-10-12). Every other refusal before output — `cyber`, `general_harms`, or none
+ * named — is not billed, so it is reported unpriced; one after output bills like any call. The
+ * set can move as Anthropic re-measures its false positives: re-check it with the price table.
+ */
+export const BILLED_REFUSAL_CATEGORIES: ReadonlySet<string> = new Set(["bio", "frontier_llm", "reasoning_extraction"]);
+
+/** True for a refusal Anthropic does not bill, which the report carries with no cost. */
+export function unbilledRefusal(stopReason: string | null, stopDetails: unknown, outputTokens: number | null): boolean {
+  if (stopReason !== "refusal" || (outputTokens ?? 0) > 0) return false;
+  return !BILLED_REFUSAL_CATEGORIES.has(refusalCategoryOf(stopDetails) ?? "");
 }
 
 /** A non-2xx answer from the API, with everything an operator needs and nothing secret. */
@@ -280,7 +296,7 @@ export function makeAnthropicClient(opts: AnthropicClientOptions): AnthropicLike
     messages: {
       async create(
         params: unknown, call?: { signal?: AbortSignal } & AiCallOptions,
-      ): Promise<{ content: unknown; usage?: unknown }> {
+      ): Promise<{ content: unknown; usage?: unknown; stop_reason?: unknown; stop_details?: unknown }> {
         const startedAt = now();
         // THE CALLER'S DEADLINE BINDS EVERY ATTEMPT AND EVERY WAIT BETWEEN THEM. A per-attempt
         // timeout plus a `retry-after` of up to 20 s outlived the function it ran in; once the
@@ -333,15 +349,22 @@ export function makeAnthropicClient(opts: AnthropicClientOptions): AnthropicLike
             lastStatus = response.status;
             lastRequestId = response.headers.get("request-id");
             if (response.ok) {
-              const parsed = (await response.json()) as { content?: unknown; usage?: unknown; model?: unknown };
+              const parsed = (await response.json()) as {
+                content?: unknown; usage?: unknown; model?: unknown; stop_reason?: unknown; stop_details?: unknown;
+              };
               const usage = readUsage(parsed.usage);
               const model = typeof parsed.model === "string" ? parsed.model : requestedModel;
+              const stopReason = typeof parsed.stop_reason === "string" ? parsed.stop_reason : null;
               await emit({
                 model, ok: true, status: response.status, latencyMs: now() - startedAt,
-                attempts: attempt, requestId: lastRequestId, ...usage,
-                costMicroUsd: estimateCostMicroUsd(model, usage),
+                attempts: attempt, requestId: lastRequestId, ...usage, stopReason,
+                costMicroUsd: unbilledRefusal(stopReason, parsed.stop_details, usage.outputTokens)
+                  ? null : estimateCostMicroUsd(model, usage),
               }, call?.onUsage);
-              return { content: parsed.content, usage: parsed.usage };
+              return {
+                content: parsed.content, usage: parsed.usage,
+                stop_reason: parsed.stop_reason, stop_details: parsed.stop_details,
+              };
             }
 
             // Read the body for the error TYPE. Anthropic's messages never contain the key, but
@@ -378,7 +401,7 @@ export function makeAnthropicClient(opts: AnthropicClientOptions): AnthropicLike
           model: requestedModel, ok: false, status: lastStatus, latencyMs: now() - startedAt,
           attempts: attempt, requestId: lastRequestId,
           inputTokens: null, outputTokens: null, cacheReadTokens: null,
-          cacheWriteTokens: null, thinkingTokens: null, costMicroUsd: null,
+          cacheWriteTokens: null, thinkingTokens: null, stopReason: null, costMicroUsd: null,
         }, call?.onUsage);
         throw lastError;
       },

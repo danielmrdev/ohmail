@@ -1,7 +1,9 @@
 import { UNMETERED, isSpendMetered, type SpendComposition, type Tx } from "@trafficflow/db";
 import { makeOwnedDb, makeEntitlementsClient, entitlementsFaultRecorder } from "@trafficflow/db/cloud";
 import type { AiUsageLine, SpendPort } from "@trafficflow/db";
-import { generateProposals, silentLogger, unconfiguredProposer, type Logger, type WorkflowPort } from "@trafficflow/core";
+import {
+  generateProposals, ModelDeclinedError, silentLogger, unconfiguredProposer, type Logger, type WorkflowPort,
+} from "@trafficflow/core";
 import { selectionOf, type WorkerConfig } from "./config.js";
 import { acquireLeaderLock, leaderLockKeyFor } from "./leader-lock.js";
 import { loadServedAccounts } from "./mailboxes.js";
@@ -113,6 +115,14 @@ export async function proposalGeneratePass(
     // The proposer, the store or the gate faulted. Rethrown so the cron's per-account try/catch
     // logs it and the other accounts still run; the claim goes back refunded, at the door below.
     refundOnRelease = true;
+    // A DECLINE IS THIS ACCOUNT'S ANSWER, NOT A FAULT: the proposer threw before the open set was
+    // replaced, so the account keeps the proposals it had, and the charge comes back at the door.
+    if (err instanceof ModelDeclinedError) {
+      log.info(cronEvent("proposals", "declined"), {
+        accountId: deps.accountId, stopReason: err.stopReason, refusalCategory: err.refusalCategory,
+      });
+      return { generated: 0 };
+    }
     throw err;
   } finally {
     // ONE DOOR, AND AFTER THE STORE. Every exit from the try leaves through here — the return, a

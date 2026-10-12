@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, notInArray, sql } from "drizzle-orm";
 import { dialect } from "@trafficflow/db/dialect";
 import {
   accountSettings, folderState, messages,
@@ -12,7 +12,7 @@ import { screenerUsageHook, type UsageHook } from "./ai-usage-line.js";
 import { capabilityForKind } from "@trafficflow/core/adapters/organizer-lease";
 import { correspondentsAmong } from "@trafficflow/core/adapters/drizzle-repo";
 import {
-  askScreeningQuestion, capSuggestion, senderCheckAll, senderFacts, silentLogger,
+  askScreeningQuestion, capSuggestion, ModelDeclinedError, senderCheckAll, senderFacts, silentLogger,
   type ClassifierPort, type Logger, type SenderSignals,
 } from "@trafficflow/core/mail";
 
@@ -41,6 +41,44 @@ const SCREENER = "ohmail/Screener";
  * drain (new senders trickle in) and bounds the one crowd — the first sync after the switch turns on.
  */
 export const AUTO_SUGGEST_BATCH = 10;
+
+/**
+ * THE SENDERS A MODEL DECLINED, held out of the candidate page for a while. The page is the ten
+ * OLDEST unadvised senders and a decline stores no advice, so without this the same decliners
+ * came back first every cycle: ten of them and nobody behind them was ever asked, and every cycle
+ * paid for the same refusals again. Keyed by the representative MESSAGE, so a sender who writes
+ * again is asked about the new message at once.
+ */
+export interface DeclineMemory {
+  heldOut(accountId: string, nowMs: number): string[];
+  remember(accountId: string, messageId: string, untilMs: number): void;
+}
+
+/** A day: long enough that a decliner costs one ask a day, short enough to ask a changed model. */
+export const DECLINE_COOLDOWN_MS = 24 * 60 * 60_000;
+
+/** Per process and bounded: a restart forgets, which costs one more ask and never a stall. */
+export function makeDeclineMemory(cap = 10_000): DeclineMemory {
+  const held = new Map<string, { accountId: string; messageId: string; untilMs: number }>();
+  return {
+    heldOut(accountId, nowMs) {
+      const out: string[] = [];
+      for (const [key, v] of held) {
+        if (v.untilMs <= nowMs) held.delete(key);
+        else if (v.accountId === accountId) out.push(v.messageId);
+      }
+      return out;
+    },
+    remember(accountId, messageId, untilMs) {
+      const key = `${accountId}:${messageId}`;
+      held.delete(key);
+      held.set(key, { accountId, messageId, untilMs });
+      while (held.size > cap) held.delete(held.keys().next().value!);
+    },
+  };
+}
+
+const PROCESS_DECLINES = makeDeclineMemory();
 
 export interface ScreenerAutoSuggestDeps {
   /** Scope to ONE account — the worker loops its served accounts. */
@@ -94,9 +132,11 @@ export interface ScreenerAutoSuggestDeps {
   log?: Logger;
   /** Test seam. Default {@link AUTO_SUGGEST_BATCH}. */
   batch?: number;
+  /** Test seam. Default: this process's {@link DeclineMemory}. */
+  declines?: DeclineMemory;
   /**
-   * The clock, for the cutline. It is read ONLY when the account has no baseline — the sliding
-   * window is measured from now — so the hosted pass leaves it absent and takes the real clock.
+   * The clock, for the cutline (an account with no baseline slides its window from now) and for
+   * the decline hold-out. The hosted pass leaves it absent and takes the real clock.
    */
   now?: () => Date;
 }
@@ -109,8 +149,9 @@ export interface ScreenerAutoSuggestResult {
   /** Suggestions stored. */
   bought: number;
   /**
-   * Attempts this pass was CHARGED for — what happened, not what it cost: the price is the
-   * metering program's, which debits it, and this pass holds none. A `duplicate` is not counted.
+   * Attempts this pass was CHARGED for and kept — what happened, not what it cost: the price is the
+   * metering program's, which debits it. A `duplicate` is not counted, nor a refunded attempt (a
+   * sender advised meanwhile, a decline).
    */
   chargedAttempts: number;
   /** Why the pass stopped early, if it did. Absent ⇒ it ran the page out. */
@@ -184,13 +225,17 @@ export async function screenerAutoSuggestPass(
   const watermark = settings?.autoSuggestAt ?? null;
   if (!watermark) return EMPTY();
 
+  const now = deps.now?.() ?? new Date();
   const cutline = resolveCutline({
     baselineAt: settings?.screeningBaselineAt ?? null,
     dormancyDays: settings?.dormancyDays ?? null,
     scope: settings?.screeningScope ?? null,
-    now: deps.now?.() ?? new Date(),
+    now,
   });
-  const page = await selectCandidates(db, { accountId, watermark, limit: batch, cutline });
+  const declines = deps.declines ?? PROCESS_DECLINES;
+  const page = await selectCandidates(db, {
+    accountId, watermark, limit: batch, cutline, exclude: declines.heldOut(accountId, now.getTime()),
+  });
 
   /* ── NO ORGANIZER, NO SPEND ────────────────────────────────────────────────────────────────
    *
@@ -280,11 +325,11 @@ export async function screenerAutoSuggestPass(
     let claimed = false;
     let released = false;
     /**
-     * DOES THE ONE RELEASE REVERSE THE CHARGE — the already-advised path, and nothing else.
+     * DOES THE ONE RELEASE REVERSE THE CHARGE — the already-advised path and a model decline.
      *
-     * The answer the three named releases gave, unchanged: a sender advised between the candidate
-     * query and the claim is refunded; a fault is not, because the charge buys a free retry next
-     * cycle over the same message and that is the claim this pass's caller already makes.
+     * A sender advised between the candidate query and the claim is refunded, and so is a decline,
+     * which bought nothing a retry could honour; a fault is not, because the charge buys a free
+     * retry next cycle over the same message and that is the claim this pass's caller already makes.
      */
     let refundOnRelease: RefundObligationReason | null = null;
     /** This candidate's model call, once made, for the one release to carry. */
@@ -412,6 +457,20 @@ export async function screenerAutoSuggestPass(
           ...(facts ? { senderFacts: facts } : {}),
         }, deps.usageHook ? screenerUsageHook(deps.usageHook, accountId, (l) => { usageLine = l; }) : undefined);
       } catch (err) {
+        // A DECLINE SKIPS THIS SENDER AND THE BATCH GOES ON. A refusal or a cut-off answer speaks
+        // for one sender, not the endpoint: stopping on it stalled every later held sender behind
+        // the oldest one, each cycle, and kept a charge that bought nothing. The charge comes back
+        // at the door (`drafter_failed` is the closed set's "the model call it paid for produced
+        // nothing"), uncounted, and the sender is held out for a day unless it writes again.
+        if (err instanceof ModelDeclinedError) {
+          log.info("screener_auto_suggest_declined", {
+            accountId, messageId: c.messageId, stopReason: err.stopReason, refusalCategory: err.refusalCategory,
+          });
+          if (chargedAttempt !== undefined) result.chargedAttempts--;
+          refundOnRelease = "drafter_failed";
+          declines.remember(accountId, c.messageId, now.getTime() + DECLINE_COOLDOWN_MS);
+          continue;
+        }
         // STOP, where the user-pressed path CONTINUES — nobody is waiting here, and a model fault is almost
         // always the whole endpoint, so pressing on would charge the rest of the batch against an outage
         // every cycle. THE CHARGE IS NOT REFUNDED: the old reason ("the ledger source is the message, so the
@@ -451,7 +510,7 @@ export async function screenerAutoSuggestPass(
       result.bought++;
     } finally {
       // ONE DOOR, AND AFTER THE STORE. Every exit from this candidate leaves through here — the
-      // two `continue`s, the two `break`s, a throw from the entitlement re-check or the store,
+      // `continue`s, the two `break`s, a throw from the entitlement re-check or the store,
       // and any exit added later — because a release written on the exits somebody had in mind is
       // not a release the next exit has, and a claim left behind answers the next cycle
       // `inflight` on a message nobody worked on until the TTL runs out. Never earlier than the
@@ -508,7 +567,11 @@ async function appliableMailboxes(
  * OLDER message and buy against different mail than the row on screen. The watermark clock is `created_at`
  * (ours), never `messages.date` (the sender's, removed from `pipeline.ts`); `ORDER BY created_at ASC`. */
 async function selectCandidates(
-  db: Tx, opts: { accountId: string; watermark: Date; limit: number; cutline?: ResolvedCutline },
+  db: Tx, opts: {
+    accountId: string; watermark: Date; limit: number; cutline?: ResolvedCutline;
+    /** Representatives a model declined lately ({@link DeclineMemory}), left out BEFORE the limit. */
+    exclude?: readonly string[];
+  },
 ): Promise<Candidate[]> {
   const d = dialect(db);
   // The queue's own sort key (`heldSortKey`), so the pass buys advice about the row on screen.
@@ -596,6 +659,8 @@ async function selectCandidates(
       sql`not ${senderIsDecidedSql(d, opts.accountId, sql`lower(${reps.fromAddress})`)}`,
       // (6) THE ACCOUNT ITSELF — its own mail at the gate is no decision, so no advice is bought on it.
       sql`not ${senderIsOwnSql(d, opts.accountId, sql`lower(${reps.fromAddress})`)}`,
+      // (7) A RECENT DECLINE — held out before the limit, so the page reaches the senders behind it.
+      opts.exclude && opts.exclude.length > 0 ? notInArray(reps.messageId, [...opts.exclude]) : undefined,
     ))
     .orderBy(asc(reps.createdAt), asc(reps.messageId))
     .limit(opts.limit);

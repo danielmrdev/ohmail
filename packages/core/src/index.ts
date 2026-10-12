@@ -23,6 +23,7 @@ export * from "./husk-restore.js";
 // the html-to-text rendering an HTML-only message's words come from.
 export * from "./html-text.js";
 export * from "./message-search.js";
+export * from "./model-declined.js";
 export * from "./ai/classify.js";
 export * from "./ai/anthropic-client.js";
 export * from "./ai/draft.js";

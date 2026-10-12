@@ -3,6 +3,7 @@ import type { AiCallOptions } from "../../ai-call-report.js";
 import {
   ALLOWED_TOOLS, type ToolName, type WorkflowStep, type WorkflowTrigger,
 } from "../../workflow-shapes.js";
+import { declineOf } from "../../model-declined.js";
 import { requestRulesFor } from "../model-rules.js";
 
 /**
@@ -243,7 +244,8 @@ function coerceStep(raw: unknown): WorkflowStep {
  * `new Anthropic()` in prod, a canned-JSON fake in tests. No `@anthropic-ai/sdk`
  * import lives in this module — the SDK is a deployment concern. Returns an empty list
  * on a malformed response rather than throwing (proposals are advisory — a bad model
- * turn simply yields no suggestions, never a broken cron).
+ * turn simply yields no suggestions, never a broken cron); a decline throws
+ * `ModelDeclinedError`, so the pass keeps the open set and refunds.
  */
 export function makeOpusProposer(client: AnthropicLike, opts: OpusProposerOpts = {}): WorkflowPort {
   // At construction, so a model with no row fails the boot and not the proposal cron.
@@ -253,6 +255,10 @@ export function makeOpusProposer(client: AnthropicLike, opts: OpusProposerOpts =
       if (patterns.length === 0) return [];
       const params = buildProposeParams(patterns, opts);
       const resp = await (call ? client.messages.create(params, call) : client.messages.create(params));
+      // THROWN, never `[]`: an empty list replaces the account's open proposals, and a refusal or
+      // a list cut off at `max_tokens` says nothing about which of them still hold.
+      const declined = declineOf(resp.stop_reason, resp.stop_details);
+      if (declined) throw declined;
       let parsed: unknown;
       try {
         parsed = JSON.parse(extractJsonText(resp.content));

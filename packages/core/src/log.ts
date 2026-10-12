@@ -567,6 +567,9 @@ export const ALLOWED_FIELDS: readonly string[] = [
   //    by a `token` substring rule. See SUBSTRING_EXEMPT_FIELDS.
   "model", "ok", "latencyMs", "inputTokens", "outputTokens", "cacheReadTokens",
   "cacheWriteTokens", "thinkingTokens", "costMicroUsd",
+  // The answer's `stop_reason` and a decline's `stop_details.category`: Anthropic's own closed
+  // words (`refusal`, `cyber`, …), never text from the mail, so a decline is visible by its kind.
+  "stopReason", "refusalCategory",
   // ── The server-side sweep: every name the server's and the organizer's call sites passed and
   //    this list dropped, admitted once the checker typed its value at every call site in the repo.
   //    The self-host boot first (`setupStep` is the step sentence `setupProdDatabase` writes over

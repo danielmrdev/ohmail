@@ -887,13 +887,15 @@
       "out_of_credits": "Das KI-Budget war aufgebraucht, bevor dieser Absender dran war. Es füllt sich im nächsten Zyklus — von Hand entscheiden kostet nichts.",
       "over_quote": "Der Lauf hat die Zahl erreicht, die du bestätigt hast, bevor dieser Absender dran war. Drück noch einmal, um ihn einzuschließen.",
       "spend_unavailable": "KI ist für dieses Konto abgeschaltet oder nicht verfügbar, dieser Absender wurde also nicht geprüft. Von Hand entscheiden kostet nichts.",
-      "model_unavailable": "Das Modell hat für diesen Absender nicht geantwortet. Nochmal fragen kostet nichts."
+      "model_unavailable": "Das Modell hat für diesen Absender nicht geantwortet. Nochmal fragen kostet nichts.",
+      "model_declined": "Das Modell hat es abgelehnt, diesen Absender einzuschätzen — hier entscheidest du."
     },
     "aiSkipRow": {
       "out_of_credits": "Kein Vorschlag — das KI-Budget ist aufgebraucht. Es füllt sich im nächsten Zyklus.",
       "over_quote": "Kein Vorschlag — der Lauf hat bei der bestätigten Zahl gestoppt. Drück noch einmal, um diesen Absender einzuschließen.",
       "spend_unavailable": "Kein Vorschlag — KI ist für dieses Konto gerade nicht verfügbar.",
-      "model_unavailable": "Kein Vorschlag — das Modell hat nicht geantwortet. Nochmal fragen kostet nichts."
+      "model_unavailable": "Kein Vorschlag — das Modell hat nicht geantwortet. Nochmal fragen kostet nichts.",
+      "model_declined": "Kein Vorschlag — das Modell hat es abgelehnt, diesen Absender einzuschätzen."
     },
     "aiWhy": "„{why}“",
     "heldCaption": "{count} zurückgehaltene Nachrichten — alle gezeigt · erster Kontakt {time}",
@@ -1397,7 +1399,10 @@
     "failedOpaque": "Der Entwurf wurde geschrieben, lie\u00df sich aber nicht laden. Erneutes Dr\u00fccken holt denselben \u2014 es wird kein zweiter gekauft.",
     "failedOpaqueEarly": "Auf dem Server ist etwas schiefgegangen, es wurde kein Entwurf erstellt. Erneutes Dr\u00fccken wiederholt diese Anfrage, und sie wird nie doppelt berechnet.",
     "creditsReturned": "Das hat nicht geklappt. Deine Punkte sind zur\u00fcck.",
-    "creditsOwed": "Das hat nicht geklappt. Deine Punkte kommen zur\u00fcck."
+    "creditsOwed": "Das hat nicht geklappt. Deine Punkte kommen zur\u00fcck.",
+    "declined": "Das Modell hat es abgelehnt, diese Antwort zu entwerfen.",
+    "declinedCreditsReturned": "Das Modell hat es abgelehnt, diese Antwort zu entwerfen. Deine Punkte sind zur\u00fcck.",
+    "declinedCreditsOwed": "Das Modell hat es abgelehnt, diese Antwort zu entwerfen. Deine Punkte kommen zur\u00fcck."
   },
   "settings": {
     "title": "Einstellungen",

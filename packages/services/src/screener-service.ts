@@ -37,7 +37,7 @@ import type {
 } from "@trafficflow/core/mail";
 import {
   applyReconcileAction, askScreeningQuestion, canonicalDestination, capSuggestion, createLogger,
-  DESTINATIONS, effectForDestination, isDecidedDestination,
+  DESTINATIONS, effectForDestination, isDecidedDestination, ModelDeclinedError,
   resolveOhboxPolicy, senderCheckAll, senderDomainOf, senderFacts, BRANDS, SCREENING_AUTH_VERDICTS,
 } from "@trafficflow/core/mail";
 /* The verdict derivation moved to its own leaf when `materializeScreenerSuggestion` became its
@@ -606,7 +606,8 @@ export type ScreenerSuggestSkip =
   | "out_of_credits"      // the balance ran out part-way through the set
   | "over_quote"          // the run reached the number the person confirmed — see `maxCredits`
   | "spend_unavailable"   // see below — every "not now, ask again" the gate can produce
-  | "model_unavailable";  // charged, the model faulted; the free retry honours it
+  | "model_unavailable"   // charged, the model faulted; the free retry honours it
+  | "model_declined";     // the model declined this sender (a refusal, a cut-off); refunded
 /**
  * `spend_unavailable` COVERS ONE MORE THING since the double-buy fix, deliberately not a new wire
  * value: another caller holds the exclusive claim on this sender's message and did not finish
@@ -2132,6 +2133,8 @@ export class ScreenerService extends ScreenerReadService {
       /** Set only where the gate hands this lane the claim; `inflight` names another holder. */
       let claimed = false;
       let released = false;
+      /** The model declined this sender; its credit leaves `charged` once the refund settles. */
+      let declined = false;
       /** The model call's usage, carried by the release below — a model fault's line included. */
       const usage = usageLines(this.usageHost, ctx.accountId, "screener");
       /** Give the claim back ONCE — `released` set before the await, so a fault is not retried. */
@@ -2139,9 +2142,10 @@ export class ScreenerService extends ScreenerReadService {
         if (!gate || !claimed || released) return;
         released = true;
         const meta = { messageId: r.messageId };
-        await gate.release(ctx.accountId, chargedAttempt === null
+        const receipt = await gate.release(ctx.accountId, chargedAttempt === null
           ? { action: "screener", attemptKey, refund: false, meta, ...usage.field() }
           : { action: "screener", attemptKey, refund: true, attempt: chargedAttempt, meta, ...usage.field() });
+        if (declined && chargedAttempt !== null && receipt === "settled") charged -= price ?? 0;
       };
       try {
         if (gate) {
@@ -2252,6 +2256,14 @@ export class ScreenerService extends ScreenerReadService {
             ...(facts ? { senderFacts: facts } : {}),
           }, usage.call);
         } catch (err) {
+          // A DECLINE IS SAID FOR THIS SENDER AND REFUNDED. Asking again draws the same refusal, so
+          // the free retry `model_unavailable` promises would be a promise about nothing: the charge
+          // stays set for the door below to reverse, and leaves `charged` once that reversal settles.
+          if (err instanceof ModelDeclinedError) {
+            refused[index] = { sender, reason: "model_declined" };
+            declined = true;
+            return;
+          }
           console.error(`[screener] AI suggestion failed for message ${r.messageId}:`, err);
           refused[index] = { sender, reason: "model_unavailable" };
           // The claim goes back at the door and the CHARGE STANDS: the source is stable, so the

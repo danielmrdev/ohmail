@@ -942,7 +942,7 @@ export interface ScreenerSenderDTO {
      * an answer the overlay holds; client-side only, never on the wire.
      */
     id?: string;
-    noAnswer?: "out_of_credits" | "over_quote" | "spend_unavailable" | "model_unavailable";
+    noAnswer?: "out_of_credits" | "over_quote" | "spend_unavailable" | "model_unavailable" | "model_declined";
     /**
      * WHICH FACT OHMAIL CHECKED DECIDED THIS — a deterministic sender check the server ran before
      * the model, which may bound what the model's answer is allowed to say. A closed set, so the

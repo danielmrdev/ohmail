@@ -3,6 +3,7 @@ import type { DraftCallOptions, DraftInput, DraftPort, DraftResult } from "../dr
 import {
   DRAFT_PREFIX, DRAFT_RESULT_SCHEMA, coerceDraftResult, draftUserPayload,
 } from "../draft-prompt.js";
+import { declineOf } from "../model-declined.js";
 import { thinkingOffFor } from "./model-rules.js";
 
 /**
@@ -113,6 +114,9 @@ export function makeSonnetDrafter(client: AnthropicLike, opts: SonnetDrafterOpts
         ? { ...(call.signal ? { signal: call.signal } : {}), ...(call.onUsage ? { onUsage: call.onUsage } : {}) }
         : undefined;
       const resp = await client.messages.create(params, own);
+      // A refusal or a cut-off draft is said as one, never read as a malformed reply.
+      const declined = declineOf(resp.stop_reason, resp.stop_details);
+      if (declined) throw declined;
       const text = extractJsonText(resp.content);
       let parsed: unknown;
       try {

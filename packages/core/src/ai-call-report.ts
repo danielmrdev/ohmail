@@ -36,10 +36,16 @@ export interface AnthropicCallReport {
    */
   thinkingTokens: number | null;
   /**
+   * The answer's own `stop_reason` (`end_turn`, `max_tokens`, `refusal`, …), or `null` for a call
+   * that failed or an answer that stated none. Optional so a hand-built report stays one: the
+   * client always sets it. A `refusal` is a decline that answered for its one request only.
+   */
+  stopReason?: string | null;
+  /**
    * Estimated cost in USD micro-dollars (1e-6 USD), or `null` for a model this build has no
-   * price for. An ESTIMATE — the invoice is authoritative — but it is the only per-action number
-   * available at the moment the action happens, which is what makes a tier's margin measurable
-   * rather than reconstructible a month later.
+   * price for and for a refusal Anthropic does not bill (`unbilledRefusal`). An ESTIMATE — the
+   * invoice is authoritative — but it is the only per-action number available at the moment the
+   * action happens, which is what makes a tier's margin measurable rather than reconstructible.
    */
   costMicroUsd: number | null;
 }

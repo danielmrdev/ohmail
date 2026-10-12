@@ -887,13 +887,15 @@
       "out_of_credits": "The AI budget ran out before this sender was reached. It refills next cycle — deciding by hand costs nothing.",
       "over_quote": "The run reached the number you confirmed before this sender was asked about. Press again to include them.",
       "spend_unavailable": "AI is switched off or unavailable for this account, so this sender was not asked about. Deciding by hand costs nothing.",
-      "model_unavailable": "The model did not answer for this sender. Asking again costs nothing."
+      "model_unavailable": "The model did not answer for this sender. Asking again costs nothing.",
+      "model_declined": "The model declined to judge this sender, so this one is yours to decide."
     },
     "aiSkipRow": {
       "out_of_credits": "No suggestion — the AI budget ran out. It refills next cycle.",
       "over_quote": "No suggestion — the run stopped at the number you confirmed. Press again to include this sender.",
       "spend_unavailable": "No suggestion — AI is unavailable for this account right now.",
-      "model_unavailable": "No suggestion — the model did not answer. Asking again costs nothing."
+      "model_unavailable": "No suggestion — the model did not answer. Asking again costs nothing.",
+      "model_declined": "No suggestion — the model declined to judge this sender."
     },
     "aiWhy": "“{why}”",
     "heldCaption": "{count} held messages — all shown · first contact {time}",
@@ -1397,7 +1399,10 @@
     "failedOpaque": "The draft was written but could not be loaded. Pressing again fetches the same one — it does not buy a second.",
     "failedOpaqueEarly": "Something went wrong on the server and no draft was made. Pressing again retries this request, and it is never charged twice.",
     "creditsReturned": "This did not work. Your credits are back.",
-    "creditsOwed": "This did not work. Your credits will be returned."
+    "creditsOwed": "This did not work. Your credits will be returned.",
+    "declined": "The model declined to draft this reply.",
+    "declinedCreditsReturned": "The model declined to draft this reply. Your credits are back.",
+    "declinedCreditsOwed": "The model declined to draft this reply. Your credits will be returned."
   },
   "settings": {
     "title": "Settings",
