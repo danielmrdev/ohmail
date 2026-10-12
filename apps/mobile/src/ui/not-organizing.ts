@@ -5,6 +5,7 @@
  * send the column reads as not organizing — the direction that never claims screening without consent.
  */
 import { gateKept, nothingOrganizesWhy, type NothingOrganizesWhy } from "@ohmail/client-engine";
+import { Copy } from "../copy";
 import type { PhoneMailbox } from "../net/mailboxes";
 
 export type NotOrganizingFacts = Pick<
@@ -28,4 +29,26 @@ export function noneOrganizedWhy(rows: readonly NotOrganizingFacts[]): NothingOr
 /** Every live mailbox is one nothing organizes — the only case the Screener's hint gives way. */
 export function noneOrganized(rows: readonly NotOrganizingFacts[]): boolean {
   return noneOrganizedWhy(rows) !== null;
+}
+
+/** The state's sentence and its press: the waiting shelf's own, so both surfaces say one thing. */
+export function notOrganizingSay(why: NothingOrganizesWhy): { title: string; hint: string; press: string } {
+  return {
+    title: why === "never_agreed" ? Copy.waitingNotYetTitle : Copy.waitingNotOrganizedTitle,
+    hint: Copy.waitingNotYetHint,
+    press: Copy.waitingNotYetPress,
+  };
+}
+
+/** What the Ohbox's knock slot draws: the knock, the state in its place, or nothing. */
+export type KnockSlot = { k: "knock" } | { k: "state"; why: NothingOrganizesWhy } | { k: "none" };
+
+/**
+ * WHERE NOTHING ORGANIZES ANY LIVE MAILBOX the knock may not read "N waiting · Screener": that
+ * Screener's decisions nothing carries out, and strangers go straight to the Ohbox. The state
+ * stands in its place whatever the count, unless the strip above already says it.
+ */
+export function knockSlotOf(none: NothingOrganizesWhy | null, stripSaysIt: boolean): KnockSlot {
+  if (none === null) return { k: "knock" };
+  return stripSaysIt ? { k: "none" } : { k: "state", why: none };
 }

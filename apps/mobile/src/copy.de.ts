@@ -1614,6 +1614,8 @@ export const DE: Deck = {
 
   screeningNote: (target: string) =>
     `Wird zur Regel — künftige Post von ${target} wird automatisch dorthin einsortiert. Post, die schon hier ist, bleibt, wo sie ist.`,
+  screeningNoteNobody:
+    "Dieses Postfach wird von nichts organisiert, deshalb sortiert eine Regel von hier nichts davon ein, bis es wieder organisiert wird. In den Einstellungen steht, was jedes Postfach organisiert.",
   screeningNoteRetro: (target: string) =>
     `Wird zur Regel — künftige Post von ${target} wird automatisch dorthin einsortiert. Außerdem wendet ohmail die Regel auf die Post an, die es schon für dich einsortiert hat. Nachrichten, die du beantwortet, selbst hier oder in einem anderen Mailprogramm einsortiert oder geparkt hast, bleiben unberührt.`,
   screeningRetroToggle: "Auch die Post verschieben, die schon im Postfach liegt",

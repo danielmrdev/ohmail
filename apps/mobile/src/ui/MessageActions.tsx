@@ -77,6 +77,7 @@ import {
 } from "./reader-verbs";
 import { Icon, type IconName } from "./Icon";
 import { scheduledNotHereSentence, sendLaterOffered } from "./standalone-form";
+import { noneOrganizedWhy } from "./not-organizing";
 import { useNetworkNow } from "../net/network-door";
 import { queuedCaptionKey } from "../engine/send-waits";
 import {
@@ -824,6 +825,8 @@ function ScreeningSheet({ m, onClose }: { m: WorldMail; onClose: () => void }) {
   // A shared provider's domain is never a scope: a decision about everyone there admits nobody.
   const sharedDomain = hasDomain && isSharedProviderDomain(domain);
   const target = scope === "domain" ? `@${domain}` : m.from.address;
+  /* Nothing organizes any mailbox: the note says so rather than what a rule would file. */
+  const nobody = w.mailboxes.known && noneOrganizedWhy(w.mailboxes.rows) !== null;
   const inPlay = w.actions.screeningRules(m.id, scope);
   /* WHY SOME OF THEIR MAIL STAYED once the rule's past-mail pass finished — asked of the server
      once per row set, one line per place and reason, as the web sheet asks it. */
@@ -949,7 +952,7 @@ function ScreeningSheet({ m, onClose }: { m: WorldMail; onClose: () => void }) {
         />
       ))}
       <Txt variant="caption" tone="ink3" style={{ paddingHorizontal: 14, paddingTop: 8 }}>
-        {applyRetro ? Copy.screeningNoteRetro(target) : Copy.screeningNote(target)}
+        {nobody ? Copy.screeningNoteNobody : applyRetro ? Copy.screeningNoteRetro(target) : Copy.screeningNote(target)}
       </Txt>
         </>
       )}

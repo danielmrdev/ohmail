@@ -3,7 +3,8 @@
  *
  * It decides nothing: `organizer-strip.ts` answers from the card's `claimHere(...)`, and this
  * renders it on the SAME subscription Settings reads, so a stand-down, a hand-back or a resume
- * redraws the list's line as it redraws the card. A strip, never a sheet. A standalone door only.
+ * redraws the list's line as it redraws the card. A strip, never a sheet. The claim strip is a
+ * standalone door's; the gap offer draws on every door, its server's count included.
  */
 import { useCallback, useState, useSyncExternalStore } from "react";
 import { Platform } from "react-native";
@@ -18,19 +19,23 @@ import { useWorld } from "../state/world";
 import { Button, Panel, Txt } from "./base";
 import { stoodDown } from "./lifecycle-strip";
 import { NotifyPermission } from "./NotifyPermission";
-import { gapOffersOf, organizerStripOf } from "./organizer-strip";
-import { claimHere, pressSaidLine, pressSaidOf, type PressSaid } from "./standalone-form";
+import { gapOffersOf, organizerStripOf, type OrganizerStrip as StripLine } from "./organizer-strip";
+import { claimHere, pressSaidLine, pressSaidOf, type PhoneClaim, type PressSaid } from "./standalone-form";
 import { useNotifyPermission } from "./useNotifyPermission";
 
 export function OrganizerStrip() {
-  /* A paired session has no door in this process and pays no subscription or permission read. */
-  return useWorld().standalone ? <OnThisPhone /> : null;
+  /* A paired session has no door in this process and pays no subscription or permission read; the
+     offer its server counted still reaches it. */
+  return useWorld().standalone ? <OnThisPhone /> : <GapLetters />;
 }
 
-function OnThisPhone() {
+/**
+ * THIS PHONE'S CLAIM AND THE STRIP LINE IT DRAWS, read once for every Ohbox line that speaks of it:
+ * the strip, the connect notice and the knock (`readingAtConnectNow`, `knockSlotOf`). `null` on a
+ * paired session, which has no door here.
+ */
+export function useStandaloneClaim(): { claim: PhoneClaim | null; strip: StripLine | null } {
   const w = useWorld();
-  const [said, setSaid] = useState<PressSaid>(null);
-  const notify = useNotifyPermission();
   useSyncExternalStore(
     useCallback((cb: () => void) => onOrganizerState(cb), []),
     organizerStateVersion,
@@ -43,6 +48,13 @@ function OnThisPhone() {
     late: organizerHandBackLateSaid(),
     os: Platform.OS,
   });
+  return { claim, strip };
+}
+
+function OnThisPhone() {
+  const [said, setSaid] = useState<PressSaid>(null);
+  const notify = useNotifyPermission();
+  const { claim, strip } = useStandaloneClaim();
   /* THE ASK OUTLIVES THE STRIP: a start that worked turns the claim `ours`, which draws no strip,
      and the sheet it opens must still be there to answer. */
   const ask = (
@@ -86,8 +98,9 @@ function OnThisPhone() {
 
 /**
  * THE GAP OFFER (mail 0151) — letters that arrived while no device was organizing a mailbox this
- * phone now organizes, counted by the person's rules. File files exactly that count's set on the
- * next drain; Leave closes the offer. A press answered is hidden until the next mailbox read.
+ * phone, or the server it is paired with, now organizes, counted by the person's rules. File files
+ * exactly that count's set on the next drain; Leave closes the offer. A press answered is hidden
+ * until the next mailbox read.
  */
 function GapLetters() {
   const w = useWorld();

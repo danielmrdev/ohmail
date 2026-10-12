@@ -20,16 +20,17 @@ import { usePullToSync } from "../../src/state/pull";
 import { listSurface, metaWhen } from "../../src/state/surface";
 import { useEngineQueuesAsk, useWorld, type World, type WorldMail, type WorldUnscreened } from "../../src/state/world";
 import { Button, Empty, Panel, Screen, Tail, Txt } from "../../src/ui/base";
-import { Doorbell, TopBar } from "../../src/ui/chrome";
+import { Doorbell, StateKnock, TopBar } from "../../src/ui/chrome";
 import { ListDetail, useListDetail } from "../../src/ui/list-detail";
 import { MailList, type ListGroup } from "../../src/ui/MailList";
 import { MailRow } from "../../src/ui/MailRow";
 import { MarkAllRead } from "../../src/ui/MarkAllRead";
 import { MessageReader } from "../../src/ui/MessageReader";
-import { OrganizerStrip } from "../../src/ui/OrganizerStrip";
+import { OrganizerStrip, useStandaloneClaim } from "../../src/ui/OrganizerStrip";
+import { knockSlotOf, noneOrganizedWhy, notOrganizingSay } from "../../src/ui/not-organizing";
 import { WaitingStrip } from "../../src/ui/WaitingStrip";
 import { SkeletonList } from "../../src/ui/Skeleton";
-import { readingAtConnectLine } from "../../src/ui/standalone-form";
+import { readingAtConnectLine, readingAtConnectNow } from "../../src/ui/standalone-form";
 import { useLocale } from "../../src/i18n/LocaleProvider";
 import { SurfaceBoundary } from "../../src/ui/ErrorBoundary";
 
@@ -67,7 +68,11 @@ function OhboxBody() {
     organizerStateVersion,
     organizerStateVersion,
   );
-  const reading = w.standalone ? readingAtConnectSaid() : null;
+  /* The notice and the knock follow the live claim the strip reads, not the connect's answer alone:
+     a hand-back drops the notice, and the knock gives way to the state. */
+  const { claim, strip } = useStandaloneClaim();
+  const reading = readingAtConnectNow(w.standalone ? readingAtConnectSaid() : null, claim);
+  const knock = knockSlotOf(w.mailboxes.known ? noneOrganizedWhy(w.mailboxes.rows) : null, strip !== null);
 
   // Unknown ≠ empty: before this mirror has ever settled a drain, a zero-row Ohbox shows
   // the shape of what is coming, never "All quiet" — `state/surface.ts` is the whole rule.
@@ -113,7 +118,8 @@ function OhboxBody() {
             <OrganizerStrip />
             {/* What waits on the computer that organizes this mailbox — the web's Rules list. */}
             <WaitingStrip />
-            <Doorbell initials={shown.doorbell.initials} count={shown.doorbell.count} />
+            {knock.k === "state" ? <StateKnock say={notOrganizingSay(knock.why)} />
+              : knock.k === "knock" ? <Doorbell initials={shown.doorbell.initials} count={shown.doorbell.count} /> : null}
           </>
         }
         empty={

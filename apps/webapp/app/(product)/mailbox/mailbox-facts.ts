@@ -90,6 +90,11 @@ export function toMailboxFacts(m: MailboxDTO): MailboxFacts {
     // absent is an older server — the pending sentence stands, which is what it can truthfully say.
     releaseRefusal: m.releaseRefusal,
     takeoverAuthorizedAt: m.takeoverAuthorizedAt,
+    // THE GAP OFFER'S COUNT (mail 0151), untouched on the same rule: absent is an older server and
+    // `null` is no offer waiting. `gapOffers` reads it, and this seam dropping it kept the offer the
+    // server counted off every web surface; `mailbox-facts-census.test.ts` reads
+    // every field the server sends against this map.
+    gapLetters: m.gapLetters,
     // WOULD A DECISION MADE HERE BE ACCEPTED. Untouched, and here the absent case is the one
     // that matters most: it degrades to the state that offers NO decision controls and names
     // the way out, which is the honest screen for a server that cannot answer the question.
@@ -146,6 +151,11 @@ export function toMailboxFacts(m: MailboxDTO): MailboxFacts {
     // the note render nothing today, a `?? null` here would be the seam destroying the
     // distinction rather than a reader choosing not to use it.
     junkFolder: m.junkFolder,
+    // Why sending is not set up, untouched: absent is an older API and `null` is "settled".
+    sendingUnsettledReason: m.sendingUnsettledReason,
+    // The forwarding-detection pair (mail 0078), untouched: absent is an API older than the columns.
+    inboundQuietSince: m.inboundQuietSince,
+    inboundQuietDismissedAt: m.inboundQuietDismissedAt,
     // Never `?? new Date()`, and the comment that stood here was wrong about why. The server has
     // sent this since mail 0001 (`toDTO` reads a NOT NULL column), so the fallback exists only for
     // a stale cached bundle. It claimed to degrade to "no elapsed time"; it did not: a now-stamp

@@ -1222,6 +1222,13 @@ export interface MailboxDTO {
   /** The standing "organize here" press, spent by the gate's next pass. */
   takeoverAuthorizedAt?: string | null;
   /**
+   * THE GAP OFFER (mail 0151): letters that arrived while no device organized this mailbox and that
+   * the person's rules would file, counted once this install organizes it. Non-null only while the
+   * offer waits for an answer (`POST /mailboxes/:id/gap-letters`). Undeclared here, it never reached
+   * the shell, and the offer the server counted was drawn on no web surface.
+   */
+  gapLetters?: number | null;
+  /**
    * WOULD A DECISION MADE HERE BE ACCEPTED BY WHOEVER ORGANIZES THIS MAILBOX?
    *
    * `true` only where a press has somewhere to go — the holder is still renewing and its build
@@ -1359,6 +1366,8 @@ export interface MailboxDTO {
    * every absence is the same instruction to the renderer: say nothing.
    */
   junkFolder?: string | null;
+  /** Why sending is not set up for this mailbox, or `null` when it is — see `MailboxFacts`. */
+  sendingUnsettledReason?: string | null;
   /**
    * How much mail is in this mailbox — present only on a response to
    * `?counts=1`. Optional for a DIFFERENT reason from every other field on

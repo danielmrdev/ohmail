@@ -3680,6 +3680,7 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTranspor
           key={subjectRule!.messageId}
           state={subjectRule!}
           ctx={subjectRuleFor}
+          nobody={otherOrganizerOf(facts, new Set(subjectRuleFor.messages.map((m) => m.mailboxId)))?.nobody === true}
           onConfirm={(term, dest, field, applyRetro) => confirmSubjectRule(subjectRule!.messageId, term, dest, field, applyRetro)}
           onClose={() => setSubjectRule(null)}
         />

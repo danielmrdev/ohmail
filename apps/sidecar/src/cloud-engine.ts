@@ -300,6 +300,32 @@ async function decorateHostedImports(
 }
 
 /**
+ * Put the ACCOUNT's gap offer (mail 0151) on a local `GET /mailboxes` answer, per mailbox the last
+ * refresh carried one for (`CloudMirror.hostedGaps`). The row read from this store says nothing about
+ * it: the window is the account's and the mirror stores none of it, so without this the offer the
+ * account counted reached no Cloud-paired window. A row the map has nothing for is left as read.
+ */
+async function decorateHostedGaps(
+  res: Response,
+  gaps: ReadonlyMap<string, number | null>,
+): Promise<Response> {
+  if (gaps.size === 0) return res;
+  let body: unknown;
+  try {
+    body = await res.clone().json();
+  } catch {
+    return res;
+  }
+  const items = (body as { items?: unknown })?.items;
+  if (!Array.isArray(items)) return res;
+  const decorated = items.map((row) => {
+    const id = (row as { id?: unknown })?.id;
+    return typeof id === "string" && gaps.has(id) ? { ...(row as object), gapLetters: gaps.get(id) } : row;
+  });
+  return json({ ...(body as object), items: decorated }, res.status);
+}
+
+/**
  * THE STORE-STUCK DISCLOSURE. The mirrored rows carry the HOSTED account's status — healthy —
  * so a mirror that cannot STORE what it pulls looked settled (the released 0.20.0's first-sync
  * 23503 wedge). While the mirror holds refused rows, every served row is overlaid `status:
@@ -1980,8 +2006,9 @@ export async function createCloudSidecar(config: CloudSidecarConfig): Promise<Cl
           // its own cadence (`cloud-mirror.ts`), and it travels under a field whose name says so.
           // Absent when the map has nothing for a row — never 0, which would claim an empty account.
           if (req.method === "GET" && path === "/mailboxes") {
-            const counted = await decorateHostedImports(
-              await decorateHostedCounts(answer, liveMirror.hostedCounts()), liveMirror.hostedImports());
+            const counted = await decorateHostedGaps(await decorateHostedImports(
+              await decorateHostedCounts(answer, liveMirror.hostedCounts()), liveMirror.hostedImports()),
+            liveMirror.hostedGaps());
             // AFTER the counts: the overlay is the louder fact and must not be decorated away.
             return await decorateStoreStuck(counted, liveMirror.quarantined());
           }

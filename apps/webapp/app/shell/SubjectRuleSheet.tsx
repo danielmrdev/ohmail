@@ -65,11 +65,17 @@ type TermChoice = "token" | "whole" | "content";
 export function SubjectRuleSheet({
   state,
   ctx,
+  nobody = false,
   onConfirm,
   onClose,
 }: {
   state: SubjectRuleState;
   ctx: SubjectRuleContext;
+  /**
+   * Nothing organizes the sender's mailbox (`otherOrganizerOf`): the confirm says so in place of what
+   * the rule would file, and the line stands above the foot, as on the sender sheet.
+   */
+  nobody?: boolean;
   onConfirm: (term: string, dest: ScreeningDest, field: TermField, applyRetro: boolean) => void;
   onClose: () => void;
 }) {
@@ -308,7 +314,9 @@ export function SubjectRuleSheet({
             lead={
               plan.already
                 ? t("subjectConfirmAlready")
-                : applyRetro
+                : nobody
+                  ? t("subjectOrgNobody")
+                  : applyRetro
                   ? t("subjectConfirmFine", { count: plan.matched })
                   : t("subjectConfirmFineFuture")
             }
@@ -389,6 +397,7 @@ export function SubjectRuleSheet({
           because revoking a rule moves no mail. When a rule with a term already exists for this
           address the footer says so — that is the state in which a second press is most likely to be
           a duplicate the user did not intend. */}
+      {nobody && !pending ? <div className="sm-org">{t("subjectOrgNobody")}</div> : null}
       <div className="sm-foot">
         {/* "narrower", not "subject": the count includes body-term rules. */}
         {ctx.existing.length > 0

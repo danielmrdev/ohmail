@@ -23,6 +23,7 @@ import {
   type ScreenerSeg,
 } from "../state/model";
 import { relayMarkFor, senderSheetLine } from "../state/relay";
+import { noneOrganizedWhy } from "./not-organizing";
 import { domainScopeOffered } from "../state/live";
 import { useBodies, useWorld } from "../state/world";
 import { Badge, Button, Panel, Screen, Scroller, Tap, Txt } from "./base";
@@ -103,7 +104,11 @@ export function SenderDetail({
   /* On a mailbox another install organizes: where a decision goes, and what became of it. */
   const organizer = w.mailboxes.organizer;
   const relay = relayMarkFor(row.address, w.screener.relayed, organizer?.name ?? null);
-  const sheetLine = seg === "waiting" ? senderSheetLine(relay, organizer) : null;
+  /* NOTHING ORGANIZES ANY MAILBOX: the sheet says so in place of what a decision would file;
+     a decision already out keeps its own mark. */
+  const nobody = w.mailboxes.known && noneOrganizedWhy(w.mailboxes.rows) !== null;
+  const sheetLine = seg !== "waiting" ? null
+    : nobody && relay === null ? Copy.screeningNoteNobody : senderSheetLine(relay, organizer);
 
   return (
     <Screen>
@@ -263,6 +268,7 @@ export function SenderDetail({
           scope={row.scope}
           domainOffered={domainScopeOffered(row.address)}
           target={target}
+          nobody={nobody}
           also={also}
           suggested={row.ai?.dest ?? null}
           onScope={(scope) => w.actions.setScope(row, scope)}
@@ -293,6 +299,7 @@ function DecisionBar({
   scope,
   domainOffered,
   target,
+  nobody,
   also,
   suggested,
   onScope,
@@ -302,6 +309,8 @@ function DecisionBar({
   /** False for a shared provider: the bar offers no whole-domain scope there, as on the web. */
   domainOffered: boolean;
   target: string;
+  /** Nothing organizes any mailbox: no hint or explainer promises what a rule would file. */
+  nobody: boolean;
   /** What a whole-domain press files beyond this sender, said before the press; `null` for nothing. */
   also: string | null;
   suggested: Destination | null;
@@ -325,7 +334,7 @@ function DecisionBar({
       dest={dest}
       ai={dest === suggested}
       quiet={dest === "screened" || dest === "spam"}
-      hint={Copy.decideRule(target)}
+      hint={nobody ? Copy.screeningNoteNobody : Copy.decideRule(target)}
       onFile={() => onDecide(dest, false)}
       onFileRead={() => onDecide(dest, true)}
     />
@@ -390,7 +399,8 @@ function DecisionBar({
 
       {scopeInRow ? null : scopeControl}
 
-      {shape.explainer ? (
+      {/* With nothing organizing, the sheet line above already says what stands in its place. */}
+      {shape.explainer && !nobody ? (
         <Txt variant="hint" tone="ink3" style={{ marginTop: 10 }}>
           {Copy.decideRule(target)}
         </Txt>

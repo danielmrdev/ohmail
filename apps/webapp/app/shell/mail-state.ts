@@ -844,6 +844,13 @@ export interface MailboxFacts {
    */
   takeoverAuthorizedAt?: string | null;
   /**
+   * THE GAP OFFER'S COUNT (mail 0151) — {@link gapOffers} reads it. Every narrowing forwards it as the
+   * server sent it: absent is an older server, `null` is no offer waiting. It was read through the
+   * structural `OrganizerRow` alone and never declared here, so no narrowing carried it and the
+   * offer the server counted was drawn on no surface.
+   */
+  gapLetters?: number | null;
+  /**
    * `false` while the local engine has not read the lease for this reader row, when its NULL
    * `organizerState` is "not looked" rather than "nobody". Absent is every other case and every
    * door that cannot say. Setup waits on it before offering Agree.
@@ -2330,21 +2337,24 @@ export function stripSpeaks(key: MailStateKey): boolean {
 }
 
 /**
- * WHO ORGANIZES THE MAILBOXES A SHEET'S SUBJECT LIVES IN, when it is another install: its name, or
- * `null` when it has none on the wire; `nobody` where the named holder's lease lapsed, by the
- * refusal's decider. `undefined` when this install organizes them (or nothing is recorded), which
- * is when a rule made from the sheet is made now.
+ * WHO ORGANIZES THE MAILBOXES A SHEET'S SUBJECT LIVES IN, by the one derivation (`organizerSituation`):
+ * another install's name, or `null` when it has none on the wire; `nobody` where nothing organizes one
+ * of them — handed back, its holder stopped, or never agreed (a hand-back read as this
+ * install organizing it, and the sheet promised filing). `undefined` when this install organizes them
+ * or nothing can be said, which is when a rule made from the sheet is made now.
  */
 export function otherOrganizerOf(
   facts: readonly OrganizerRow[] | null | undefined, mailboxIds: ReadonlySet<string>,
 ): ReaderHolding | undefined {
-  let lapsed = false;
+  let nobody = false;
   for (const m of facts ?? []) {
-    if (m.id === undefined || !mailboxIds.has(m.id) || m.organizerRole !== "reader") continue;
-    if (!m.organizedBy || !(m.organizedBy.kind || m.organizedBy.name)) continue;
-    if (!holderIsLive({ by: m.organizedBy, state: m.organizerState })) { lapsed = true; continue; }
-    const name = m.organizedBy.name?.trim();
-    return { name: name ? name : null, nobody: false };
+    if (m.id === undefined || !mailboxIds.has(m.id)) continue;
+    const s = standingOf(organizerSituation(m));
+    if (s.kind === "organized_elsewhere") {
+      const name = s.by.name?.trim();
+      return { name: name ? name : null, nobody: false };
+    }
+    if (s.kind === "nothing_organizes") nobody = true;
   }
-  return lapsed ? { name: null, nobody: true } : undefined;
+  return nobody ? { name: null, nobody: true } : undefined;
 }

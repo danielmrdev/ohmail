@@ -391,6 +391,19 @@ export function readingAtConnectLine(holder: { name: string }): string {
   return name === "" ? Copy.readingAtConnectUnknown : Copy.readingAtConnect(name);
 }
 
+/**
+ * THE CONNECT NOTICE, ONLY WHILE IT IS TRUE — by the live claim the strip reads, never by the
+ * connect's own answer alone: a hand-back left it naming the desktop over the strip saying nothing
+ * organizes the mailbox, until a restart. It names the holder the claim names now;
+ * a claim not read yet keeps what the connect said.
+ */
+export function readingAtConnectNow(said: { name: string } | null, claim: PhoneClaim | null): { name: string } | null {
+  if (said === null || claim === null) return null;
+  if (claim.k === "theirs") return { name: claim.name };
+  if (claim.k === "theirsUnnamed") return { name: "" };
+  return claim.k === "unknown" ? said : null;
+}
+
 export function sendLaterOffered(o: {
   standalone: boolean;
   forward: boolean;

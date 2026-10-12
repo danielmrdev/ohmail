@@ -108,6 +108,8 @@ interface MailboxWire {
   releaseRefusal?: "sibling_lapse" | null;
   /** The standing "organize here" press, spent by the gate's next pass. */
   takeoverAuthorizedAt?: string | null;
+  /** The gap offer's count (mail 0151), non-null only while it waits for the person's answer. */
+  gapLetters?: number | null;
   /** `false` while this engine has not read the lease for a reader row yet; absent otherwise. */
   organizerChecked?: boolean;
   /** The server's answer to whether this address is the account's own (`MailboxDTO.addressIsOwn`). */
@@ -271,6 +273,9 @@ export async function readMailboxFactsVia(
     // column, and the pending sentence stands — which is what such an engine can truthfully say.
     ...("releaseRefusal" in m ? { releaseRefusal: m.releaseRefusal } : {}),
     ...("takeoverAuthorizedAt" in m ? { takeoverAuthorizedAt: m.takeoverAuthorizedAt } : {}),
+    /* THE GAP OFFER'S COUNT (mail 0151), by the same `in` spread: absent is an engine that predates
+       the column. Unforwarded, no desktop door drew the offer its engine or the account counted. */
+    ...("gapLetters" in m ? { gapLetters: m.gapLetters } : {}),
     ...("organizerChecked" in m ? { organizerChecked: m.organizerChecked } : {}),
     ...("addressIsOwn" in m ? { addressIsOwn: m.addressIsOwn } : {}),
     ...("organizerAcceptsRequests" in m ? { organizerAcceptsRequests: m.organizerAcceptsRequests } : {}),

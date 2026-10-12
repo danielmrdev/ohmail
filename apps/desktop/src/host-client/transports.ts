@@ -13,6 +13,7 @@
  * measures it on the built artifact.
  */
 
+import type { GapLettersTransport } from "../../../webapp/app/shell/GapLettersNotice";
 import type { JunkWire } from "../../../webapp/app/shell/junk-window";
 import type { MailboxFacts } from "../../../webapp/app/shell/mail-state";
 import type { ProfileImportTransport } from "../../../webapp/app/shell/ProfileImportCard";
@@ -21,6 +22,7 @@ import type { OlderBodyWire } from "../../../webapp/app/shell/older-body";
 import type { TrashWire } from "../../../webapp/app/shell/trash-window";
 import { olderBodyVia } from "@ohmail/client-engine";
 import { consentVia } from "../consent-wire.js";
+import { gapLettersVia } from "../gap-letters-wire.js";
 import { junkVia } from "../junk-wire.js";
 import { readMailboxFactsVia } from "../mailbox-facts-wire.js";
 import { profileImportVia } from "../profile-import-wire.js";
@@ -32,6 +34,15 @@ export function mailboxFactsOverBearer(
   bearer: BearerManager,
 ): (opts?: { counts?: boolean }) => Promise<MailboxFacts[]> {
   return (opts = {}) => readMailboxFactsVia(bearer.fetch, opts);
+}
+
+/**
+ * The gap offer's answer (mail 0151) over the bearer. The host serves the route out of
+ * `localRoutes` and rings its own drain on File; without this wire the shared shell withholds the
+ * offer here, since a line nothing can answer would stand for ever.
+ */
+export function gapLettersOverBearer(bearer: BearerManager): GapLettersTransport {
+  return gapLettersVia(bearer.fetch);
 }
 
 /**

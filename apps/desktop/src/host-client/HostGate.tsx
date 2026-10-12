@@ -38,7 +38,7 @@ import { HostOutboxNotice } from "./HostOutboxNotice.js";
 import { discardHostOutbox, type HostOutboxDiscard } from "./outbox-store.js";
 import { PairScreen } from "./PairScreen.js";
 import {
-  consentOverBearer, junkOverBearer, mailboxFactsOverBearer, olderBodyOverBearer,
+  consentOverBearer, gapLettersOverBearer, junkOverBearer, mailboxFactsOverBearer, olderBodyOverBearer,
   profileImportOverBearer, trashOverBearer,
 } from "./transports.js";
 
@@ -184,6 +184,8 @@ export function HostGate({ bearer }: { bearer: BearerManager }) {
      treats the wire as the dependency that decides whether it fetches at all, so a fresh object
      per render would re-ask `GET /consent` on every paint. */
   const consent = useMemo(() => consentOverBearer(bearer), [bearer]);
+  /* The gap offer's answer, memoised for the reason above: the shell draws the offer only with it. */
+  const gapLetters = useMemo(() => gapLettersOverBearer(bearer), [bearer]);
 
   /**
    * WHOSE `localStorage` PARTITION THE SHARED SHELL USES ON THIS DOOR — established in
@@ -260,6 +262,8 @@ export function HostGate({ bearer }: { bearer: BearerManager }) {
          were withheld on a door that serves all of them. The flag in front of the Folders pane
          is still off here and says so (`consentOverBearer`). */
       consentTransport={consent}
+      /* THE GAP OFFER (mail 0151): the host counts it and serves its answer; drawn here too. */
+      gapLettersTransport={gapLetters}
       /* THIS BROWSER WILL NOT KEEP A CHANGE MADE WHILE THE HOST IS AWAY — it refused the
          database. The shell's strip above the app, said once for the pairing. */
       accountNotice={unkept !== null && unkept.scope === scope && !unkept.dismissed

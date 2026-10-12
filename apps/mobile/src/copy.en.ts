@@ -2467,6 +2467,10 @@ const TABLE = {
    */
   screeningNote: (target: string) =>
     `Becomes a rule — future mail from ${target} files there automatically. Mail already here stays where it is.`,
+  /* In place of the two notes above and the decision's own, where nothing organizes any mailbox:
+     nothing files by a rule until something organizes it. */
+  screeningNoteNobody:
+    "Nothing organizes this mailbox, so a rule made here files none of its mail until something does. Settings shows what organizes each mailbox.",
   screeningNoteRetro: (target: string) =>
     `Becomes a rule — future mail from ${target} files there automatically, and ohmail applies the rule to the mail it has already filed for you. Messages you have replied to, filed yourself here or in another mail app, or set aside are left alone.`,
   screeningRetroToggle: "Also move the mail already in your mailbox",

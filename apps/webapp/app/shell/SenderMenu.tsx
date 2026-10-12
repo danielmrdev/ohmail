@@ -691,7 +691,7 @@ export function SenderMenu({
           mechanism, because the footer cannot know which destination is about to be clicked: for a
           destination a rule already covers, nothing is written and only the outcome sentence stays
           true. The toast, which does know, names the difference — `screeningToast`. */}
-      {organizer && (makeRule || subject.waiting) ? (
+      {organizer && (organizer.nobody || makeRule || subject.waiting) ? (
         <div className="sm-org">
           {organizer.nobody
             ? t("orgNobody")
@@ -699,7 +699,9 @@ export function SenderMenu({
         </div>
       ) : null}
 
-      <div className="sm-foot">
+      {/* NOTHING ORGANIZES THE MAILBOX: every sentence below promises filing an organizer performs, so
+          the line above stands in their place. */}
+      {organizer?.nobody ? null : <div className="sm-foot">
         {/* One sentence per pair of answers — (a rule, the past) at the gate and past it. The
             retroactive arm names the past AND the thing that has no undo: mail this moves stays
             moved when the rule is later revoked, because `DELETE /rules/:id` touches the rules row
@@ -724,7 +726,7 @@ export function SenderMenu({
                 ? t("footWillRuleDomain", { domain: whichDomain })
                 : t("footWillRule", { sender: who })
             : t("footNoRule")}
-      </div>
+      </div>}
     </div>
   );
 }

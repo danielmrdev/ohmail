@@ -541,6 +541,14 @@ export interface CloudMirror {
    */
   hostedImports(): ReadonlyMap<string, string | null>;
   /**
+   * THE GAP OFFER EACH HOSTED MAILBOX CARRIES (mail 0151), per hosted mailbox id: the count while it
+   * waits for the person's answer, `null` when none does. Rebuilt at every mailbox refresh; absent
+   * for an answer that carried no field (an older server). Never copied onto the mirror's row
+   * ({@link mailboxRow}): a window the account opened must not become this store's own when the
+   * door later switches to standalone.
+   */
+  hostedGaps(): ReadonlyMap<string, number | null>;
+  /**
    * The freshness contract's verdict for this mirror (INSTANT-ARCH §6.6) — the same three states
    * the client engine's `freshness()` derives, from this mirror's completion stamp ({@link
    * CursorState.lastDrainAt}) against the shared `STALE_RESUME_MS`, the same `mirrorFreshness`
@@ -2610,6 +2618,8 @@ export function createCloudMirror(cfg: CloudMirrorConfig): CloudMirror {
   let hostedCounts = new Map<string, number>();
   /** The hosted first-import stamps — see {@link CloudMirror.hostedImports}. Empty until a refresh lands. */
   let hostedImports = new Map<string, string | null>();
+  /** The hosted gap offers — see {@link CloudMirror.hostedGaps}. Empty until a refresh lands. */
+  let hostedGaps = new Map<string, number | null>();
   /** When counts were last ASKED for (not when they last changed). `-Infinity` ⇒ never. */
   let countsAskedAt = Number.NEGATIVE_INFINITY;
   /**
@@ -2718,6 +2728,13 @@ export function createCloudMirror(cfg: CloudMirrorConfig): CloudMirror {
       if (typeof v === "string" || v === null) imports.set(m.id, v);
     }
     hostedImports = imports;
+    // The gap offers, rebuilt whole on the same rule: a positive whole count or `null`, nothing else.
+    const gaps = new Map<string, number | null>();
+    for (const m of hosted) {
+      const v: unknown = m.gapLetters;
+      if (v === null || (typeof v === "number" && Number.isInteger(v) && v > 0)) gaps.set(m.id, v);
+    }
+    hostedGaps = gaps;
     hostedMailboxIds = hosted.map((m) => m.id);
     boxesAsk = Math.max(boxesAsk, ask);
     await cfg.onMailboxes?.().catch(() => undefined);
@@ -4316,6 +4333,7 @@ export function createCloudMirror(cfg: CloudMirrorConfig): CloudMirror {
     // observe a half-built one.
     hostedCounts: () => hostedCounts,
     hostedImports: () => hostedImports,
+    hostedGaps: () => hostedGaps,
     // THE SHARED THREE-STATE DERIVATION — literally the function `OhmailEngine.freshness()`
     // calls, over this mirror's own stamp and this process's own clock. One derivation, three
     // renderers (the web ladder, the phone's wordmark line, the desktop window over

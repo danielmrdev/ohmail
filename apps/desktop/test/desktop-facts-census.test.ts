@@ -145,6 +145,9 @@ describe("the desktop mailbox-facts seam", () => {
          the projection never answers a refusal without the request it explains. */
       releaseRefusal: null,
       takeoverAuthorizedAt: null,
+      /* The gap offer's count (mail 0151): the engine answers it while the offer waits. Unforwarded,
+         no desktop door drew the offer. */
+      gapLetters: 2,
       organizerChecked: false,
       addressIsOwn: false,
       organizerAcceptsRequests: false,
@@ -179,6 +182,7 @@ describe("the desktop mailbox-facts seam", () => {
     expect(got!.junkFolder).toBe("INBOX/Junk");
     expect(got!.displayName).toBe("Someone");
     expect(got!.organizeConsentedAt).toBe("2026-09-02T09:00:00.000Z");
+    expect(got!.gapLetters).toBe(2);
     /* THE NOTICE IS A COMPARISON OF TWO INSTANTS, so a seam that forwarded one and defaulted the
        other would derive a line from half a fact — and the half it would default is the one that
        silences it. `null` must arrive as `null` and not become a stamp. */

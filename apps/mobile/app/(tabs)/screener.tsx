@@ -27,7 +27,7 @@ import { Segmented } from "../../src/ui/Segmented";
 import { SkeletonList } from "../../src/ui/Skeleton";
 import { useLocale } from "../../src/i18n/LocaleProvider";
 import { SurfaceBoundary } from "../../src/ui/ErrorBoundary";
-import { noneOrganizedWhy } from "../../src/ui/not-organizing";
+import { noneOrganizedWhy, notOrganizingSay } from "../../src/ui/not-organizing";
 
 /**
  * The three empty states, READ WHEN THE SCREEN RENDERS rather than when this module is imported.
@@ -76,12 +76,10 @@ function ScreenerBody() {
   /* "First-time senders knock here" is false where nothing organizes any mailbox: the waiting shelf says that
      instead, once the mailbox read has answered (`known`), never on a guess. */
   const notYet = seg === "waiting" && w.mailboxes.known ? noneOrganizedWhy(w.mailboxes.rows) : null;
-  const empty = notYet !== null
-    ? {
-        title: notYet === "never_agreed" ? Copy.waitingNotYetTitle : Copy.waitingNotOrganizedTitle,
-        hint: Copy.waitingNotYetHint,
-        action: { label: Copy.waitingNotYetPress, onPress: () => router.push("/settings") },
-      }
+  /* The Ohbox's knock slot says the same sentence (`notOrganizingSay`), so the two cannot differ. */
+  const say = notYet === null ? null : notOrganizingSay(notYet);
+  const empty = say !== null
+    ? { title: say.title, hint: say.hint, action: { label: say.press, onPress: () => router.push("/settings") } }
     : emptyFor(seg);
   const { waiting, screened, spam, meta, waitingPending } = w.screener;
   // Unknown ≠ empty, per SEGMENT: the active shelf's own count against the one settled fact.

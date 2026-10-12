@@ -3346,6 +3346,7 @@
     "orgPending": "{name} organizes this mailbox, so a rule made here is made on its next pass.",
     "orgPendingUnnamed": "Another install organizes this mailbox, so a rule made here is made on its next pass.",
     "orgNobody": "Nothing organizes this mailbox, so a rule made here files none of its mail until something does. Settings → Mailboxes has the button to organize it here.",
+    "subjectOrgNobody": "Nothing organizes this mailbox, so a rule made here files none of its mail until something does. Settings → Mailboxes has the button to organize it here.",
     "ruleLine": "{condition} → {place}",
     "resolveTitle": "{place} — {rules, plural, one {one of your rules says otherwise} other {# of your rules say otherwise}}",
     "resolveAllNote": "{rules, plural, one {Removes that rule} other {Removes those # rules}}",

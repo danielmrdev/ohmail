@@ -2406,7 +2406,10 @@ export function OhboxView({
                 ? goFirstRun({ rerun: true, mailboxId: notOrganizingYet.mailboxes[0]!.id })
                 : goSettings("mailboxes"))}
             />
-            ) : notOrganizingYet?.every && doorbellCount === 0 && notOrganizingYet.mailboxes[0] ? (
+            ) : notOrganizingYet?.every && notOrganizingYet.mailboxes[0] ? (
+            /* EVERY MAILBOX, WHATEVER THE COUNT: senders waiting from before have a Screener whose
+               decisions nothing carries out, so "N waiting · Screener" would cover strangers that go
+               straight to the Ohbox. The rail still counts them. */
             sharedNotOrganizedWhy(notOrganizingYet) === "never_agreed" ? (
             <Doorbell
               initials={[]}

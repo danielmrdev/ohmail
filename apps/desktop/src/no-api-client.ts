@@ -218,6 +218,8 @@ export interface MailboxDTO {
     organizerEventSeenAt?: string | null;
     organizerReleasedAt?: string | null;
     organizerParkedAt?: string | null;
+    /** The gap offer's count (mail 0151); the desktop reads it through `mailbox-facts-wire.ts`. */
+    gapLetters?: number | null;
     organizerAcceptsRequests?: boolean;
     errorCode?: "auth" | "connect" | "tls" | "timeout" | "storage" | "sync" | "unknown" | null;
     errorDetail?: string | null;
@@ -248,6 +250,7 @@ export interface MailboxDTO {
     inboundQuietDismissedAt?: string | null;
     smtpMaxSizeBytes?: number | null;
     junkFolder?: string | null;
+    sendingUnsettledReason?: string | null;
     messageCount?: number;
     erasure?: {
         remaining: number;

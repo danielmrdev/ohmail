@@ -3346,6 +3346,7 @@
     "orgPending": "{name} organisiert dieses Postfach, deshalb wird eine Regel von hier beim nächsten Durchgang angelegt.",
     "orgPendingUnnamed": "Eine andere Installation organisiert dieses Postfach, deshalb wird eine Regel von hier beim nächsten Durchgang angelegt.",
     "orgNobody": "Nichts organisiert dieses Postfach, deshalb sortiert eine Regel von hier nichts davon ein, bis es wieder organisiert wird. Unter Einstellungen → Postfächer gibt es den Knopf, um es hier zu organisieren.",
+    "subjectOrgNobody": "Nichts organisiert dieses Postfach, deshalb sortiert eine Regel von hier nichts davon ein, bis es wieder organisiert wird. Unter Einstellungen → Postfächer gibt es den Knopf, um es hier zu organisieren.",
     "ruleLine": "{condition} → {place}",
     "resolveTitle": "{place} — {rules, plural, one {eine deiner Regeln sagt etwas anderes} other {# deiner Regeln sagen etwas anderes}}",
     "resolveAllNote": "{rules, plural, one {Entfernt diese Regel} other {Entfernt diese # Regeln}}",

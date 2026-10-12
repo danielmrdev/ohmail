@@ -278,6 +278,40 @@ export function Doorbell(
   );
 }
 
+/**
+ * THE KNOCK'S SLOT WHERE NOTHING ORGANIZES ANY LIVE MAILBOX (`not-organizing.ts#knockSlotOf`): the
+ * state in the capsule's own place, the waiting shelf's sentence, and its press opens Settings, where
+ * what organizes each mailbox is said and changed.
+ */
+export function StateKnock({ say }: { say: { title: string; hint: string; press: string } }) {
+  const t = useTheme();
+  return (
+    <Tap
+      onPress={() => router.push("/settings")}
+      accessibilityRole="button"
+      accessibilityLabel={`${say.title} ${say.hint}`}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        marginHorizontal: 10,
+        marginBottom: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 9,
+        borderRadius: t.radius.pill,
+        backgroundColor: t.c.accentSoft,
+      }}
+    >
+      <Txt variant="meta" tone="ink" numberOfLines={2} style={{ flex: 1, minWidth: 0 }}>
+        {say.title}
+      </Txt>
+      <Txt variant="button" tone="accent" style={{ flexShrink: 0 }}>
+        {say.press}
+      </Txt>
+    </Tap>
+  );
+}
+
 /* ------------------------------------------------------------------- toast */
 
 /**
