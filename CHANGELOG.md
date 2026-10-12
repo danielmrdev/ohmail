@@ -60,6 +60,31 @@ On a phone that only reads a mailbox another device organizes, the Screener left
 mail was all older than 60 days and already read, so its count was lower than the organizing device's.
 Such a phone now lists and counts every sender waiting in the Screener folder.
 
+### A deleted letter leaves Answer Later
+<!-- changes: fix-026-answer-later-forgets-a-deleted-letter.md -->
+
+A letter in Answer Later, Parked or Resurface that was deleted on the mail server, or moved out of
+the folders ohmail reads, stayed counted in that pile and showed up as a row with a long code and nothing
+to open. It now leaves the pile and its count at the next sync. A letter moved to another folder ohmail
+reads stays in its pile.
+
+### A screen-out says its unsubscribe request before you press
+<!-- changes: fix-026-screener-unsubscribe-said-before-the-press.md -->
+
+Screen out and Spam now say, before you press them, that ohmail asks the sender to unsubscribe you where
+they offer one-click unsubscribe, now and for their later mail: on the Screener card, in a row's menu and
+on its Accept, beside the bulk buttons, in the sender sheet, and on the phone. Where a waiting letter
+offers one-click, the request is named as sent; a sender past the Screener, whose press only makes a rule,
+is promised nothing. The note after the press says that Undo stops the request until it is sent, and that
+a sent request cannot be taken back.
+
+### Enter works on every setup step
+<!-- changes: fix-026-setup-dialog-enter-and-count.md -->
+
+- Enter on each setup step does what the step's button does, including Open ohmail on the last step, and
+  after a click on the dialog's text.
+- The first decision in setup says how many senders are waiting in the Screener instead of always one.
+
 ### Still to come
 
 Signed installers — a real Apple Developer ID and an Authenticode certificate. See
