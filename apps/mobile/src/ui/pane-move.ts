@@ -1,14 +1,14 @@
 /**
- * THE MOVE FROM A PUSHED ROUTE TO THE PAIR'S PANE, one door for every route that yields to a pane
- * (the pushed reader, the sender page). The stack keeps a removed screen's views attached until its
- * exit ends, and when the unfold's re-render of that screen reached the device after the removal
- * had begun, a MOVED view still had its parent and the app died in `addViewAt` (5 unfolds in 10;
- * 0 in 10 with no move). So the route first draws an empty sentinel, and the replace waits for the
- * sentinel's layout: by then everything the route committed before it is on the device.
+ * THE MOVE FROM A PUSHED ROUTE TO THE PAIR'S PANE, one door for the routes that yield to a pane (the
+ * pushed reader, the sender page). Only the FOCUSED route moves: a covered one would act on the top
+ * of the stack and blank itself. The route first draws one static empty view, so no view of it can
+ * be moved while the stack runs its exit (an unfold crashed in `addViewAt` on 5 in 10 when the
+ * route re-rendered during it), and from that view's layout pops back to the pane's EXISTING route
+ * (`dismissTo`), never appending one. A target that goes before the layout cancels the move.
  */
 import { createElement, useEffect, useRef, useState, type ReactElement } from "react";
 import { View } from "react-native";
-import { router } from "expo-router";
+import { router, useIsFocused } from "expo-router";
 import { readerMoveDue } from "./reader-held";
 
 export interface PaneTarget {
@@ -18,19 +18,21 @@ export interface PaneTarget {
 
 /** Null while the route stays; once it hands itself to the pane, the one thing it may render. */
 export function usePaneMove(target: PaneTarget | null, held: boolean): ReactElement | null {
+  const focused = useIsFocused();
   const [leaving, setLeaving] = useState<PaneTarget | null>(null);
-  const replaced = useRef(false);
-  const path = target?.pathname ?? null;
-  const key = target === null ? "" : JSON.stringify(target.params);
+  const moved = useRef(false);
+  const due = target !== null && focused && readerMoveDue(target.pathname, held);
+  const key = target === null ? "" : `${target.pathname}?${JSON.stringify(target.params)}`;
   useEffect(() => {
-    if (target !== null && readerMoveDue(path, held)) setLeaving(target);
+    if (moved.current) return;
+    setLeaving(due ? target : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, key, held]);
+  }, [due, key]);
   if (leaving === null) return null;
   const go = () => {
-    if (replaced.current) return;
-    replaced.current = true;
-    router.replace({ pathname: leaving.pathname, params: leaving.params });
+    if (moved.current || !due) return;
+    moved.current = true;
+    router.dismissTo({ pathname: leaving.pathname, params: leaving.params });
   };
   return createElement(View, { style: { flex: 1 }, onLayout: go, collapsable: false });
 }
