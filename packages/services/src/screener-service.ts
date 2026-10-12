@@ -27,7 +27,7 @@ import {
  * answers. This service names a gate it may be handed; it never builds one, and it must
  * compile in a deployment where no gate and no ledger exist. */
 import type {
-  AccessPort, ActionPricing, AiCreditGate, AiRefusalReason, AiUsageHost, SpendPort,
+  AccessPort, ActionPricing, AiCreditGate, AiRefusalReason, AiUsageHost, RefundObligationPort, SpendPort,
 } from "@trafficflow/db";
 import { carryDialect, dialect } from "@trafficflow/db/dialect";
 import { usageLines } from "./ai-usage-lines.js";
@@ -76,6 +76,9 @@ type GateRefusal = { refusal: AiRefusalClass; verdict: string; reason?: AiRefusa
  * single warn line on a path whose failure costs one rotation, and nothing reads it back.
  */
 const doorbellLog = createLogger({ service: "filing" });
+
+/** Where a purchase's refund that has no obligation store to remember it is named. */
+const suggestLog = createLogger({ service: "screener" });
 
 /** Where unknown first-contact senders are held (core routing, `source:"screener"`). */
 export const SCREENER_FOLDER: Destination = "ohmail/Screener";
@@ -1863,7 +1866,12 @@ export class ScreenerService extends ScreenerReadService {
   async suggest(
     ctx: ServiceContext,
     body: ScreenerSuggestBody,
-    opts: { idempotency?: ScreenIdempotency | null } = {},
+    opts: {
+      idempotency?: ScreenIdempotency | null;
+      /** Where a refund this press owes is written down, per request like the drafting route's;
+       *  composed wherever {@link ScreenerSuggestDeps.credits} is. Absent on an unmetered host. */
+      obligations?: RefundObligationPort;
+    } = {},
   ): Promise<ScreenerSuggestResult> {
     /* THE INVOCATION'S CLOCK STARTS HERE — the first statement of the method, before the
        preference read, the held-rows query and the stored-suggestion snapshot. Anchoring it after
@@ -2137,15 +2145,34 @@ export class ScreenerService extends ScreenerReadService {
       let declined = false;
       /** The model call's usage, carried by the release below — a model fault's line included. */
       const usage = usageLines(this.usageHost, ctx.accountId, "screener");
-      /** Give the claim back ONCE — `released` set before the await, so a fault is not retried. */
+      /**
+       * Give the claim back ONCE — `released` set before the await, so a fault is not retried. A
+       * REFUND IS OWED BEFORE IT IS TRIED, as the worker's pass and the drafting route owe theirs:
+       * the obligation is written first, so a release the program never receives leaves a debt
+       * the drain settles; a `settled` receipt closes it. `drafter_failed` is the closed set's word
+       * for a spend whose model call produced nothing kept (a decline, or a store that faulted).
+       */
       const releaseClaim = async (): Promise<void> => {
         if (!gate || !claimed || released) return;
         released = true;
         const meta = { messageId: r.messageId };
-        const receipt = await gate.release(ctx.accountId, chargedAttempt === null
+        const refunding = chargedAttempt;
+        if (refunding !== null && opts.obligations) {
+          await opts.obligations.owe({
+            accountId: ctx.accountId, action: "screener", attemptKey, attempt: refunding, reason: "drafter_failed", meta,
+          });
+        } else if (refunding !== null) {
+          suggestLog.warn("screener_suggest_refund_unrecorded", {
+            accountId: ctx.accountId, messageId: r.messageId,
+            reason: "a refund is owed and no obligation store was composed beside the gate, so a lost "
+              + "release would leave this charge with nothing to reverse it",
+          });
+        }
+        const receipt = await gate.release(ctx.accountId, refunding === null
           ? { action: "screener", attemptKey, refund: false, meta, ...usage.field() }
-          : { action: "screener", attemptKey, refund: true, attempt: chargedAttempt, meta, ...usage.field() });
-        if (declined && chargedAttempt !== null && receipt === "settled") charged -= price ?? 0;
+          : { action: "screener", attemptKey, refund: true, attempt: refunding, meta, ...usage.field() });
+        if (declined && refunding !== null && receipt === "settled") charged -= price ?? 0;
+        if (refunding !== null && receipt === "settled") await opts.obligations?.settle(ctx.accountId, refunding);
       };
       try {
         if (gate) {

@@ -10,7 +10,7 @@ import {
   listJunk, junkBody, rescueJunk, dismissJunkRescue, searchJunk, junkSweepPreview, requestJunkSweep,
 } from "../junk-window.js";
 import type { Route } from "../router.js";
-import { screener, readBody } from "./shared.js";
+import { screener, readBody, refundObligationsOf } from "./shared.js";
 import { pagingNumber } from "../query-bounds.js";
 
 /**
@@ -287,6 +287,8 @@ export const screenerRoutes: Route[] = [
       const body = await readBody<SuggestBody>(req);
       const result = await screener(deps).suggest(serviceContext(deps, req), body, {
         idempotency: deps.idempotency ?? null,
+        // Where a refund this press owes is written down, composed beside the gate as for drafts.
+        ...(refundObligationsOf(deps) ? { obligations: refundObligationsOf(deps)! } : {}),
       });
       return jsonResponse(result);
     },
