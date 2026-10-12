@@ -16,6 +16,7 @@ import type {
   ListSurface,
   ScreenerHeldMail,
   ScreenerSenderDTO,
+  UnsubscribeClaim,
   UnsubscribeHeaderState,
   UnsubscribeResult,
 } from "@ohmail/client-engine";
@@ -442,9 +443,15 @@ function RowActions({
   onOpen,
   onFile,
   exiting,
+  unsub = null,
 }: {
   /** The suggested destination, or null when there is nothing to accept. */
   accept: DecisionDestination | null;
+  /**
+   * What Screen out and Spam send on the person's behalf, said in the menu before either is
+   * pressed and named on Accept where the suggestion demotes; `null` where they send nothing.
+   */
+  unsub?: { claim: Exclude<UnsubscribeClaim, "none">; line: string } | null;
   open: boolean;
   onOpen: (open: boolean) => void;
   onFile: (dest: DecisionDestination) => void;
@@ -459,6 +466,8 @@ function RowActions({
 }) {
   const t = useTranslations("screener");
   if (exiting) return null;
+  // ACCEPTING A DEMOTING SUGGESTION IS A SCREEN-OUT PRESS: its word says so where one is sent.
+  const acceptUnsub = accept !== null && DECISION_QUIET.has(accept) ? unsub : null;
   return (
     <>
       {accept ? (
@@ -469,10 +478,10 @@ function RowActions({
              is one line above it. The accessible name is not allowed that context: a screen
              reader user arriving on this button hears it alone, so it names the pile. */
           aria-label={t("rowAcceptAria", { dest: t(PILE_KEY[accept]) })}
-          title={t("rowAcceptAria", { dest: t(PILE_KEY[accept]) })}
+          title={acceptUnsub?.line ?? t("rowAcceptAria", { dest: t(PILE_KEY[accept]) })}
           onClick={() => onFile(accept)}
         >
-          {t("rowAccept")}
+          {acceptUnsub ? t("rowAcceptUnsub", { claim: acceptUnsub.claim }) : t("rowAccept")}
         </button>
       ) : null}
       <button
@@ -499,6 +508,7 @@ function RowActions({
               {t(PILE_KEY[d])} <Kbd>{DECISION_KEY[d]}</Kbd>
             </button>
           ))}
+          {unsub ? <p className="scn-act-unsub" role="note">{unsub.line}</p> : null}
         </div>
       ) : null}
     </>
@@ -926,6 +936,19 @@ export function ScreenerView({
   }, [full, fullShown, onFull]);
   const scopeOf = (s: ScreenerSenderDTO): DecisionScope =>
     scopes.get(s.id) ?? s.scope ?? "sender";
+  /**
+   * WHAT SCREEN OUT AND SPAM SEND, SAID BEFORE THE PRESS — on the card, in the row's menu and on its
+   * Accept: the sender-level condition (now and their later mail), a fact where a held letter offers
+   * one-click, nothing where the press asks nothing (`state.unsubClaimOf`). The toasts say Undo's reach.
+   */
+  const unsubLineOf = (x: ScreenerSenderDTO, scope: DecisionScope): { claim: Exclude<UnsubscribeClaim, "none">; line: string } | null => {
+    const claim = state.unsubClaimOf?.(x, scope) ?? "none";
+    if (claim === "none") return null;
+    const line = scope === "domain"
+      ? t("barUnsubDomain", { claim, domain: displayDomainLabel(x.from.address) })
+      : t("barUnsub", { claim, who: displayAddress(x.from.address) });
+    return { claim, line };
+  };
 
   /** The selected sender's held mail, whichever segment shape the row is. */
   const heldOfCurrent = current === null
@@ -1406,6 +1429,7 @@ export function ScreenerView({
           actions={state.role.mode === "blocked" ? undefined : (
             <RowActions
               exiting={state.isExiting(w.id)}
+              unsub={unsubLineOf(w, scopeOf(w))}
               accept={acceptDestOf(w)}
               open={menuFor === w.id}
               onOpen={(o) => setMenuFor(o ? w.id : null)}
@@ -1694,6 +1718,11 @@ export function ScreenerView({
                   ) : null}
               </BulkStrip>
             ) : null}
+            {/* BOTH BULKS SCREEN OUT OR MARK SPAM, so what they send is said beside them, once. */}
+            {segment === "waiting" && state.waitingCount > 0 && state.role.mode !== "blocked"
+              && state.waiting.some((x) => unsubLineOf(x, scopeOf(x)) !== null) ? (
+              <p className="scn-bulk-unsub" role="note">{t("bulkUnsub")}</p>
+            ) : null}
             {/* HOW FAR THE BULK HAS GOT. `applyAll` and `markAllSpam` dispatch one row every
                 240ms, so a forty-sender press is ten seconds of work whose only evidence was
                 rows leaving one at a time — a stagger and a stall look identical from here, and
@@ -1827,6 +1856,7 @@ export function ScreenerView({
             mailboxLabel={mailboxLabelFor(current as ScreenerSenderDTO)}
             standing={noSuggestionStanding}
             reach={scopeOf(current as ScreenerSenderDTO) === "domain" ? state.reachOf(current as ScreenerSenderDTO, "domain") : null}
+            unsub={unsubLineOf(current as ScreenerSenderDTO, scopeOf(current as ScreenerSenderDTO))?.line ?? null}
             inFlight={suggestingFor.has(senderKey((current as ScreenerSenderDTO).from.address))}
             subscriptionPane={subscriptionPane}
             {...(decisionFor(current as ScreenerSenderDTO) !== undefined
@@ -2491,6 +2521,7 @@ function WaitingPreview({
   reach,
   inFlight,
   subscriptionPane,
+  unsub,
 }: {
   sender: ScreenerSenderDTO;
   scope: DecisionScope;
@@ -2533,6 +2564,8 @@ function WaitingPreview({
   reach: CardReach | null;
   /** See `ScreenerViewProps.subscriptionPane`. */
   subscriptionPane: boolean;
+  /** What Screen out and Spam send on the person's behalf, said under the bar; `null` for nothing. */
+  unsub: string | null;
 }) {
   const t = useTranslations("screener");
   const tRules = useTranslations("rules");
@@ -2585,6 +2618,7 @@ function WaitingPreview({
             copy={barCopy}
             onDecide={onDecide}
             onBack={onBack}
+            unsubscribe={unsub}
           />
           {/* A WHOLE-DOMAIN PRESS NAMES WHAT ELSE IT FILES before it is made: every other waiting
               sender at the domain and how many of their letters move, the set the press moves. */}

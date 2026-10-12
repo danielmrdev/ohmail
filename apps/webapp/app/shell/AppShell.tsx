@@ -43,6 +43,7 @@ import {
   type OhmailView,
   type SearchHit,
   type TagDTO,
+  unsubscribePostureOf,
 } from "@ohmail/client-engine";
 import {
   Button,
@@ -3660,6 +3661,10 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTranspor
           // Our own address: the sheet says why it offers no press (`isOwnSubject`).
           own={isOwnSubject(engine.verbRead(), senderMenu!.messageId, senderMenu!.address, ownAddresses)}
           autoUnsubscribe={autoUnsubscribeDiscloses}
+          // The held letters the scope's press moves, by the one-click posture their bodies carry.
+          posturesFor={(scope) => senderMenuFor.scopes[scope].messages
+            .filter((m) => m.folder === FOLDER_OF_VIEW.screener)
+            .map((m) => unsubscribePostureOf(engine.read(), m.id))}
           onOpenDetail={(scope) => openSenderAudit(senderMenu!.messageId, scope, senderMenu!.address)}
           // The subject sheet resolves the message's SENDER (`subjectRuleContext`), so under an
           // override the row is withheld rather than offered about somebody the sheet never named.

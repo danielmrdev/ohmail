@@ -101,6 +101,10 @@ export function SenderDetail({
   const also = reach !== null && reach.others.length > 0
     ? Copy.domainAlsoFiles(reach.others.reduce((n, o) => n + o.count, 0), reach.others.map((o) => `${o.address} (${o.count})`).join(", "))
     : null;
+  /* WHAT SCREEN OUT AND SPAM SEND, said under the bar before either is pressed. The held bodies this
+     screen hydrates carry each letter's one-click posture, so the line firms up as they land. */
+  const claim = seg === "waiting" ? w.actions.unsubClaimOf(row, w.screener.waiting) : "none";
+  const unsub = claim === "none" ? null : Copy.decideUnsub(claim, target, row.scope === "domain");
   /* On a mailbox another install organizes: where a decision goes, and what became of it. */
   const organizer = w.mailboxes.organizer;
   const relay = relayMarkFor(row.address, w.screener.relayed, organizer?.name ?? null);
@@ -270,6 +274,7 @@ export function SenderDetail({
           target={target}
           nobody={nobody}
           also={also}
+          unsub={unsub}
           suggested={row.ai?.dest ?? null}
           onScope={(scope) => w.actions.setScope(row, scope)}
           onDecide={(dest, read) => {
@@ -301,6 +306,7 @@ function DecisionBar({
   target,
   nobody,
   also,
+  unsub,
   suggested,
   onScope,
   onDecide,
@@ -313,6 +319,8 @@ function DecisionBar({
   nobody: boolean;
   /** What a whole-domain press files beyond this sender, said before the press; `null` for nothing. */
   also: string | null;
+  /** What Screen out and Spam send on the person's behalf, said before the press; `null` for nothing. */
+  unsub: string | null;
   suggested: Destination | null;
   onScope: (s: "sender" | "domain") => void;
   onDecide: (dest: Destination, read: boolean) => void;
@@ -408,6 +416,11 @@ function DecisionBar({
       {also !== null ? (
         <Txt variant="hint" tone="ink2" style={{ marginTop: 8 }} testID="decide-domain-also">
           {also}
+        </Txt>
+      ) : null}
+      {unsub !== null ? (
+        <Txt variant="hint" tone="ink2" style={{ marginTop: 8 }} testID="decide-unsub">
+          {unsub}
         </Txt>
       ) : null}
     </View>

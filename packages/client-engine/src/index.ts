@@ -901,6 +901,8 @@ export {
   type RuleLine,
   type RulesInPlay,
 } from "./press-forecast.js";
+// What a screen-out says about the one-click unsubscribe before the press. See `unsubscribe-claim.ts`.
+export { unsubscribeClaim, unsubscribePostureOf, type UnsubscribeClaim } from "./unsubscribe-claim.js";
 // The local diagnostic file — core's one builder, for the phone. See `diagnostics.ts`.
 export {
   DIAGNOSTIC_FILE_NAME,

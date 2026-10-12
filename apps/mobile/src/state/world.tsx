@@ -573,6 +573,9 @@ const NO_ACTIONS: WorldActions = {
   releaseFiles: () => undefined,
   decide: () => undefined,
   reachOf: () => ({ others: [], inboxIds: [] }),
+  // The fixture world sends nothing, so it promises nothing.
+  unsubClaimOf: () => "none" as const,
+  screeningUnsubClaim: () => "none" as const,
   setScope: () => undefined,
   allow: () => undefined,
   notSpam: () => undefined,
@@ -1494,6 +1497,8 @@ export function WorldProvider({ children }: { children: ReactNode }) {
           releaseFiles: (ids) => acts.releaseFiles(ids),
           decide: (row, dest, read, peers) => void acts.decide(row, dest, read, row.scope, peers),
           reachOf: (row, peers) => acts.reachOf(row, peers, row.scope),
+          unsubClaimOf: (row, peers) => acts.unsubClaimOf(row, peers, row.scope),
+          screeningUnsubClaim: (id, scope) => acts.screeningUnsubClaim(id, scope),
           setScope: (row, scope) => setScopes((held) => ({ ...held, [row.routeKey]: scope })),
           allow: (row, dest) => void acts.release(row, dest, "screened"),
           notSpam: (row, dest) => void acts.release(row, dest, "spam"),

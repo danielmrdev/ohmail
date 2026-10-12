@@ -466,10 +466,9 @@ export interface ScreeningPlan {
    * must say before the click. A fact about the CODE, not the account: the account switch and the
    * standalone case are the caller's second condition (`autoUnsubscribeDiscloses`); this is pure
    * over a `SenderScreening`. True exactly when the DECIDE path runs AND the decision is the
-   * endpoint's `no` — never for a rule this sheet writes itself (`RulesService.create` calls
-   * nothing, and the routing pass calls nothing: a past-the-gate rule arms NOTHING today), and a
-   * plain `move` to Screened does not arm it either (`sweepScreenedOut` has no production caller).
-   * The honest negative.
+   * endpoint's `no` — never for a rule this sheet writes itself (a past-the-gate rule arms NOTHING),
+   * nor a plain `move` to Screened (the hourly drain acts only for a sender a person's decision
+   * screened out, `senderScreenedOutByPersonSql`). The honest negative.
    */
   unsubscribes: boolean;
 }

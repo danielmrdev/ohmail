@@ -85,6 +85,11 @@ export interface DecisionBarProps {
   onBack?: () => void;
   /** Overrides the default consequence line. */
   note?: ReactNode;
+  /**
+   * What Screen out and Spam send on the person's behalf, said before either is pressed — the host's
+   * sentence for the one-click unsubscribe, or absent where those presses send nothing.
+   */
+  unsubscribe?: ReactNode;
   className?: string;
 }
 
@@ -108,6 +113,7 @@ export function DecisionBar({
   keyboard,
   onBack,
   note,
+  unsubscribe,
   className,
 }: DecisionBarProps) {
   useEffect(() => {
@@ -214,6 +220,7 @@ export function DecisionBar({
           </InfoNote>
         )}
       </div>
+      {unsubscribe ? <p className="d-unsub">{unsubscribe}</p> : null}
     </div>
   );
 }

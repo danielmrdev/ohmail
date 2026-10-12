@@ -10,6 +10,7 @@
  */
 
 import type { BackupExclusion } from "./engine/backup-exclusion";
+import type { UnsubSaid, UnsubToast } from "./state/unsub-arms";
 import { isPinFailure } from "./net/host-pinning";
 import type { Deck } from "./copy.en";
 
@@ -584,6 +585,14 @@ export const DE: Deck = {
   scopeDomain: "ganze Domain",
   decideRule: (target: string) =>
     `Wird zur Regel — künftige Post von ${target} wird automatisch einsortiert. Die ✓-Hälfte markiert diese Post außerdem als gelesen.`,
+  decideUnsub: (claim: UnsubSaid, target: string, domain: boolean) =>
+    domain
+      ? claim === "sends"
+        ? `Aussortieren und Spam senden den wartenden Absendern bei ${target} außerdem eine Ein-Klick-Abmeldung und melden dich bei späterer Post der Domain mit Ein-Klick-Abmeldung erneut ab.`
+        : `Wo Absender bei ${target} Ein-Klick-Abmeldung anbieten, melden Aussortieren und Spam dich außerdem ab, jetzt und bei späterer Post.`
+      : claim === "sends"
+        ? `Aussortieren und Spam senden ${target} außerdem eine Ein-Klick-Abmeldung und melden dich bei späterer Post mit Ein-Klick-Abmeldung erneut ab.`
+        : `Wo ${target} Ein-Klick-Abmeldung anbietet, melden Aussortieren und Spam dich außerdem ab, jetzt und bei späterer Post.`,
   decideReadToggle: "& gelesen",
   decideReadOn: "Wird als gelesen einsortiert — der Zähler bewegt sich nicht.",
   decideReadOff: "Wird ungelesen einsortiert — sie meldet sich.",
@@ -984,8 +993,14 @@ export const DE: Deck = {
   liveSaveFailed: "Diese Änderung ließ sich nicht speichern. Versuch es nochmal.",
   liveDecided: (dest: string, target: string) =>
     `${dest} — künftige Post von ${target} wird automatisch dorthin einsortiert.`,
-  liveAlsoUnsubscribing: (said: string) =>
-    `${said} ohmail meldet dich dort auch ab, sofern der Absender Ein-Klick-Abmeldung anbietet.`,
+  liveAlsoUnsubscribing: (said: string, how: UnsubToast) =>
+    how === "sends"
+      ? `${said} Rückgängig stoppt auch die Ein-Klick-Abmeldung; sobald Rückgängig weg ist, wird sie gesendet und lässt sich nicht zurücknehmen, und spätere Post des Absenders mit Ein-Klick-Abmeldung wird ebenfalls abgemeldet.`
+      : how === "may"
+        ? `${said} Wo der Absender Ein-Klick-Abmeldung anbietet, meldet ohmail dich ab, sobald Rückgängig weg ist, und erneut bei späterer Post; Rückgängig stoppt das auch.`
+        : how === "sent"
+          ? `${said} ohmail sendet eine Ein-Klick-Abmeldung, die sich nicht zurücknehmen lässt, und meldet dich bei späterer Post mit Ein-Klick-Abmeldung erneut ab.`
+          : `${said} Wo der Absender Ein-Klick-Abmeldung anbietet, meldet ohmail dich jetzt und bei späterer Post ab; eine gesendete Abmeldung lässt sich nicht zurücknehmen.`,
   liveDecidedElsewhere: (name: string, target: string) =>
     `Entschieden — ${name} sortiert ${target} beim nächsten Durchlauf ein.`,
   liveDecidedElsewhereUnknown: (target: string) =>

@@ -124,7 +124,10 @@ import {
   takeClientEngineVitals,
   joinableStandingSend,
   watchWireFailedLists,
+  unsubscribeClaim,
+  unsubscribePostureOf,
   type MessageBody,
+  type UnsubscribeClaim,
 } from "@ohmail/client-engine";
 import { Copy } from "../copy";
 import { activeLocale } from "../i18n/locale";
@@ -3100,6 +3103,10 @@ export interface LiveWorldActions {
   decide(row: ScreenerRow, dest: Destination, read: boolean, scope: Scope, peers?: readonly ScreenerRow[]): Promise<boolean>;
   /** What that press files beyond the row's own letters, before it is made ({@link cardReach}). */
   reachOf(row: ScreenerRow, peers: readonly ScreenerRow[], scope: Scope): CardReach;
+  /** What a Screen out or Spam press on the row says about the one-click unsubscribe, before it is made. */
+  unsubClaimOf(row: ScreenerRow, peers: readonly ScreenerRow[], scope: Scope): UnsubscribeClaim;
+  /** The same, for the open message's screening sheet: `none` where the press is not a decide. */
+  screeningUnsubClaim(messageId: string, scope: Scope): UnsubscribeClaim;
   /** Allow / Not-spam: release the held bag to a place, REWRITING the holding rules. */
   release(row: ScreenerRow, dest: Place, segment: "screened" | "spam"): Promise<boolean>;
   /** The message screen's triage: Answer Later / Park / Resurface. */
@@ -3328,12 +3335,21 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
   /** Read at every use, never captured — see {@link LiveDeps.resurfaceTime}. */
   const resurfaceAtClock = (): string | null => deps.resurfaceTime?.() ?? null;
   /**
-   * DOES THIS PRESS SEND THE SENDER'S UNSUBSCRIBE — the decide route (`screener_decide`) with a
-   * `no`, on a door whose switch is on. Exactly the server's trigger: a rule written past the gate
-   * and a plain move arm nothing, so they say nothing (UD-R4-03 keeps the pass to the same set).
+   * WHAT THIS PRESS SAYS ABOUT THE SENDER'S UNSUBSCRIBE (`unsubscribe-claim.ts`) — armed by the decide
+   * route (`screener_decide`) with a `no` on a door whose switch is on, which is exactly the server's
+   * trigger (a rule past the gate and a plain move arm nothing); then the held letters' postures.
    */
-  const decidedUnsubscribes = (decideRoute: boolean, decision: "yes" | "no"): boolean =>
-    decideRoute && decision === "no" && (deps.autoUnsubscribe?.() ?? true);
+  const pressClaim = (decideRoute: boolean, decision: "yes" | "no", heldIds: readonly string[]): UnsubscribeClaim => {
+    const reader = engine.read();
+    return unsubscribeClaim({
+      armed: decideRoute && decision === "no" && (deps.autoUnsubscribe?.() ?? true),
+      postures: heldIds.map((id) => unsubscribePostureOf(reader, id)),
+    });
+  };
+  /** The press's sentence with the unsubscribe arm, if any: `held` while Undo is still to come. */
+  const withUnsub = (said: Refusal, claim: UnsubscribeClaim, held: boolean): Refusal =>
+    claim === "none" ? said
+      : refuse("liveAlsoUnsubscribing", said, held ? (claim === "sends" ? "sends" : "may") : (claim === "sends" ? "sent" : "maysent"));
   /**
    * Everything swept per stream DURING THE CURRENT VISIT — the leave commit's anchor pool.
    * CONSUMED by {@link leaveFeed}: a visit's sweep may not leak into the next one, or a
@@ -3770,6 +3786,19 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
    */
   const reachOf = (row: ScreenerRow, peers: readonly ScreenerRow[], scope: Scope): CardReach =>
     cardReach(engine.read(), reachRows(row, peers), row.address, scope);
+  /** The held letters a demoting press on the card moves: the row's, and at domain scope the domain's. */
+  const heldInScope = (row: ScreenerRow, peers: readonly ScreenerRow[], scope: Scope): string[] => {
+    const domain = domainOf(senderKey(row.address)).toLowerCase();
+    return reachRows(row, peers)
+      .filter((r, i) => i === 0 || (scope === "domain" && domainOf(senderKey(r.address)).toLowerCase() === domain))
+      .flatMap((r) => r.heldIds);
+  };
+  /** Armed by the press's own path, as `decide` reads it: only a representative at the gate is decided. */
+  const unsubClaimOf = (row: ScreenerRow, peers: readonly ScreenerRow[], scope: Scope): UnsubscribeClaim => {
+    const rep = engine.read().get<EngineMessage>("message", row.id);
+    const atGate = rep === undefined || physicalFolderOf(rep) === FOLDER_OF_VIEW.screener;
+    return pressClaim(atGate, "no", heldInScope(row, peers, scope));
+  };
 
   const decide = async (
     row: ScreenerRow, dest: Destination, read: boolean, pressed: Scope, peers: readonly ScreenerRow[] = [],
@@ -3788,7 +3817,8 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
     };
     const decidedSaid = refuse("liveDecided", destDone(dest), target);
     const atGate = rep === undefined || physicalFolderOf(rep) === FOLDER_OF_VIEW.screener;
-    const pressSaid = decidedUnsubscribes(atGate, decision) ? refuse("liveAlsoUnsubscribing", decidedSaid) : decidedSaid;
+    const claim = pressClaim(atGate, decision, heldInScope(row, peers, scope));
+    const pressSaid = withUnsub(decidedSaid, claim, true);
     let spoke = false;
     const hold = deps.leaveWaiting?.({ address: row.address, scope });
     const opened = await holdScreenRouting(intent, (a) => {
@@ -3814,7 +3844,7 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
     });
     // Sent by the window itself (its record refused): the answer above speaks for the press.
     if (opened.sent) return true;
-    if (!opened.held) { hold?.(); return decideNow(row, dest, read, scope, also); }
+    if (!opened.held) { hold?.(); return decideNow(row, dest, read, scope, also, heldInScope(row, peers, scope)); }
     spoke = true;
     const subject = routingSubject(intent);
     toast(pressSaid, {
@@ -3834,6 +3864,7 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
   /** The same decision with no window to hold it: sent now, and the sentence waits for the answer. */
   const decideNow = async (
     row: ScreenerRow, dest: Destination, read: boolean, scope: Scope, also: readonly string[] = [],
+    heldIds: readonly string[] = row.held.map((h) => h.id),
   ): Promise<boolean> => {
     const raw = engine.read();
     const rep = raw.get<EngineMessage>("message", row.id);
@@ -3934,7 +3965,8 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
     const decidedSaid = refuse("liveDecided", destDone(dest), target);
     return said(
       v,
-      decidedUnsubscribes(decideRoute, decision) ? refuse("liveAlsoUnsubscribing", decidedSaid) : decidedSaid,
+      // Sent at once: no Undo is on offer, so the request is said as gone.
+      withUnsub(decidedSaid, pressClaim(decideRoute, decision, heldIds), false),
       refuse("liveDecideFailed", row.address),
     );
   };
@@ -5323,6 +5355,23 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
     return refuse("screeningPressRuled", place, target);
   };
 
+  /** The held letters of a screening subject: what a decide on it moves, and so what it may unsubscribe. */
+  const heldOfSubject = (subject: readonly EngineMessage[]): string[] =>
+    subject.filter((x) => physicalFolderOf(x) === FOLDER_OF_VIEW.screener).map((x) => x.id);
+  /** The open message's sheet, before a press: what Screen out or Spam would say about the unsubscribe. */
+  const screeningUnsubClaim = (messageId: string, scope: Scope): UnsubscribeClaim => {
+    const m = messageOf(messageId);
+    if (!m || isOwn(messageId)) return "none";
+    const address = m.from.address.trim().toLowerCase();
+    const match = scope === "domain" ? domainOf(address).toLowerCase() : address;
+    if (match === "") return "none";
+    const subject = engine.read().list<EngineMessage>("message").filter((x) => (scope === "domain"
+      ? domainOf(x.from.address.trim().toLowerCase()).toLowerCase() === match
+      : x.from.address.trim().toLowerCase() === match));
+    const held = heldOfSubject(subject);
+    return pressClaim(held.length > 0, "no", held);
+  };
+
   const screenSender = async (
     messageId: string, dest: Destination, scope: Scope, applyRetro = true, press?: PhoneScreenPress,
   ): Promise<boolean> => {
@@ -5404,7 +5453,7 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
     const pressSaid = stay ?? refuse("liveDecided", destDone(dest), target);
     return saidAll(
       verdicts,
-      decidedUnsubscribes(waiting !== undefined, decision) ? refuse("liveAlsoUnsubscribing", pressSaid) : pressSaid,
+      withUnsub(pressSaid, pressClaim(waiting !== undefined, decision, heldOfSubject(subject)), false),
       ownAddressOr(verdicts, refuse("liveDecideFailed", m.from.address)),
     );
   };
@@ -5453,7 +5502,7 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
     openMessage, leaveMessage, hydrateMessage, forwardFetch, hydrateHeld, holdFiles, releaseFiles, loadInlineImages,
     watchLists, openAttachmentBytes,
     releaseAttachments,
-    sweepFeed, leaveFeed, decide, reachOf, release, setPile,
+    sweepFeed, leaveFeed, decide, reachOf, unsubClaimOf, screeningUnsubClaim, release, setPile,
     pileToggle, resurfaceToggle, resurfaceAt, resurfaceNow, resurfaceDone, markSeen, markGlanced, markAllSeen, move,
     deleteMessage, trashList, trashRestore,
     sendReply, sendForward, sendNew, sendAndDoneOffered, withdrawSend, cancelSchedule, tagToggle, tagCreate, screenSender,
@@ -5504,6 +5553,10 @@ export interface WorldActions {
   decide(row: ScreenerRow, dest: Destination, read: boolean, peers?: readonly ScreenerRow[]): void;
   /** What a press on `row` files beyond its own letters, at the row's scope, before it is made. */
   reachOf(row: ScreenerRow, peers: readonly ScreenerRow[]): CardReach;
+  /** What Screen out or Spam on `row` says about the one-click unsubscribe, at the row's scope. */
+  unsubClaimOf(row: ScreenerRow, peers: readonly ScreenerRow[]): UnsubscribeClaim;
+  /** The same for the open message's screening sheet, at `scope`. */
+  screeningUnsubClaim(messageId: string, scope: Scope): UnsubscribeClaim;
   setScope(row: ScreenerRow, scope: Scope): void;
   /** Allow (screened) / Not spam (spam): release the whole held bag to a place. */
   allow(row: ScreenerRow, dest: Place): void;
@@ -5629,6 +5682,8 @@ export function stableActions(current: () => WorldActions): WorldActions {
     releaseFiles: (ids) => current().releaseFiles(ids),
     decide: (row, dest, read, peers) => current().decide(row, dest, read, peers),
     reachOf: (row, peers) => current().reachOf(row, peers),
+    unsubClaimOf: (row, peers) => current().unsubClaimOf(row, peers),
+    screeningUnsubClaim: (id, scope) => current().screeningUnsubClaim(id, scope),
     setScope: (row, scope) => current().setScope(row, scope),
     allow: (row, dest) => current().allow(row, dest),
     notSpam: (row, dest) => current().notSpam(row, dest),

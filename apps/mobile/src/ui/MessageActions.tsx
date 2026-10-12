@@ -829,6 +829,7 @@ function ScreeningSheet({ m, onClose }: { m: WorldMail; onClose: () => void }) {
   /* Nothing organizes any mailbox: the note says so rather than what a rule would file. */
   const nobody = w.mailboxes.known && noneOrganizedWhy(w.mailboxes.rows) !== null;
   const inPlay = w.actions.screeningRules(m.id, scope);
+  const unsubClaim = w.actions.screeningUnsubClaim(m.id, scope);
   /* WHY SOME OF THEIR MAIL STAYED once the rule's past-mail pass finished — asked of the server
      once per row set, one line per place and reason, as the web sheet asks it. */
   const ask = w.actions.screeningStayed(m.id, scope);
@@ -955,6 +956,12 @@ function ScreeningSheet({ m, onClose }: { m: WorldMail; onClose: () => void }) {
       <Txt variant="caption" tone="ink3" style={{ paddingHorizontal: 14, paddingTop: 8 }}>
         {nobody ? Copy.screeningNoteNobody : applyRetro ? Copy.screeningNoteRetro(target) : Copy.screeningNote(target)}
       </Txt>
+      {/* What Screen out and Spam send for a sender still waiting, before either is pressed. */}
+      {unsubClaim !== "none" ? (
+        <Txt variant="caption" tone="ink2" style={{ paddingHorizontal: 14, paddingTop: 6 }} testID="screening-unsub">
+          {Copy.decideUnsub(unsubClaim, target, scope === "domain")}
+        </Txt>
+      ) : null}
         </>
       )}
     </Sheet>

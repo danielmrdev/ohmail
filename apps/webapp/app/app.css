@@ -1586,6 +1586,21 @@ input.tag-manage-input { /* by element: the row is the width, the field gives */
 .scn-act-dest:hover {
   background: var(--tint);
 }
+/* What Screen out and Spam send, in the menu that offers them, before either is pressed. */
+.scn-act-unsub {
+  margin: 4px 8px 2px;
+  max-width: 220px;
+  font-size: calc(11px + var(--type-up));
+  line-height: 1.4;
+  color: var(--ink2);
+}
+/* The same sentence beside the two bulks. */
+.scn-bulk-unsub {
+  margin: 6px 0 0;
+  font-size: calc(11px + var(--type-up));
+  line-height: 1.4;
+  color: var(--ink2);
+}
 @media (hover: none) {
   .scn-act {
     opacity: 1;

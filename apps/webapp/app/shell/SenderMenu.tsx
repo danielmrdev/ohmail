@@ -14,10 +14,10 @@
  * A pre-click disclosure for the two reject destinations: screening a waiting sender out ALSO arms
  * auto-unsubscribe (the screener calls `onScreenOut` after the commit), so one click on a domain can
  * send one-click unsubscribe requests to every list under it. That is a CONFIRM, not a toast — a
- * sentence shown after the act is not a disclosure (the `RulesView` revoke construction). Since mail
- * 0054 it is also conditional on the account having left auto-unsubscribe on and on the build having
- * an unsubscribe service — see {@link autoUnsubscribe}: an empty confirm teaches people to click
- * through the real one.
+ * sentence shown after the act is not a disclosure. It is conditional on the account's switch (mail
+ * 0054) and an unsubscribe service ({@link autoUnsubscribe}). The server asks for any of the sender's
+ * mail offering one-click, now and later, so the confirm says that condition, made a fact where a held
+ * letter is seen offering it (`unsubscribeClaim` over {@link posturesFor}).
  */
 
 /**
@@ -41,7 +41,8 @@ import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { useTranslations } from "next-intl";
 import {
   VIEW_OF_FOLDER, type ConflictGroup, type Folder, type PressForecast, type RuleDTO, type RulesInPlay,
-  type StayedWhy, ruleMatchKey, ruleTwins, twinWinner,
+  type StayedWhy, type UnsubscribeClaim, type UnsubscribeHeaderState, ruleMatchKey, ruleTwins, twinWinner,
+  unsubscribeClaim,
 } from "@ohmail/client-engine";
 import { canonicalDestination } from "@trafficflow/core/folder-name";
 import { isSharedProviderDomain } from "@trafficflow/core/rule-order";
@@ -136,6 +137,7 @@ export function SenderMenu({
   mailboxNameOf,
   onMoveToo,
   autoUnsubscribe = true,
+  posturesFor,
   forecastFor,
   rulesFor,
   organizer,
@@ -203,6 +205,11 @@ export function SenderMenu({
    * is still being sent.
    */
   autoUnsubscribe?: boolean;
+  /**
+   * The one-click posture of each held letter the scope's press moves, `null` while unread. Absent:
+   * nothing is known, and an armed press says the request as a condition (`unsubscribe-claim.ts`).
+   */
+  posturesFor?: (scope: ScreeningScope) => readonly (UnsubscribeHeaderState | null)[];
   onClose: () => void;
 }) {
   const t = useTranslations("screening");
@@ -267,6 +274,11 @@ export function SenderMenu({
    */
   const who = displayAddress(sender.address);
   const whichDomain = displayDomain(sender.domain);
+  /** The press's unsubscribe sentence: a fact where a letter offers one-click, else a condition. */
+  const unsubSentence = (claim: Exclude<UnsubscribeClaim, "none">, senders: number, place: string): string =>
+    scope === "domain"
+      ? t(claim === "sends" ? "unsubDomain" : "unsubDomainMaybe", { domain: whichDomain, senders, place })
+      : t(claim === "sends" ? "unsubSender" : "unsubSenderMaybe", { sender: who, place });
   // Offered only when there IS a domain: `decide` answers 422 for an address with no `@`
   // (an empty `match` on a domain rule is compared against the empty domain of every other
   // malformed address), so the switch must not present a choice the server refuses. Nor on a
@@ -334,7 +346,10 @@ export function SenderMenu({
     // armed at all. `ScreeningPlan.unsubscribes` decides the first — the one place that condition
     // about the PATH lives — and {@link autoUnsubscribe} the second; see its note for why the two
     // are separate questions rather than one flag pushed down into the planner.
-    const unsubscribes = autoUnsubscribe && planScreeningChange(sender, dest, scope, makeRule, applyRetro).unsubscribes;
+    const unsub: UnsubscribeClaim = unsubscribeClaim({
+      armed: autoUnsubscribe && planScreeningChange(sender, dest, scope, makeRule, applyRetro).unsubscribes,
+      postures: posturesFor?.(scope) ?? [],
+    });
     /* A RULE THAT DISAGREES IS ASKED ABOUT FIRST — only when the press writes one (or decides at
        the gate) and the forecast finds a rule keeping mail elsewhere, or an exception to write. */
     const asks = makeRule || subject.waiting;
@@ -346,12 +361,12 @@ export function SenderMenu({
     const cls = addressOnly ? null : asked;
     if (forecast && cls) {
       openedFrom.current = dest;
-      setStep({ kind: "resolve", dest, forecast, cls, choice: defaultChoice(cls, forecast), unsubscribes });
+      setStep({ kind: "resolve", dest, forecast, cls, choice: defaultChoice(cls, forecast), unsub });
       return;
     }
-    if (unsubscribes) {
+    if (unsub !== "none") {
       openedFrom.current = dest;
-      setStep({ kind: "unsubscribe", dest });
+      setStep({ kind: "unsubscribe", dest, unsub });
       return;
     }
     if (addressOnly && forecast) {
@@ -575,11 +590,10 @@ export function SenderMenu({
           domainCount={sender.scopes.domain.messages.length}
           condition={conditionOf}
           pile={pileOf}
-          unsubscribeSentence={step.unsubscribes
-            ? scope === "domain"
-              ? t("unsubDomain", { domain: whichDomain, senders: sender.scopes.domain.senders, place: piles[step.dest] })
-              : t("unsubSender", { sender: who, place: piles[step.dest] })
-            : null}
+          unsubscribeSentence={step.unsub === "none"
+            ? null
+            : unsubSentence(step.unsub, sender.scopes.domain.senders, piles[step.dest])}
+          unsubscribeCommit={step.unsub === "sends" ? t("unsubCommit") : t("unsubCommitMaybe")}
           onChoice={(choice) => setStep({ ...step, choice })}
           onCommit={() => {
             const tile = tilesOf(step.cls, step.forecast, step.choice);
@@ -590,17 +604,9 @@ export function SenderMenu({
           }}
           onCancel={() => { stepBack(); }}
         />
-      ) : confirm && preview ? (
-        <div className="sm-confirm">
-          <p>
-            {scope === "domain"
-              ? t("unsubDomain", {
-                  domain: whichDomain,
-                  senders: preview.senders,
-                  place: piles[confirm],
-                })
-              : t("unsubSender", { sender: who, place: piles[confirm] })}
-          </p>
+      ) : confirm && preview && step.kind === "unsubscribe" ? (
+        <div className="sm-confirm" data-unsub={step.unsub}>
+          <p>{unsubSentence(step.unsub, preview.senders, piles[confirm])}</p>
           {/* THE FINE PRINT, SPLIT ON WHAT A PERSON MUST READ BEFORE PRESSING.
               "Once, and there is no undo" is the irreversible part and it stays on screen with
               the disclosure shut. HOW the request travels — from our servers rather than the
@@ -616,7 +622,7 @@ export function SenderMenu({
           </InfoNote>
           <span className="sm-confirm-row">
             <button type="button" className="go" onClick={() => { setStep({ kind: "list" }); onChoose(confirm, scope, makeRule, applyRetro); }}>
-              {t("unsubCommit")}
+              {step.unsub === "sends" ? t("unsubCommit") : t("unsubCommitMaybe")}
             </button>
             <button type="button" onClick={() => { stepBack(); }}>{t("cancel")} <Kbd>esc</Kbd></button>
           </span>
@@ -734,11 +740,11 @@ export function SenderMenu({
 /** The sheet's step. `resolve` carries the forecast it asks over and the tile chosen. */
 type SheetStep =
   | { kind: "list" }
-  | { kind: "unsubscribe"; dest: ScreeningDest }
+  | { kind: "unsubscribe"; dest: ScreeningDest; unsub: Exclude<UnsubscribeClaim, "none"> }
   | {
       kind: "resolve"; dest: ScreeningDest; forecast: PressForecast; cls: StepClass; choice: 0 | 1;
-      /** The press also arms auto-unsubscribe: its sentence stands under the rule question. */
-      unsubscribes: boolean;
+      /** What the press says about the unsubscribe: its sentence stands under the rule question. */
+      unsub: UnsubscribeClaim;
     };
 
 /** Which question the step asks: a term rule of theirs, a domain rule above the address, or the
@@ -801,7 +807,7 @@ function RuleLineRow({ rules, count, condition, pile }: {
  */
 function ResolveStep({
   step, scope, place, domain, domainSenders, domainCount, condition, pile, unsubscribeSentence,
-  onChoice, onCommit, onCancel,
+  unsubscribeCommit, onChoice, onCommit, onCancel,
 }: {
   step: Extract<SheetStep, { kind: "resolve" }>;
   scope: ScreeningScope;
@@ -812,6 +818,7 @@ function ResolveStep({
   condition: (r: RuleDTO) => string;
   pile: (f: Folder | null) => string;
   unsubscribeSentence: string | null;
+  unsubscribeCommit: string;
   onChoice: (choice: 0 | 1) => void;
   onCommit: () => void;
   onCancel: () => void;
@@ -894,7 +901,7 @@ function ResolveStep({
       {unsubscribeSentence ? <p className="sm-resolve-unsub">{unsubscribeSentence}</p> : null}
       <span className="sm-confirm-row">
         <button type="button" className="go" onClick={onCommit}>
-          {unsubscribeSentence ? t("unsubCommit") : t("resolveGo", { place })} <Kbd>↵</Kbd>
+          {unsubscribeSentence ? unsubscribeCommit : t("resolveGo", { place })} <Kbd>↵</Kbd>
         </button>
         <button type="button" onClick={onCancel}>{t("cancel")} <Kbd>esc</Kbd></button>
       </span>

@@ -10,6 +10,7 @@
  */
 
 import type { BackupExclusion } from "./engine/backup-exclusion";
+import type { UnsubSaid, UnsubToast } from "./state/unsub-arms";
 import { isPinFailure } from "./net/host-pinning";
 
 /** Hoisted for {@link PIN_CHANGED}'s reason: `bootMigratingOf` counts under this sentence. */
@@ -918,6 +919,18 @@ const TABLE = {
   scopeDomain: "whole domain",
   decideRule: (target: string) =>
     `Becomes a rule — future mail from ${target} files automatically. The ✓ half also marks this mail read.`,
+  /**
+   * WHAT SCREEN OUT AND SPAM SEND, BEFORE EITHER IS PRESSED (`unsubscribeClaim`): the sender-level
+   * condition, now and for later mail, a fact where a held letter offers one-click. `domain`: `@domain`.
+   */
+  decideUnsub: (claim: UnsubSaid, target: string, domain: boolean) =>
+    domain
+      ? claim === "sends"
+        ? `Screen out and Spam also send the waiting senders at ${target} a one-click unsubscribe request, and ask again for later mail from the domain that offers one.`
+        : `Where senders at ${target} offer one-click unsubscribe, Screen out and Spam also ask to unsubscribe you, now and for their later mail.`
+      : claim === "sends"
+        ? `Screen out and Spam also send ${target} a one-click unsubscribe request, and ask again for their later mail that offers one.`
+        : `Where ${target} offers one-click unsubscribe, Screen out and Spam also ask to unsubscribe you, now and for their later mail.`,
   /** phone: the ✓ affordance is a toggle in the bar, not a modifier key. */
   decideReadToggle: "& read",
   decideReadOn: "Filing as read — the count will not move.",
@@ -1551,12 +1564,18 @@ const TABLE = {
   liveDecided: (dest: string, target: string) =>
     `${dest} — future mail from ${target} files there automatically.`,
   /**
-   * A SCREEN-OUT OR SPAM DECIDE ON A DOOR THAT UNSUBSCRIBES — the webapp's `toastScreened`/`toastSpam`
-   * `unsub` arm, in its words, after whatever the press said. Said only where the account's switch
-   * is on and the door is a server that sends it (never the standalone phone, which sends nothing).
+   * A SCREEN-OUT OR SPAM DECIDE THAT SENDS THE ONE-CLICK UNSUBSCRIBE — the webapp's `toastScreened`
+   * `unsub` arms, after whatever the press said: with Undo still to come (`sends`, `may`) it says
+   * Undo stops the request; sent at once (`sent`, `maysent`), that it cannot be taken back.
    */
-  liveAlsoUnsubscribing: (said: string) =>
-    `${said} ohmail is also unsubscribing you, where the sender offers one-click.`,
+  liveAlsoUnsubscribing: (said: string, how: UnsubToast) =>
+    how === "sends"
+      ? `${said} Undo also stops their one-click unsubscribe request; once Undo is gone it is sent and cannot be taken back, and later mail of theirs that offers one-click is unsubscribed too.`
+      : how === "may"
+        ? `${said} Where they offer one-click unsubscribe, ohmail asks to unsubscribe you once Undo is gone, and again for their later mail; Undo stops it too.`
+        : how === "sent"
+          ? `${said} ohmail is sending them a one-click unsubscribe request, which cannot be taken back, and asks again for their later mail that offers one-click.`
+          : `${said} Where they offer one-click unsubscribe, ohmail asks to unsubscribe you now and for their later mail; a sent request cannot be taken back.`,
   /**
    * THE SAME PRESS ON A MAILBOX THIS PHONE DOES NOT ORGANIZE — and it must not say "files".
    *

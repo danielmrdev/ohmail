@@ -47,7 +47,11 @@ import {
   type ScreenerSegments,
   type ScreenerSenderDTO,
   type ScreenerWaitingSenderDTO,
+  type UnsubscribeClaim,
+  domainOfAddress,
   ruleMatchKey,
+  unsubscribeClaim,
+  unsubscribePostureOf,
 } from "@ohmail/client-engine";
 import { scheduleFirstDerivation } from "./first-paint";
 import type { SuggestionOverlay } from "./screener-suggest";
@@ -333,6 +337,11 @@ export interface ScreenerState {
    * waiting sender at that domain and how many of their letters move. The press moves that set.
    */
   reachOf: (sender: ScreenerSenderDTO, scope: DecisionScope) => CardReach;
+  /**
+   * What a Screen out or Spam press on this sender says about the one-click unsubscribe BEFORE it is
+   * made (`unsubscribeClaim`), over the held letters the scope moves. `none` where nothing is sent.
+   */
+  unsubClaimOf: (sender: ScreenerSenderDTO, scope: DecisionScope) => UnsubscribeClaim;
   applyAll: (scopeOf: (s: ScreenerSenderDTO) => DecisionScope) => void;
   markAllSpam: (scopeOf: (s: ScreenerSenderDTO) => DecisionScope) => void;
   allowScreened: (sender: ScreenerSenderDTO, dest: "ohbox" | "reads") => void;
@@ -555,11 +564,10 @@ export function useScreenerState(
   /**
    * Will a screen-out or spam press actually send the one-click unsubscribe? — the account
    * switch (mail 0054) ANDed with "this build has a service that can"
-   * (`autoUnsubscribeDiscloses`). It changes ONE thing: whether the two demoting toasts state
-   * the consequence — nothing here sends or gates on it; the server reads its own row at the
-   * seam. The Screener says it AFTER the press (a confirm before every `n`/`x` would make the
-   * queue unusable — the gate lives on the sender sheet, where a click can widen to a domain);
-   * the toast carries the undo. Defaults TRUE: the failure to avoid is the silent unsubscribe.
+   * (`autoUnsubscribeDiscloses`): the `armed` half of {@link ScreenerState.unsubClaimOf}, which the
+   * card, the row menu and the bulk strip say before the press and the toasts repeat with Undo's
+   * reach. Nothing here sends or gates on it; the server reads its own row at the seam. Defaults
+   * TRUE: the failure to avoid is the silent unsubscribe.
    */
   autoUnsubscribe = true,
   /**
@@ -777,6 +785,31 @@ export function useScreenerState(
         .map((x) => ({ address: x.from.address, heldIds: heldMessageIds(x) })),
     ];
     return cardReach(engine.read(), rows, sender.from.address, scope);
+  };
+
+  /** The held letters a demoting press moves, by the server's posture of each (`unsubscribe-claim.ts`). */
+  const unsubClaimOf = (sender: ScreenerSenderDTO, scope: DecisionScope): UnsubscribeClaim => {
+    const own = senderKey(sender.from.address);
+    const domain = domainOfAddress(own);
+    const rows = scope === "domain"
+      ? [sender, ...undecided.filter((x) => senderKey(x.from.address) !== own && domainOfAddress(senderKey(x.from.address)) === domain)]
+      : [sender];
+    const reader = engine.read();
+    // A fixture row's held mail carries its own posture; a derived row's is the body the server sent.
+    const postures = rows.flatMap((x) => x.held.map((h) => (x.derived ? unsubscribePostureOf(reader, h.id) : h.unsubscribe ?? null)));
+    // Armed by the press's own path: only a decide at the gate licenses a request (`atTheGate`).
+    return unsubscribeClaim({ armed: autoUnsubscribe && atTheGate(sender.id, sender.derived === true), postures });
+  };
+
+  /**
+   * DOES A PRESS ON THIS ROW TAKE THE DECIDE ROUTE? The RAW mirror's answer (#116): a fixture row and
+   * a representative the store alone holds are at the gate; a derived one only while it is physically
+   * in `ohmail/Screener`. Past the gate the press writes a rule, which licenses no request.
+   */
+  const atTheGate = (id: string, derived: boolean): boolean => {
+    const rawRep = engine.read().get<EngineMessage>("message", id);
+    const storeRep = rawRep == null && (screenerWaitingNames(engine.read(), id) || onwardIds.current.has(id));
+    return !derived || storeRep || (rawRep != null && physicalFolderOf(rawRep) === FOLDER_OF_VIEW.screener);
   };
 
   /** A sender with a decision of its own in flight here — pressed, restored from the journal, or with the organizer. */
@@ -1125,9 +1158,7 @@ export function useScreenerState(
     const rawRep = engine.read().get<EngineMessage>("message", id);
     // A representative only the store holds is at the gate by the store's own word: the page
     // lists only held mail, and the server resolves the id the decide carries.
-    const storeRep = rawRep == null && (screenerWaitingNames(engine.read(), id) || onwardIds.current.has(id));
-    const gatePhysical = !derived || storeRep
-      || (rawRep != null && physicalFolderOf(rawRep) === FOLDER_OF_VIEW.screener);
+    const gatePhysical = atTheGate(id, derived);
     const onwardKey = rawRep == null && !screenerWaitingNames(engine.read(), id) && onwardIds.current.has(id)
       ? senderKey(d.from.address) : null;
 
@@ -1387,7 +1418,9 @@ export function useScreenerState(
      * ICU `select` argument rather than two message keys, so the German catalogue cannot end up
      * with the two halves of one sentence in different orders.
      */
-    const unsub = autoUnsubscribe ? "true" : "false";
+    const claim = DECISION_QUIET.has(dest) ? unsubClaimOf(sender, opts.scope) : "none";
+    // HELD, Undo stops the request with the decision; SENT AT ONCE, nothing can take it back.
+    const unsub = claim === "none" ? "none" : holds ? (claim === "sends" ? "sends" : "may") : (claim === "sends" ? "sent" : "maysent");
     const message =
       dest === "screened"
         ? t("toastScreened", { target, read: read ? "true" : "false", unsub })
@@ -1623,7 +1656,7 @@ export function useScreenerState(
   const bulk = (
     destOf: (x: ScreenerSenderDTO) => DecisionDestination,
     scopeOf: (x: ScreenerSenderDTO) => DecisionScope,
-    summary: (snaps: Array<{ id: string; dest: DecisionDestination }>) => string,
+    summary: (snaps: Array<{ id: string; dest: DecisionDestination; claim: UnsubscribeClaim }>) => string,
     /** Restricts the bulk to rows it can honestly speak for. Absent ⇒ every waiting row. */
     only?: (x: ScreenerSenderDTO) => boolean,
   ) => {
@@ -1639,12 +1672,12 @@ export function useScreenerState(
     // field exists to close.
     s.applying = { done: 0, total };
     bump();
-    const snaps: Array<{ id: string; dest: DecisionDestination }> = [];
+    const snaps: Array<{ id: string; dest: DecisionDestination; claim: UnsubscribeClaim }> = [];
     items.forEach((item, i) => {
       setTimeout(() => {
         const dest = destOf(item);
         decide(item, dest, { read: false, scope: scopeOf(item), quiet: true });
-        snaps.push({ id: item.id, dest });
+        snaps.push({ id: item.id, dest, claim: DECISION_QUIET.has(dest) ? unsubClaimOf(item, scopeOf(item)) : "none" });
         // `i + 1` and not `snaps.length`: they agree here, and the index is the one that stays
         // true if a `decide` is ever allowed to decline a row — `done` counts rows this run has
         // WALKED, which is what the denominator was taken from.
@@ -1715,7 +1748,7 @@ export function useScreenerState(
         // condition written on `screened` alone would silently say nothing about a batch of
         // twelve spam verdicts — the largest single hand-off to the mechanism this surface can
         // make — which is the disclosure failing precisely where it matters most.
-        const unsub = autoUnsubscribe && n("screened") + n("spam") > 0 ? "true" : "false";
+        const unsub = snaps.some((x) => x.claim !== "none") ? "true" : "false";
         return t("toastBulkDecided", { count: snaps.length, parts: parts.join(" · "), unsub });
       },
       // `dest !== "screener"` is the second half of the rule above, load-bearing rather than
@@ -1745,7 +1778,7 @@ export function useScreenerState(
       // The highest-volume path to the mechanism there is — forty senders in one press, every one
       // of them a reject — so this summary is where the sentence matters most, not least.
       (snaps) => t("toastBulkSpam", {
-        count: snaps.length, unsub: autoUnsubscribe ? "true" : "false",
+        count: snaps.length, unsub: snaps.some((x) => x.claim !== "none") ? "true" : "false",
       }),
     );
 
@@ -2270,6 +2303,7 @@ export function useScreenerState(
     unscreened,
     waiting: visibleWaiting,
     reachOf,
+    unsubClaimOf,
     waitingCount,
     waitingSource: segments.source === "store" ? "store" : engine.screenerWaitingAvailable() ? "device" : "local",
     queueAnswered: firstPage !== null,
