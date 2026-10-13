@@ -39,6 +39,7 @@ happened, what you expected. If it is visual, a screenshot beats a description.
 ## Pull requests
 
 - Fork, branch, open a PR against `main`. PRs are reviewed by a human.
+- Every change reaches `main` as a pull request, ours included.
 - CI runs four jobs — macOS, Windows, Linux and the engine. Each platform job
   runs `tsc`, builds the UI bundle, smokes it, runs `cargo test` in both
   configurations, builds the engine and its runtime, packages the app, and then
