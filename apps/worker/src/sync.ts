@@ -1559,6 +1559,26 @@ async function syncCycleWithin(
     await fencedLiveGroup(deps, (r) => r.upsertMailboxFolders(mailboxId, cursorWrites));
   }
 
+  // A FOLDER THE SERVER STATED GONE LEAVES THE FOLDER LIST: its row is what every client draws.
+  // AFTER the ingest, so a folder renamed elsewhere has had its letters moved out first; and only
+  // on a pass that kept nothing back, or a letter still owed here would be forgotten and brought
+  // back. A skipped pass costs nothing: the next one asks the server again.
+  if (goneFolders.size > 0 && deferred.size === 0 && overrun === undefined
+    && typeof repo.retireGoneFolder === "function") {
+    for (const folder of goneFolders) {
+      const outcome = await fencedLiveGroup(deps, (r) =>
+        typeof r.retireGoneFolder === "function" ? r.retireGoneFolder(accountId, mailboxId, folder) : Promise.resolve(null));
+      if (outcome === "retired") reaperDrained.set(adapter, false);
+      if (outcome === null || outcome === "absent") continue;
+      log?.info("sync_folder_retired", {
+        mailboxId, accountId, folderLabel: folderLabel(folder), outcome,
+        reason: outcome === "held"
+          ? "the server stated this folder does not exist, and a command of the user's owns its row"
+          : "the server stated this folder does not exist, so it leaves the folder list",
+      });
+    }
+  }
+
   // WHERE THE BUDGET STOPPED — written once, HERE, at pass end (mail 0115). Not per page and not
   // inside the commit loop: a stop written while the pass is still walking names a folder the
   // pass then goes past, and a crash would leave that wrong place behind. Written for a DEFERRED

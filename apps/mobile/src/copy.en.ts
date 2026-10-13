@@ -1110,7 +1110,7 @@ const TABLE = {
   folderTail: (n: number) => `${n} message${n === 1 ? "" : "s"} from this folder on this phone.`,
   folderEmptyTitle: "No mail from this folder is on this phone.",
   folderEmptyHint:
-    "This phone mirrors your server's recent mail. The folder itself lives on your mail server and may hold older mail there.",
+    "This phone mirrors your server's recent mail, so older mail in this folder is not shown here.",
 
   /*
    * HISTORY — the webapp's `history` namespace, word for word (`test/copy-parity.test.ts` holds

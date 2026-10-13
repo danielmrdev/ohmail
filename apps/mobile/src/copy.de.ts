@@ -711,7 +711,7 @@ export const DE: Deck = {
     `${n === 1 ? "1 Nachricht" : `${n} Nachrichten`} aus diesem Ordner auf diesem Telefon.`,
   folderEmptyTitle: "Von diesem Ordner ist keine Post auf diesem Telefon.",
   folderEmptyHint:
-    "Dieses Telefon spiegelt die neuere Post deines Servers. Der Ordner selbst liegt auf deinem Mailserver und kann dort ältere Post enthalten.",
+    "Dieses Telefon spiegelt die neuere Post deines Servers, ältere Post aus diesem Ordner erscheint hier nicht.",
 
   history: "Historie",
   historyNavSub: "Alles, was dir gehört, neueste zuerst",

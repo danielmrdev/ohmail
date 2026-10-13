@@ -1162,7 +1162,8 @@
   "folder": {
     "metaCount": "{count, plural, one {1 Nachricht} other {# Nachrichten}}",
     "emptyTitle": "Nichts in diesem Ordner",
-    "emptyHint": "Er existiert auf deinem Mailserver und enthält keine Mail. Er erscheint hier, weil die Ordnerliste aus dem Postfach selbst kommt, nicht aus den Nachrichten darin."
+    "emptyHint": "Er enthält keine Mail. Die Ordnerliste folgt deinem Mailserver: Ein dort gelöschter Ordner verschwindet auch hier.",
+    "gone": "„{name}“ gibt es auf deinem Mailserver nicht mehr."
   },
   "search": {
     "title": "Suche",

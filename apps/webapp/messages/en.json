@@ -1162,7 +1162,8 @@
   "folder": {
     "metaCount": "{count, plural, one {1 message} other {# messages}}",
     "emptyTitle": "Nothing in this folder",
-    "emptyHint": "It exists on your mail server and holds no mail. It shows here because the folder list comes from the mailbox itself, not from the messages in it."
+    "emptyHint": "It holds no mail. The folder list follows your mail server, so a folder deleted there leaves it.",
+    "gone": "“{name}” is no longer on your mail server."
   },
   "search": {
     "title": "Search",

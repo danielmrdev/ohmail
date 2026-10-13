@@ -8,7 +8,7 @@ import type { Change, MimeStructure, NativeLocator } from "../mail.js";
 // `RESERVED_FOLDER_LEAF` is the passive belt's SOURCE since the stage-2 folder verbs: the
 // user-facing name validator (`folderNameError`) must refuse exactly what this belt hides, and
 // two copies of one regex drift. The import points this way because `types.js` stays import-free.
-import { DESTINATIONS as DESTINATIONS_VALUE, RESERVED_FOLDER_LEAF } from "../types.js";
+import { DESTINATIONS as DESTINATIONS_VALUE, RESERVED_FOLDER_LEAF, SENT_SHAPED_CANONICAL as SENT_SHAPED_CANONICAL_VALUE } from "../types.js";
 
 /**
  * The two model types this module's own interfaces are written in, handed on:
@@ -150,6 +150,21 @@ export interface ListedFolder {
   flags?: ReadonlySet<string>;
   /** The role its NAME took on a server that flagged none (`folder-roles.ts`), as `\\sent`… */
   nameRole?: string | null;
+}
+
+/**
+ * Why a `mailbox_folders` row is NOT one of the user's own folders, or `null` when it IS: the
+ * Imbox, the organized six, the `ohmail` namespace and Sent-shaped paths. The services' folder
+ * reads and the worker's folder `create` both ask this one rule.
+ */
+export function userFolderExclusion(path: string): string | null {
+  if (path.toUpperCase() === "INBOX") return "it is the Imbox";
+  if ((DESTINATIONS_VALUE as readonly string[]).includes(path)) {
+    return "it is one of the folders ohmail organizes";
+  }
+  if (OHMAIL_SEGMENT.test(path)) return "it is inside the ohmail namespace";
+  if (SENT_SHAPED_CANONICAL_VALUE.test(path)) return "it is the mailbox's Sent folder";
+  return null;
 }
 
 /**
@@ -882,8 +897,9 @@ export interface ChangeBatch {
   setAsideStale?: readonly MessageSite[];
   /**
    * Remembered folders the server itself stated do not exist, asked by name after a LIST left
-   * them out. Their instances are in {@link deletes} at the folder's remembered epoch, and the
-   * caller forgets each folder's in ONE transaction. Absent ⇒ none.
+   * them out, empty folders included. Their instances are in {@link deletes} at the folder's
+   * remembered epoch and the caller forgets them in ONE transaction; after the ingest it retires
+   * the folder's row, so the folder leaves every folder list. Absent ⇒ none.
    */
   foldersGone?: readonly string[];
   /**
