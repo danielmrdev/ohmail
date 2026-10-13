@@ -78,9 +78,9 @@ name: build
 # render. Nothing this file smoked at the time could have seen it.
 #
 # Signing is macOS-only and conditional. The macOS job signs with a Developer ID
-# and notarizes WHEN a run on a release tag reads the Apple secrets from the
-# `release` environment, and produces the same ad-hoc artifact as before on every
-# other run and when the secrets do not exist — one decision, taken once, in
+# and notarizes WHEN a run on a release tag reads the Apple secrets, and produces
+# the same ad-hoc artifact as before on every other run and when the secrets do
+# not exist — one decision, taken once, in
 # "Import the Developer ID certificate, if there is one". Windows and Linux are
 # not signed at all: no Authenticode certificate, no Linux signing. The README's
 # per-platform notes describe the artifacts a release has actually shipped, which
@@ -119,8 +119,8 @@ on:
   push:
     branches: [main]
   pull_request:
-  # `main` takes pull requests through a merge queue, and its required checks (the engine and the
-  # engine-bearing UI) must report on the queue's merge group or the queue waits for them for ever.
+  # When `main` takes pull requests through a merge queue, its required checks (the engine and the
+  # engine-bearing UI) must report on the queue's merge group, or the queue waits until it gives up.
   merge_group:
   workflow_dispatch:
 
@@ -149,9 +149,9 @@ jobs:
     name: macOS · smoke · engine · universal app · dmg
     runs-on: macos-15
     timeout-minutes: 60
-    # THE RELEASE ENVIRONMENT, ON A RELEASE TAG ONLY. The Apple secrets live there, readable by a run
-    # on a `v*` tag and by nothing else; every other run takes no environment, reads no Apple secret
-    # and produces the ad-hoc build below.
+    # THE RELEASE ENVIRONMENT, ON A RELEASE TAG ONLY. A run on a `v*` tag takes it, and an Apple
+    # secret kept there is readable by that run and nothing else; every other run takes no
+    # environment, reads no Apple secret and produces the ad-hoc build below.
     environment: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || '' }}
     defaults:
       run:

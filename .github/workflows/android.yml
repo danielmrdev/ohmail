@@ -94,7 +94,7 @@ on:
     branches: [main]
     tags: ["android-v*"]
   pull_request:
-  # `main` takes pull requests through a merge queue; the queue's merge group builds the APK too.
+  # When `main` takes pull requests through a merge queue, the queue's merge group builds the APK too.
   merge_group:
   workflow_dispatch:
 
@@ -637,8 +637,9 @@ jobs:
     name: android · re-sign + attach the release APK and App Bundle
     needs: build
     if: github.repository == 'trafficflowhq/ohmail' && startsWith(github.ref, 'refs/tags/android-v')
-    # The keystore lives in the `release` environment, which admits a run on a release tag and
-    # nothing else — a branch, a pull request or a dispatch from one is refused before a step runs.
+    # The `release` environment admits a run on a release tag and nothing else — a branch, a pull
+    # request or a dispatch from one is refused before a step runs — and a keystore kept there is
+    # readable by no other run.
     environment: release
     runs-on: ubuntu-latest
     timeout-minutes: 20
