@@ -76,6 +76,22 @@ const ANDROID_WORKFLOW_PATHS = [join(HERE, "../.github/workflows/android.yml"), 
 /** How many runs at one commit are considered. A re-dispatched build makes a second legitimate one. */
 const MAX_RUNS = 5;
 
+/**
+ * A run this repository started for one of its own refs: a push, or a dispatch by someone who can
+ * write to it. A pull request from a fork runs here as well, under the fork's branch name and at
+ * whatever commit that branch holds, so a branch named like the tag, at the tagged commit, is
+ * anyone's to make. GitHub's names are case-insensitive, and so is this comparison.
+ */
+const OWN_EVENTS = new Set(["push", "workflow_dispatch"]);
+function startedHere(run, repo) {
+  return OWN_EVENTS.has(String(run.event ?? "")) && String(run.head_repository?.full_name ?? "").toLowerCase() === repo.toLowerCase();
+}
+
+/** One run as a refusal names it: its event, its ref, its verdict and the repository it came from. */
+function runLine(r) {
+  return `    run ${r.id} #${r.run_number} ${r.event ?? "?"} ${r.head_branch ?? "?"} ${r.conclusion ?? r.status ?? ""} from ${r.head_repository?.full_name ?? "?"}`;
+}
+
 class Refusal extends Error {}
 
 /** Every refusal reads the same way: a name, then what was expected and what is there. */
@@ -157,14 +173,16 @@ function buildRunsAt(repo, commit, tag) {
   const atCommit = runs
     .filter((r) => r.head_sha === commit && r.name === BUILD_WORKFLOW_NAME)
     .sort((a, b) => (b.run_number ?? 0) - (a.run_number ?? 0) || (b.id ?? 0) - (a.id ?? 0));
-  if (atCommit.length === 0) {
+  const own = atCommit.filter((r) => startedHere(r, repo));
+  if (own.length === 0) {
     refuse(
       `BUILDER-NO-RUN ${commit}`,
-      `  no run of the ${BUILD_WORKFLOW_NAME} workflow has this commit as its head.`,
+      `  no run of the ${BUILD_WORKFLOW_NAME} workflow that a push or a dispatch in ${repo} started has this commit as its head.`,
+      ...atCommit.slice(0, MAX_RUNS).map(runLine),
       "  The assets on the release cannot be traced to a build of this source, so none is signed.",
     );
   }
-  let mine = atCommit;
+  let mine = own;
   /* WITH A TAG, ONLY THE RUN AT THAT TAG: a push to main builds the same commit, and its installers
    * are not the release's. The android rule below, applied to the desktop installers. */
   if (tag) mine = mine.filter((r) => String(r.head_branch ?? "") === tag);
@@ -172,7 +190,7 @@ function buildRunsAt(repo, commit, tag) {
     refuse(
       `BUILDER-NO-TAG-RUN ${commit} ${tag}`,
       `  no run of the ${BUILD_WORKFLOW_NAME} workflow at the tag ${tag} has this commit as its head. Its runs on other refs:`,
-      ...atCommit.slice(0, MAX_RUNS).map((r) => `    run ${r.id} #${r.run_number} ${r.event ?? "?"} ${r.head_branch ?? "?"} ${r.conclusion ?? r.status ?? ""}`),
+      ...atCommit.slice(0, MAX_RUNS).map(runLine),
       "  A release's installers come from the run at its tag, so none of these accounts for them and nothing is signed.",
     );
   }
@@ -388,11 +406,12 @@ function androidRunsAt(repo, commit) {
    * run of an `android-v` tag builds what a release page carries. */
   const mine = answer.workflow_runs
     .filter((r) => r.head_sha === commit && r.name === ANDROID_WORKFLOW_NAME && String(r.head_branch ?? "").startsWith("android-v"))
+    .filter((r) => startedHere(r, repo))
     .sort((a, b) => (b.run_number ?? 0) - (a.run_number ?? 0) || (b.id ?? 0) - (a.id ?? 0));
   if (mine.length === 0) {
     refuse(
       `BUILDER-NO-ANDROID-RUN ${commit}`,
-      `  no run of the ${ANDROID_WORKFLOW_NAME} workflow for an android-v tag has this commit as its head.`,
+      `  no run of the ${ANDROID_WORKFLOW_NAME} workflow that a push or a dispatch in ${repo} started for an android-v tag has this commit as its head.`,
       "  The Android files on this page cannot be traced to a build of this source, so nothing is signed.",
     );
   }
