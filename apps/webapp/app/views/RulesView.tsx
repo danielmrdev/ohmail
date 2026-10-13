@@ -33,6 +33,7 @@ import { useTranslations } from "next-intl";
 import { Button, Icon, ListGroupLabel, SettingsNote, SettingsSection, Switch, TextField, useToast, type ToastOptions } from "@ohmail/ui";
 import { FOLDER_OF_VIEW, PROFILE_RULES_SENT_MAX, pressVerdict, tallyVerdicts } from "@ohmail/client-engine";
 import type { Folder, PressAnswer, QueuedRuleWrite, RuleDTO, WaitingOnOrganizerView } from "@ohmail/client-engine";
+import { browserOffline, queuedSentence } from "../shell/queued-sentence";
 import { canonicalDestination } from "@trafficflow/core/folder-name";
 import { usePileNames } from "../shell/decision-copy";
 import { placeLabel } from "../shell/format";
@@ -242,23 +243,6 @@ export interface RulesViewProps {
   /** The rule verbs on this browser's queue (`engine.queuedRuleWrites()`); `rules` shows each rule as it runs. */
   queued?: readonly QueuedRuleWrite[];
 }
-
-/**
- * WHAT A QUEUED PRESS SAYS. `retry` is this browser's own queue: "queued until you're back online" only
- * while the browser IS offline (it was once said over a server's 500), the server's failure says so,
- * and an unanswered try that is not offline says the change has not arrived. `organizer` is the
- * server's record for the install that organizes the mailbox.
- */
-export function queuedSentence(
-  v: { wait: "retry" | "organizer"; failed?: true }, offline: boolean,
-): "failing" | "queued" | "unsent" | "organizer" {
-  if (v.wait === "organizer") return "organizer";
-  if (v.failed === true) return "failing";
-  return offline ? "queued" : "unsent";
-}
-
-/** The browser's own answer; a host without `navigator` is never told it is offline. */
-const browserOffline = (): boolean => typeof navigator !== "undefined" && navigator.onLine === false;
 
 export function RulesView({ rules: allRules, onRevoke, onRetarget, pastMail, posture, waiting = [], mailboxLabel, queued = [] }: RulesViewProps) {
   /* ONE ROW PER KEY, the twin the router runs; the rest are counted on it and go with it. */

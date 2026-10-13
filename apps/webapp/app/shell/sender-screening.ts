@@ -40,6 +40,7 @@ import {
 import type { DecisionDestination } from "@ohmail/ui";
 import { canonicalDestination } from "@trafficflow/core/folder-name";
 import { ruleMatchesSender } from "./sender-audit";
+import { browserOffline, queuedWaitOf, type QueuedWait } from "./queued-sentence";
 
 /** The five places a sender's mail can be screened to — the DecisionBar's own vocabulary. */
 export type ScreeningDest = DecisionDestination;
@@ -678,15 +679,24 @@ export function splitRoutingPlan(plan: ScreeningPlan, moves: readonly PressMove[
 export type ScreeningToastKey =
   | "toastRuled" | "toastRetargeted" | "toastAlreadyRuled" | "toastAlreadyRuledRetro"
   | "toastClaimed" | "toastClaimedRetro"
-  | "toastRuledFuture" | "toastRuledMoved" | "toastRuleQueued" | "toastRuleFailed" | "toastMoved"
+  | "toastRuledFuture" | "toastRuledMoved" | "toastRuleQueued" | "toastRuleFailing" | "toastRuleUnsent"
+  | "toastRuleFailed" | "toastMoved"
   | "toastRuleOrganizer" | "toastDecideRefused" | "toastOwnAddress";
+
+/** The sentence of a rule press that waits on this browser's queue, by its wait (`queued-sentence.ts`). */
+export function queuedRuleKey(wait: QueuedWait): ScreeningToastKey {
+  return wait === "failing" ? "toastRuleFailing" : wait === "queued" ? "toastRuleQueued" : "toastRuleUnsent";
+}
 
 export function screeningToast(
   plan: ScreeningPlan,
   ruleStatus: MutationStatus | null,
   /** How many moves the press dispatched beside the plan — {@link movesAtLanding}'s, or named. */
   moved: number,
+  /** Which wait a `queued` answer is (`queuedWaitOf`): "back online" only while the browser is offline. */
+  wait: QueuedWait = "unsent",
 ): ScreeningToastKey {
+  const queuedKey = queuedRuleKey(wait);
   switch (plan.ruleState) {
     case "none":
       return "toastMoved";
@@ -706,7 +716,7 @@ export function screeningToast(
     case "promoted":
       if (ruleStatus === "rolled_back") return "toastDecideRefused";
       if (ruleStatus === "awaiting_organizer") return "toastRuleOrganizer";
-      if (ruleStatus === "queued") return "toastRuleQueued";
+      if (ruleStatus === "queued") return queuedKey;
       return "toastRuled";
     default:
       if (ruleStatus === "rolled_back") return "toastRuleFailed";
@@ -714,7 +724,7 @@ export function screeningToast(
       // mailboxes another install organizes: no rule row was written here, and "Future mail from
       // them files there too" would be a claim about a rule that does not exist yet.
       if (ruleStatus === "awaiting_organizer") return "toastRuleOrganizer";
-      if (ruleStatus === "queued") return "toastRuleQueued";
+      if (ruleStatus === "queued") return queuedKey;
       /**
        * WHAT THE PLAN DID, NOT WHAT IT ASKED OF THE SERVER — and the two are different questions.
        *
@@ -770,7 +780,7 @@ export async function dispatchScreeningChange(
   plan: ScreeningPlan,
   /** The press's moves, dispatched after the rules and the decide — {@link movesAtLanding}'s. */
   pressMoves: readonly PressMove[],
-  mutate: (m: EngineMutation) => Promise<{ status: MutationStatus; error?: { code: string | null } }>,
+  mutate: (m: EngineMutation) => Promise<{ status: MutationStatus; error?: { code: string | null }; serverFailed?: true }>,
   /** The letters the press files, moved or already there (a card's Ohbox letters need no move). */
   filed: number = pressMoves.length,
   /** A card's moves wait for the rule's or the decide's answer, and go only when it stands. */
@@ -781,7 +791,7 @@ export async function dispatchScreeningChange(
      A refused move rolls its own row back and is not the sentence's status, but the answer waits
      for every move to settle: the caller reads the list back, and an unsettled move is still
      painted at the place it was sent to. */
-  const decides: Array<Promise<{ status: MutationStatus; error?: { code: string | null } }>> = [];
+  const decides: Array<Promise<{ status: MutationStatus; error?: { code: string | null }; serverFailed?: true }>> = [];
   for (const m of plan.mutations) {
     if (plan.ruleMutations.includes(m)) continue;
     decides.push(mutate(m));
@@ -795,7 +805,7 @@ export async function dispatchScreeningChange(
   if (early.length + late.length === 0 && refusedAsOwnAddress(answers)) return "toastOwnAddress";
   // Replaced by a newer press about this sender: that press says the sentence, this one none.
   if (worst === "superseded") return null;
-  return screeningToast(plan, worst, filed);
+  return screeningToast(plan, worst, filed, queuedWaitOf(answers, browserOffline()));
 }
 
 /**

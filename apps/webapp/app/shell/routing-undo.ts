@@ -51,6 +51,8 @@ import {
   type ScreeningToastKey,
 } from "./sender-screening";
 
+import { browserOffline, queuedWaitOf } from "./queued-sentence";
+
 export { UNDO_MS };
 
 /**
@@ -128,6 +130,8 @@ export type RoutingSendResult = {
   status: MutationStatus; entityId?: string; queuedWith?: { name: string | null };
   /** The refusal, where the server named one (`own_address` has its own sentence). */
   error?: MutationRejectedError;
+  /** A queued try the server answered with a failure — see `queued-sentence.ts`. */
+  serverFailed?: true;
 };
 
 /** A sender-sheet press: the v2 intent's answers, and the press's own in-memory follow-up. */
@@ -290,7 +294,7 @@ export function useRoutingUndo(deps: RoutingUndoDeps): RoutingUndo {
          comparing the two words raised a correction after every ordinary success. */
       const worst = worstStatus(results);
       if (worst === null || worst === "confirmed" || worst === "superseded") return;
-      const key = screeningToast(plan, worst, 0);
+      const key = screeningToast(plan, worst, 0, queuedWaitOf(results, browserOffline()));
       if (note) latest.current.toast(latest.current.copy.correction(key, note));
     },
 

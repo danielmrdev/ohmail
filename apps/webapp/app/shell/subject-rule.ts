@@ -24,6 +24,7 @@ import {
 } from "@ohmail/client-engine";
 import type { DecisionDestination } from "@ohmail/ui";
 import { RETRO_DEFAULT_ON, RETRO_VISIBLE_MOVES, type ScreeningDest } from "./sender-screening";
+import type { QueuedWait } from "./queued-sentence";
 
 /**
  * The reply/forward decorations a subject accumulates, stripped before anything is extracted.
@@ -404,11 +405,13 @@ export function planSubjectRule(
  * correctly on screen, but the server has not been told.
  */
 export type SubjectRuleToastKey =
-  | "subjectRuled" | "subjectRuleQueued" | "subjectRuleOrganizer"
+  | "subjectRuled" | "subjectRuleQueued" | "subjectRuleFailing" | "subjectRuleUnsent" | "subjectRuleOrganizer"
   | "subjectRuleFailed" | "subjectAlready";
 
 export function subjectRuleToast(
   plan: SubjectRulePlan, status: MutationStatus | null,
+  /** Which wait a `queued` answer is (`queuedWaitOf`): "back online" only while the browser is offline. */
+  wait: QueuedWait = "unsent",
 ): SubjectRuleToastKey | null {
   // A rule a newer press replaced says nothing: the newer press owns the sentence.
   if (status === "superseded") return null;
@@ -417,7 +420,9 @@ export function subjectRuleToast(
   // The rule was recorded for the install that organizes the mailbox and written nowhere yet —
   // a different wait from the offline one below, and a different sentence.
   if (status === "awaiting_organizer") return "subjectRuleOrganizer";
-  if (status === "queued") return "subjectRuleQueued";
+  if (status === "queued") {
+    return wait === "failing" ? "subjectRuleFailing" : wait === "queued" ? "subjectRuleQueued" : "subjectRuleUnsent";
+  }
   return "subjectRuled";
 }
 
