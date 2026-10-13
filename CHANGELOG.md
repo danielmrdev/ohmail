@@ -13,6 +13,19 @@ See [Status](README.md#status--read-this-first).
 
 ## [Unreleased]
 
+### Your own Anthropic key sends each model its own thinking setting
+<!-- changes: fix-026-ai-follow-ups.md -->
+
+On the desktop with your own Anthropic key, the model you chose is sent the thinking setting it
+accepts, so Haiku 5.5 sorts with thinking off and Sonnet 5.5 drafts without a refused first request.
+With an Anthropic or an OpenAI key, a message the model declines is now sorted as it is with AI off,
+and AI sorting is not paused for it; with an Anthropic key, so is a message whose answer stops at the
+output limit.
+
+On ohmail Cloud, the credit for a Screener suggestion the model declined, or one that could not be
+saved, is now written down before it is returned, so a return the billing service does not receive
+is made on a later pass. If it cannot be written down, the return is still tried.
+
 ### Still to come
 
 Signed installers — a real Apple Developer ID and an Authenticode certificate. See
