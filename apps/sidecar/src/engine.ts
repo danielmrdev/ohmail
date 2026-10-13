@@ -4892,7 +4892,10 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
             holderState: seen.state,
             /* The two arms that peek are the two that hold nothing — a reader, and an install
                nobody has consented to. */
-            claimed: false };
+            claimed: false,
+            /* CARRIED: what the last stop left in the settings document stands until this install
+               claims again. A rung release pass followed by a forced cycle reads here second. */
+            ...(organizer.settingsLeft === undefined ? {} : { settingsLeft: organizer.settingsLeft }) };
           /* Zero writes in the steady state, and the check is new (0.14.1). This block claimed
            * "only when something changed" and then wrote unconditionally — one UPDATE per
            * mailbox per poll for four values already there. The hosted twin
