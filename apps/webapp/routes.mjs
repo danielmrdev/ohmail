@@ -209,7 +209,7 @@ export const OWN_ROUTES = Object.freeze(/** @type {OwnRoute[]} */ ([
       + " rendering no document",
   },
   {
-    // The catch-all behind the branded 404 (`app/(marketing)/[...missing]/page.tsx`): every
+    // The catch-all behind the branded 404 (`app/(product)/[...missing]/page.tsx`): every
     // path no route above claims, answered with `notFound()` and a real 404 status. In this
     // list because this deployment does answer those paths.
     path: "/[...missing]",

@@ -1,4 +1,6 @@
-/** The landing wordmark: lowercase "ohmail" with the terracotta period. */
+import "./wordmark.css";
+
+/** The wordmark: lowercase "ohmail" with the terracotta period. */
 export function Wordmark({ className }: { className?: string }) {
   return (
     <span className={["l-wordmark", className].filter(Boolean).join(" ")}>
