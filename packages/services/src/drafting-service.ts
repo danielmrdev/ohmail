@@ -1,5 +1,8 @@
 import { and, asc, eq, isNull, ne } from "drizzle-orm";
-import { messages, draftAttemptKey, type IdempotencyKey } from "@trafficflow/db";
+import {
+  messages, draftAttemptKey, reverseCharge,
+  type IdempotencyKey, type ReverseChargeFact, type ReverseChargeResult,
+} from "@trafficflow/db";
 // TYPE-ONLY, and it has to stay that way: `import type` is erased, so it creates no module edge
 // into the hosted half. A value import from `/cloud` here would put billing and the ledger into
 // the desktop engine, which mounts this service.
@@ -7,7 +10,7 @@ import { messages, draftAttemptKey, type IdempotencyKey } from "@trafficflow/db"
  * answers. This service names a gate it may be handed; it never builds one, and it must
  * compile in a deployment where no gate and no ledger exist. */
 import type {
-  AccessPort, AiUsageHost, RefundObligationPort, ReleaseReceipt, SpendPort,
+  AccessPort, AiUsageHost, RefundObligationPort, SpendPort,
 } from "@trafficflow/db";
 import {
   createLogger, plainTextToOutboundBody, screenModelInput, MODEL_SINK_REFUSAL_SENTENCE, ModelDeclinedError,
@@ -32,6 +35,26 @@ import { SEARCH_QUERY_MAX_CHARS } from "./search-service.js";
 const KB_HINT_SNIPPET_CHARS = 120;
 
 const log = createLogger({ service: "drafting" });
+
+/** A failed draft's refund facts, as lines naming the account and the attempt — never an address. */
+function sayDraftRefund(f: ReverseChargeFact, accountId: string, attempt: string): void {
+  if (f.fact === "settle_failed") {
+    log.warn("draft_refund_settle_failed", {
+      accountId, attempt, err: f.err,
+      reason: "the refund settled and its debt could not be marked paid; the drain sends it again "
+        + "under the same attempt, which the program reverses once",
+    });
+    return;
+  }
+  log.warn("draft_refund_unrecorded", {
+    accountId, attempt, ...(f.fact === "unrecorded" ? { err: f.err } : {}),
+    reason: f.fact === "unrecorded"
+      ? "the refund obligation could not be written; the refund is still tried, and a lost "
+        + "release would leave this charge with nothing to reverse it"
+      : "a refund is owed and no obligation store was composed beside the gate, so a lost "
+        + "release would leave this charge with nothing to reverse it",
+  });
+}
 
 /** How many KB entries and thread messages to retrieve as grounding context. */
 const DEFAULT_KB_K = 5;
@@ -281,28 +304,25 @@ export class DraftingService {
     let released = false;
     /**
      * THE ONE DOOR TO THE GATE'S RELEASE, once per request (`released` set before the await). A
-     * reversal only for an attempt THIS request charged, and THE DEBT IS WRITTEN BEFORE THE
-     * REVERSAL IS TRIED: this request is the only thing that knows a charge bought nothing, so an
-     * unreachable program must still leave the debt behind. Idempotent per (account, attempt).
-     * `null` when nothing was released: unmetered, or the door already used.
+     * reversal only for an attempt THIS request charged, through `reverseCharge`: the debt is
+     * written before the reversal is tried, a write that throws is named and the reversal still
+     * tried, and only a written debt is settled. `owed` says whether a debt is on record, which
+     * decides the sentence. `null` when nothing was released: unmetered, or the door already used.
      */
-    const releaseClaim = async (refund: boolean): Promise<ReleaseReceipt | null> => {
+    const releaseClaim = async (refund: boolean): Promise<ReverseChargeResult | null> => {
       if (!deps.credits || !attemptKey || released) return null;
       released = true;
       const meta = { messageId: target.id };
       if (!refund || chargedAttempt === null) {
-        return deps.credits.release(
+        const receipt = await deps.credits.release(
           ctx.accountId, { action: "draft", attemptKey, refund: false, meta, ...usage.field() });
+        return { receipt, owed: false };
       }
-      await deps.obligations!.owe({
-        accountId: ctx.accountId, action: "draft", attemptKey,
-        attempt: chargedAttempt, reason: "drafter_failed", meta,
-      });
-      const receipt = await deps.credits.release(ctx.accountId, {
-        action: "draft", attemptKey, refund: true, attempt: chargedAttempt, meta, ...usage.field(),
-      });
-      if (receipt === "settled") await deps.obligations!.settle(ctx.accountId, chargedAttempt);
-      return receipt;
+      const attempt = chargedAttempt;
+      return reverseCharge(deps.credits, deps.obligations, {
+        accountId: ctx.accountId, action: "draft", attemptKey, attempt, reason: "drafter_failed", meta,
+        ...usage.field(),
+      }, (f) => sayDraftRefund(f, ctx.accountId, attempt));
     };
     if (deps.credits && attemptKey) {
       const outcome = await deps.credits.spend(
@@ -395,19 +415,21 @@ export class DraftingService {
           if (declined) throw draftDeclined(null);
           throw err;
         }
-        const receipt = await releaseClaim(true);
-        if (declined) throw draftDeclined(receipt === "settled" ? "returned" : "owed");
-        // AND THE PERSON IS TOLD WHICH OF THE TWO HAPPENED. Two states, two sentences, never one
-        // optional field: `returned` is money already back, `owed` is money a pass will return.
-        // The underlying error rides as `cause` — it is what the fault record and the log want —
-        // but it may not be what reaches the person, because a 500 renders as "internal error"
-        // and the one thing they need to know about their credits would be lost with it.
+        const done = await releaseClaim(true);
+        // AND THE PERSON IS TOLD WHICH OF THE TWO HAPPENED: `returned` is money already back,
+        // `owed` is money a pass will return, and `owed` only where the debt is ON RECORD. A
+        // reversal the program did not take, whose debt could not be written either, promises
+        // nothing: the answer is the uncharged one, whose same-key retry is free because the
+        // attempt stays open. A 500 would render as "internal error" and lose the money's state.
+        const back = done?.receipt === "settled" ? "returned" : done?.owed ? "owed" : null;
+        if (declined) throw draftDeclined(back);
+        if (back === null) throw err;
         throw new ServiceError(
           "ai_draft_failed", 503,
-          receipt === "settled"
+          back === "returned"
             ? "the draft could not be written; your credits are back"
             : "the draft could not be written; your credits will be returned",
-          { credits: receipt === "settled" ? "returned" : "owed" },
+          { credits: back },
           true,
         );
       }
@@ -431,7 +453,7 @@ export class DraftingService {
         return;
       }
       try {
-        if ((await releaseClaim(false)) === "unreachable") unrecorded("unreachable");
+        if ((await releaseClaim(false))?.receipt === "unreachable") unrecorded("unreachable");
       } catch (err) {
         // A release that threw is this log line, never the person's error.
         unrecorded("release_failed", err);
@@ -522,8 +544,9 @@ export class DraftingService {
 
 /**
  * THE MODEL DECLINED THIS DRAFT (a refusal, or a reply cut off at its limit). `credits` is the
- * failed draft's two states — `returned`, `owed` — or `null` when nothing was charged. Not
- * retryable: the same letter draws the same answer.
+ * failed draft's two states — `returned`, `owed` — or `null` when nothing was charged or the
+ * return could be neither confirmed nor recorded. Not retryable: the same letter draws the same
+ * answer.
  */
 function draftDeclined(credits: "returned" | "owed" | null): ServiceError {
   const message = credits === "returned"

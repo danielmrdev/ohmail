@@ -12,6 +12,7 @@ import {
   screenerSuggestionsBySender,
   SCREENER_SUGGESTION_PROVENANCE,
   UNPRICED,
+  reverseCharge, type ReverseChargeFact,
   // 0.14.1, 0.14.1 — the request path. See `screener-apply.ts` and `organizer-role.ts` in
   // `@trafficflow/db` for why the transactional core and the eligibility read live there.
   senderIsActiveSql, senderIsDecidedSql, senderIsOwnSql, heldSortKey, type CutlineSet,
@@ -80,6 +81,26 @@ const doorbellLog = createLogger({ service: "filing" });
 
 /** Where a purchase's refund that has no obligation store to remember it is named. */
 const suggestLog = createLogger({ service: "screener" });
+
+/** A purchase's refund facts, as lines naming the account and the attempt — never an address. */
+function saySuggestRefund(f: ReverseChargeFact, accountId: string, attempt: string): void {
+  if (f.fact === "settle_failed") {
+    suggestLog.warn("screener_suggest_refund_settle_failed", {
+      accountId, attempt, err: f.err,
+      reason: "the refund settled and its debt could not be marked paid; the drain sends it again "
+        + "under the same attempt, which the program reverses once",
+    });
+    return;
+  }
+  suggestLog.warn("screener_suggest_refund_unrecorded", {
+    accountId, attempt, ...(f.fact === "unrecorded" ? { err: f.err } : {}),
+    reason: f.fact === "unrecorded"
+      ? "the refund obligation could not be written; the refund is still tried, and a lost "
+        + "release would leave this charge with nothing to reverse it"
+      : "a refund is owed and no obligation store was composed beside the gate, so a lost "
+        + "release would leave this charge with nothing to reverse it",
+  });
+}
 
 /** Where unknown first-contact senders are held (core routing, `source:"screener"`). */
 export const SCREENER_FOLDER: Destination = "ohmail/Screener";
@@ -2126,45 +2147,26 @@ export class ScreenerService extends ScreenerReadService {
       const usage = usageLines(this.usageHost, ctx.accountId, "screener");
       /**
        * Give the claim back ONCE — `released` set before the await, so a fault is not retried. A
-       * REFUND IS OWED BEFORE IT IS TRIED, as the worker's pass and the drafting route owe theirs:
-       * the obligation is written first, so a release the program never receives leaves a debt
-       * the drain settles; a `settled` receipt closes it. `drafter_failed` is the closed set's word
-       * for a spend whose model call produced nothing kept (a decline, or a store that faulted).
-       * A debt that cannot be written is named, and the refund is still TRIED: skipping the release
-       * there lost a refund the door used to send and held the claim to its TTL.
+       * refund goes through `reverseCharge`, as the worker's pass and the drafting route do: the
+       * debt is written first, a write that throws is named and the refund still TRIED, a
+       * `settled` receipt closes only a written debt, and a settle that throws is named.
+       * `drafter_failed` is the closed set's word for a spend whose model call produced nothing
+       * kept (a decline, or a store that faulted).
        */
       const releaseClaim = async (): Promise<void> => {
         if (!gate || !claimed || released) return;
         released = true;
         const meta = { messageId: r.messageId };
         const refunding = chargedAttempt;
-        /** Only a debt on record is settled; one whose write failed has nothing to settle. */
-        let owed = false;
-        if (refunding !== null && opts.obligations) {
-          try {
-            await opts.obligations.owe({
-              accountId: ctx.accountId, action: "screener", attemptKey, attempt: refunding, reason: "drafter_failed", meta,
-            });
-            owed = true;
-          } catch (err) {
-            suggestLog.warn("screener_suggest_refund_unrecorded", {
-              accountId: ctx.accountId, attempt: refunding, err,
-              reason: "the refund obligation could not be written; the refund is still tried, and a lost "
-                + "release would leave this charge with nothing to reverse it",
-            });
-          }
-        } else if (refunding !== null) {
-          suggestLog.warn("screener_suggest_refund_unrecorded", {
-            accountId: ctx.accountId, attempt: refunding,
-            reason: "a refund is owed and no obligation store was composed beside the gate, so a lost "
-              + "release would leave this charge with nothing to reverse it",
-          });
+        if (refunding === null) {
+          await gate.release(ctx.accountId, { action: "screener", attemptKey, refund: false, meta, ...usage.field() });
+          return;
         }
-        const receipt = await gate.release(ctx.accountId, refunding === null
-          ? { action: "screener", attemptKey, refund: false, meta, ...usage.field() }
-          : { action: "screener", attemptKey, refund: true, attempt: refunding, meta, ...usage.field() });
-        if (declined && refunding !== null && receipt === "settled") charged -= price ?? 0;
-        if (owed && refunding !== null && receipt === "settled") await opts.obligations!.settle(ctx.accountId, refunding);
+        const { receipt } = await reverseCharge(gate, opts.obligations, {
+          accountId: ctx.accountId, action: "screener", attemptKey, attempt: refunding, reason: "drafter_failed", meta,
+          ...usage.field(),
+        }, (f) => saySuggestRefund(f, ctx.accountId, refunding));
+        if (declined && receipt === "settled") charged -= price ?? 0;
       };
       try {
         if (gate) {
