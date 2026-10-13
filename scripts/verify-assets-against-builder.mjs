@@ -139,7 +139,7 @@ function downloadArtifact(repo, artifact, zipPath) {
 }
 
 /** The runs of the build workflow at one commit, newest first. Resolved by NAME, never by a run id. */
-function buildRunsAt(repo, commit) {
+function buildRunsAt(repo, commit, tag) {
   const answer = ghJson(
     `repos/${repo}/actions/workflows/${BUILD_WORKFLOW}/runs?head_sha=${commit}&per_page=50`,
     `the ${BUILD_WORKFLOW_NAME} workflow's runs at ${commit}`,
@@ -154,14 +154,26 @@ function buildRunsAt(repo, commit) {
   /* The run's CONCLUSION is printed and not required. A build whose Flatpak or install-drill job
    * went red still produced these installers from this commit, and refusing on it would redden
    * every release behind an unrelated job. What the chain asserts is the bytes, not the run's mood. */
-  const mine = runs
+  const atCommit = runs
     .filter((r) => r.head_sha === commit && r.name === BUILD_WORKFLOW_NAME)
     .sort((a, b) => (b.run_number ?? 0) - (a.run_number ?? 0) || (b.id ?? 0) - (a.id ?? 0));
-  if (mine.length === 0) {
+  if (atCommit.length === 0) {
     refuse(
       `BUILDER-NO-RUN ${commit}`,
       `  no run of the ${BUILD_WORKFLOW_NAME} workflow has this commit as its head.`,
       "  The assets on the release cannot be traced to a build of this source, so none is signed.",
+    );
+  }
+  let mine = atCommit;
+  /* WITH A TAG, ONLY THE RUN AT THAT TAG: a push to main builds the same commit, and its installers
+   * are not the release's. The android rule below, applied to the desktop installers. */
+  if (tag) mine = mine.filter((r) => String(r.head_branch ?? "") === tag);
+  if (mine.length === 0) {
+    refuse(
+      `BUILDER-NO-TAG-RUN ${commit} ${tag}`,
+      `  no run of the ${BUILD_WORKFLOW_NAME} workflow at the tag ${tag} has this commit as its head. Its runs on other refs:`,
+      ...atCommit.slice(0, MAX_RUNS).map((r) => `    run ${r.id} #${r.run_number} ${r.event ?? "?"} ${r.head_branch ?? "?"} ${r.conclusion ?? r.status ?? ""}`),
+      "  A release's installers come from the run at its tag, so none of these accounts for them and nothing is signed.",
     );
   }
   return mine.slice(0, MAX_RUNS);
@@ -465,10 +477,13 @@ export function verifyAndroidAssets({ repo, commit, assets, work, releaseKey }) 
   refuse(...reasons, "", "No android build of this commit accounts for the Android files on this release, so nothing is signed.");
 }
 
-export function verifyAssetsAgainstBuilder({ assetsDir, repo, commit, work, androidWorkflow }) {
+export function verifyAssetsAgainstBuilder({ assetsDir, repo, commit, work, androidWorkflow, tag }) {
   assertTools(["gh", "unzip"]);
   if (!/^[0-9a-f]{40}$/.test(commit || "")) {
     refuse("BUILDER-NO-COMMIT", `  --commit must be the tag's 40-hex commit; got ${commit ? `"${commit}"` : "nothing"}.`);
+  }
+  if (tag !== undefined && !/^[^\s/]+$/.test(tag)) {
+    refuse("BUILDER-NO-TAG", `  --tag must name the release tag the installers were built at; got ${tag ? `"${tag}"` : "nothing"}.`);
   }
   if (!/^[^/\s]+\/[^/\s]+$/.test(repo || "")) {
     refuse("BUILDER-NO-REPO", `  --repo must be owner/name; got ${repo ? `"${repo}"` : "nothing"}.`);
@@ -493,9 +508,9 @@ export function verifyAssetsAgainstBuilder({ assetsDir, repo, commit, work, andr
   // The key is read before the API is asked anything: a check with no key to hold the APK to has no answer.
   const releaseKey = android.length > 0 ? androidReleaseKey(androidWorkflow) : null;
 
-  const runs = buildRunsAt(repo, commit);
-  console.log(`${runs.length} run(s) of ${BUILD_WORKFLOW_NAME} at ${commit}:`);
-  for (const r of runs) console.log(`  run ${r.id} #${r.run_number} ${r.conclusion ?? r.status} ${r.html_url ?? ""}`);
+  const runs = buildRunsAt(repo, commit, tag);
+  console.log(`${runs.length} run(s) of ${BUILD_WORKFLOW_NAME} at ${commit}${tag ? ` at the tag ${tag}` : ""}:`);
+  for (const r of runs) console.log(`  run ${r.id} #${r.run_number} ${r.event ?? ""} ${r.head_branch ?? ""} ${r.conclusion ?? r.status} ${r.html_url ?? ""}`);
 
   mkdirSync(work, { recursive: true });
   const reasons = [];
@@ -504,7 +519,7 @@ export function verifyAssetsAgainstBuilder({ assetsDir, repo, commit, work, andr
     if (verdict.ok) {
       console.log(`${assets.length} asset(s) checked against run ${run.id} (#${run.run_number}):`);
       for (const l of verdict.lines) console.log(l);
-      console.log(`BUILDER-VERIFIED ${assets.length} asset(s) of ${commit} against ${BUILD_WORKFLOW_NAME} run ${run.id}`);
+      console.log(`BUILDER-VERIFIED ${assets.length} asset(s) of ${commit} against ${BUILD_WORKFLOW_NAME} run ${run.id}${tag ? ` at ${tag}` : ""}`);
       if (android.length > 0) {
         const androidAssets = android.map((name) => ({ name, path: join(assetsDir, name), sha256: sha256(join(assetsDir, name)) }));
         verifyAndroidAssets({ repo, commit, assets: androidAssets, work, releaseKey });
@@ -532,7 +547,7 @@ function main() {
   const { positional, flags } = parseArgs(process.argv.slice(2));
   const assetsDir = positional[0];
   if (!assetsDir) {
-    console.error("usage: node scripts/verify-assets-against-builder.mjs <assets dir> --commit <40-hex> [--repo owner/name]");
+    console.error("usage: node scripts/verify-assets-against-builder.mjs <assets dir> --commit <40-hex> [--tag <tag>] [--repo owner/name]");
     process.exit(2);
   }
   try {
@@ -542,6 +557,8 @@ function main() {
       commit: flags.commit || "",
       work: flags.work || join(assetsDir, "..", "builder-check"),
       androidWorkflow: flags["android-workflow"] || "",
+      /* Present, it is the only ref whose build run may account for the assets; given empty, it refuses. */
+      tag: "tag" in flags ? flags.tag ?? "" : undefined,
     });
   } catch (err) {
     if (err instanceof Refusal) {

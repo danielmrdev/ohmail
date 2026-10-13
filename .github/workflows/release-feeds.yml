@@ -685,12 +685,13 @@ jobs:
           # a key is in any environment.
           #
           # The commit comes from the tag checkout at the top of this job, not
-          # from the API: the tag names the binaries, and the runs of the build
-          # workflow at that commit are what made them.
+          # from the API: the tag names the binaries, and the build workflow's
+          # run AT THAT TAG, of that commit, is what made them. A push to main
+          # builds the same commit, and its installers are not the release's.
           # ══════════════════════════════════════════════════════════════════
           TAG_COMMIT="$(git rev-parse HEAD)"
           echo "$RELEASE_TAG is commit $TAG_COMMIT"
-          node .tools/scripts/verify-assets-against-builder.mjs assets --repo "$REPO" --commit "$TAG_COMMIT"
+          node .tools/scripts/verify-assets-against-builder.mjs assets --repo "$REPO" --commit "$TAG_COMMIT" --tag "$RELEASE_TAG"
 
           # …and for a verify-only run that is the whole job. It stops HERE rather than before the
           # download, because the check is the thing being read; everything below it signs.
