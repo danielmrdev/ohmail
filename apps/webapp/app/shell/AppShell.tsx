@@ -10,7 +10,6 @@ import {
   Suspense,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ComponentProps,
   type MouseEvent as ReactMouseEvent,
@@ -110,7 +109,8 @@ import { AutoUnsubscribeRow } from "./AutoUnsubscribeRow";
 import { FoldersRow } from "./FoldersRow";
 import { SignaturesRow } from "./SignaturesRow";
 import { useFolderVerbs } from "./folder-verbs";
-import { folderLeafOf, junkFolderSaid } from "./folders";
+import { junkFolderSaid } from "./folders";
+import { useFolderGoneSays } from "./folder-gone";
 import { AwayResponderRow, type AwayTransport } from "./AwayResponderRow";
 import { AwayNotice, useAwayNotice } from "./AwayNotice";
 import { OhmarchyOffer, useOhmarchyOffer } from "./OhmarchyOffer";
@@ -1963,21 +1963,8 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTranspor
     setFrValues((vals) => (id in vals ? vals : { ...vals, [id]: readReplyDraft(id) }));
   }, [frItem?.messageId]);
 
-  /**
-   * A FOLDER THAT LEAVES WHILE IT IS OPEN SAYS SO. The folder list follows the mail server, so a
-   * folder deleted there drops out of the mirror at the next sync, and the route falls back to the
-   * Ohbox; without a sentence that reads as a navigation nobody made. Only the folder that WAS on
-   * screen, under this route, with folders on — a link to an unknown id stays silent.
-   */
-  const openFolderSeen = useRef<{ id: string; name: string } | null>(null);
-  const routedFolderId = route.view === "folder" ? route.folderId : null;
-  useEffect(() => {
-    if (openFolder) { openFolderSeen.current = { id: openFolder.id, name: folderLeafOf(openFolder.name) }; return; }
-    const seen = openFolderSeen.current;
-    openFolderSeen.current = null;
-    if (seen !== null && seen.id === routedFolderId && consent.foldersEnabled) toast(t("folder.gone", { name: seen.name }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openFolder?.id, routedFolderId]);
+  useFolderGoneSays(openFolder, route.view === "folder" ? route.folderId : null, consent.foldersEnabled,
+    (name) => toast(t("folder.gone", { name })));
 
   /**
    * A SEND THE RUN MADE THAT DID NOT LAND MUST SAY SO. `FocusReplyOverlay` renders a card and two buttons and has no
