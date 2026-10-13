@@ -315,6 +315,17 @@ const TABLE = {
    */
   settingsStartHereUnreadable:
     "This phone could not read whether another computer organizes this mailbox. Nothing changed. Try again.",
+  /* A START REFUSED OVER ANOTHER INSTALL'S LIVE CLAIM, with the person's agreement recorded: both
+     facts, who holds it and what their next press does once it lets go. */
+  settingsStartHeldConsented: (name: string) =>
+    `${name} organizes this mailbox. This phone reads it, and your agreement is kept: once ${name} lets go, this phone offers the mailbox and one press takes it.`,
+  /* The same refusal over a mailbox this phone organized: its claim watch takes it back, no press. */
+  settingsStartHeldReturns: (name: string) =>
+    `${name} organizes this mailbox. This phone reads it, and takes it back by itself once ${name} lets go, while ohmail is open on it.`,
+  settingsStartHeldReturnsUnknown:
+    "Another install organizes this mailbox. This phone reads it, and takes it back by itself once that install lets go, while ohmail is open on it.",
+  settingsStartHeldConsentedUnknown:
+    "Another install organizes this mailbox. This phone reads it, and your agreement is kept: once it lets go, this phone offers the mailbox and one press takes it.",
   /* THE GATE'S TWO REFUSALS A PERSON FIXES ON THE MAIL SERVER — the desktop row's sentences, word
      for word (`sync.blocked_meta_*`), on the strip and as the answer to a start press. */
   phoneStateMetaFolderFull:
@@ -1580,6 +1591,14 @@ const TABLE = {
   newSinceResurfaced: (n: number) => `${n} new`,
   /** One plain sentence for any rejected write; the optimistic view has rolled back. */
   liveSaveFailed: "That change could not be saved. Try it again.",
+  /* A PILE OR TAG PRESS REFUSED 409 `organized_elsewhere`: this phone only reads the mailbox. */
+  readerPressRefused: (name: string) =>
+    `Nothing changed — this phone only reads this mailbox. ${name} organizes it, and piles and tags are set there.`,
+  readerPressRefusedUnknown:
+    "Nothing changed — this phone only reads this mailbox. Piles and tags are set where it is organized.",
+  /* A mark-read that landed beside a pile the server refused on a mailbox this phone only reads. */
+  readerPressReadOnly: "Marked as read. Nothing else changed — this phone only reads this mailbox.",
+  readerPressRefusedNobody: "Nothing changed — this phone only reads this mailbox. Nothing organizes it now.",
   liveDecided: (dest: string, target: string) =>
     `${dest} — future mail from ${target} files there automatically.`,
   /**
@@ -1633,9 +1652,14 @@ const TABLE = {
   /* At connect, when the mailbox turned out to be organized by another install: said once, where
      the person lands, because the door promised organizing and this phone reads instead. */
   readingAtConnect: (name: string) =>
-    `This phone reads this mailbox. ${name} organizes it, and what you decide here is sent there.`,
+    `This phone reads this mailbox. ${name} organizes it, and your Screener decisions and moves here are sent there.`,
   readingAtConnectUnknown:
-    "This phone reads this mailbox. Another install organizes it, and what you decide here is sent there.",
+    "This phone reads this mailbox. Another install organizes it, and your Screener decisions and moves here are sent there.",
+  /* The same notice where the Connect's agreement was recorded without a claim. */
+  readingAtConnectKept: (name: string) =>
+    `This phone reads this mailbox. ${name} organizes it. Your agreement is kept: once ${name} lets go, this phone offers the mailbox and one press takes it.`,
+  readingAtConnectKeptUnknown:
+    "This phone reads this mailbox. Another install organizes it. Your agreement is kept: once it lets go, this phone offers the mailbox and one press takes it.",
   /* A screening press read back from the list: how many are at the place, and what stays where. */
   liveVerdictKept: (count: number, place: string, kept: number, keptPlace: string, term: string) =>
     `${count === 1 ? "1 is" : `${count} are`} in ${place} · ${kept === 1 ? "1 stays" : `${kept} stay`} in ${keptPlace} by your rule »${term}«.`,

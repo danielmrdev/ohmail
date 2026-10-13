@@ -3036,6 +3036,17 @@ export interface LiveDeps {
   /** A decision SENT to the organizer: the sender keeps a mark until it answers (`state/relay.ts`). */
   relayedHere?: (decided: { address: string; scope: Scope }) => void;
   /**
+   * THE ROSTER'S HOLDER WHERE THIS DEVICE ONLY READS THE MAILBOX (`organizerRole === "reader"`), or
+   * `null` — a GETTER for `ownAddresses`' reason. A reader does not triage or tag (mail 0083), so a
+   * pile or tag press there waits for the server's answer instead of saying "Queued in Answer
+   * Later · Undo" before it, and its refusal names the holder only where `holderIsLive` says so.
+   * Absent ⇒ no mailbox reads as read-only, and every press stays optimistic.
+   */
+  readsOnly?: (mailboxId: string) => {
+    organizedBy: { kind: string | null; name: string | null } | null;
+    organizerState: "held" | "stopped" | null;
+  } | null;
+  /**
    * A DECIDE ON A ROW ONLY THE STORE BACKS, FROM THE PRESS TO ITS ANSWER: the holder of the cached
    * queue keeps the sender off the shelf until the returned release, which the press calls once
    * the answer is in (after {@link forgetWaiting} on a landed one). The mirror-backed row needs no
@@ -3484,6 +3495,29 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
       return out;
     });
 
+  /**
+   * WHY A PILE OR TAG PRESS WAS REFUSED, where the refusal says: `organized_elsewhere` is a mailbox
+   * this device only reads, and "could not be saved. Try it again" sent people to retry a press
+   * that is refused every time. The holder is the roster's, named only while `holderIsLive` — the
+   * refusal's `by` carries no lease state, and a stopped machine is not "organizing it".
+   */
+  const pileFailed = (vs: readonly PressVerdict[], messageId: string): RefusalArg => {
+    const err = tallyVerdicts(vs).firstRefusal;
+    return err?.code === "organized_elsewhere" ? readerRefusal(messageOf(messageId)?.mailboxId) : refuse("liveSaveFailed");
+  };
+
+  /** The reader sentence for a mailbox the roster names a reader: a live holder named, a stopped one nobody. */
+  const readerRefusal = (mailboxId: string | undefined): RefusalArg => {
+    const row = mailboxId === undefined ? null : deps.readsOnly?.(mailboxId) ?? null;
+    if (row === null) return refuse("readerPressRefusedUnknown");
+    if (holderIsLive({ by: row.organizedBy, state: row.organizerState })) {
+      const name = row.organizedBy?.name?.trim() ?? "";
+      return name === "" ? refuse("readerPressRefusedUnknown") : refuse("readerPressRefused", name);
+    }
+    /* Not live: a holder that STOPPED is nobody; one never named is not known to be nobody. */
+    return row.organizerState === "stopped" ? refuse("readerPressRefusedNobody") : refuse("readerPressRefusedUnknown");
+  };
+
   /** The same, answered: a cancelled verb is `true` — nothing was sent, so nothing failed. */
   const gatedSaid = async (
     messageId: string,
@@ -3492,7 +3526,34 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
     leaving: () => boolean,
   ): Promise<boolean> => {
     const vs = await gatedWrite(messageId, ms, onScreen, leaving);
-    return vs === null ? true : saidAll(vs, null, refuse("liveSaveFailed"));
+    return vs === null ? true : saidAll(vs, null, pileFailed(vs, messageId));
+  };
+
+  /**
+   * THE OPTIMISTIC DOOR FOR A PILE OR TAG PRESS — and, over a mailbox this device only reads, the
+   * ANSWERED one. The sentence and its Undo were spoken before the dispatch, so a reader's Later
+   * flashed "Queued in Answer Later · Undo" beside the refusal. There the press is
+   * sent first and its sentence follows the server's answer; everywhere else nothing changes.
+   */
+  const pilePress = (
+    messageId: string, say: RefusalArg, inv: readonly EngineMutation[], ms: readonly EngineMutation[],
+  ): Promise<boolean> => {
+    const mailboxId = messageOf(messageId)?.mailboxId;
+    if (mailboxId !== undefined && (deps.readsOnly?.(mailboxId) ?? null) !== null) {
+      return gatedWrite(messageId, ms, Promise.resolve(), () => true).then((answered) => {
+        const vs = answered ?? [];
+        const t = tallyVerdicts(vs);
+        /* A WAIT IS NOT AN ACCEPT HERE: a timed-out or held-back press replays into the same 409,
+           so "Queued … · Undo" would be the false sentence again. A read that landed beside a
+           refused pile says so rather than "Nothing changed". */
+        if (t.refused > 0 && t.applied > 0) { toast(refuse("readerPressReadOnly")); return false; }
+        if (t.queued > 0 && t.refused === 0) { toast(readerRefusal(mailboxId)); return false; }
+        return saidAll(vs, say, pileFailed(vs, messageId), undoable(inv));
+      });
+    }
+    const leaving = oneShot();
+    toast(say, undoable(inv, leaving));
+    return gatedSaid(messageId, ms, painted(), leaving);
   };
 
   /**
@@ -4045,13 +4106,32 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
     };
     const opened = retargets.length > 0 ? await holdRouting(intent) : { held: false, superseded: false, sent: false };
     const parts = letters.map((m) => dispatch(m));
+    /* ON A MAILBOX THIS DEVICE ONLY READS the letters' moves become the organizer's requests, so
+       "Released" said before the answer is the R20-06 shape; there the sentence follows it. */
+    const firstId = row.held[0]?.id;
+    const reads = firstId !== undefined
+      && (deps.readsOnly?.(messageOf(firstId)?.mailboxId ?? "") ?? null) !== null;
     if (!opened.held) {
       if (!opened.sent) parts.push(...retargets.map((m) => dispatch(m)));
+      if (reads) {
+        return saidAll(await Promise.all(parts), sentence, refuse("liveReleaseFailed", row.address),
+          retargets.length === 0 ? undoable(inv) : undefined);
+      }
       toast(sentence, retargets.length === 0 ? undoable(inv) : undefined);
       return saidAll(await Promise.all(parts), null, refuse("liveReleaseFailed", row.address));
     }
     const subject = routingSubject(intent);
-    toast(sentence, {
+    /* The letters answer first there; the held rules go only behind a press that was not refused. */
+    const answered = reads ? tallyVerdicts(await Promise.all(parts)) : null;
+    if (answered !== null && answered.refused > 0) {
+      undoRoutingPress(subject, pressId);
+      toast(refuse("liveReleaseFailed", row.address));
+      return false;
+    }
+    const waits = answered !== null && answered.queued > 0;
+    const heldSentence = !waits ? sentence
+      : answered.holder ? refuse("pressQueuedForOrganizer", answered.holder) : refuse("pressQueuedForOrganizerUnknown");
+    toast(heldSentence, {
       holdMs: UNDO_MS,
       shown: () => { restartRouting(subject); },
       undo: () => {
@@ -4063,6 +4143,7 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
         void Promise.all(inv.map((mu) => watched(engine.mutate(mu))));
       },
     });
+    if (answered !== null) return !waits;
     return saidAll(await Promise.all(parts), null, refuse("liveReleaseFailed", row.address));
   };
 
@@ -4185,9 +4266,7 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
        window an Undo cancels, and the window nothing else for this message may overtake. */
     const pre = engine.verbRead();
     const inv = ms.flatMap((m) => inverseMutations(pre, m));
-    const leaving = oneShot();
-    toast(say, undoable(inv, leaving));
-    return gatedSaid(messageId, ms, painted(), leaving);
+    return pilePress(messageId, say, inv, ms);
   };
 
   /**
@@ -4308,12 +4387,10 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
     ];
     // Spoken FIRST and mounted alone (`paintFirst`), like every optimistic verb; the inverses
     // above were read off the pre-press mirror, so the order of the two changes nothing they say.
-    const leaving = oneShot();
-    toast(refuse("toastResurfaceDone"), undoable(inv, leaving));
     // Both halves in the ONE slot and in order: the booking clears before the read lands.
     const read: EngineMutation = { kind: "mark_seen", messageIds: ids, unread: false };
     const clears: EngineMutation[] = bookedIds.map((id) => ({ kind: "triage_set", messageId: id, state: "none" }));
-    return gatedSaid(messageId, [...clears, read], painted(), leaving);
+    return pilePress(messageId, refuse("toastResurfaceDone"), inv, [...clears, read]);
   };
 
   /** The reader the Ohbox is drawn from — see {@link LiveDeps.presented}. */
@@ -5142,12 +5219,7 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
   const tagToggle = async (messageId: string, tag: WorldTag, assigned: boolean): Promise<boolean> => {
     const m: EngineMutation = { kind: "tag_assign", messageId, tagId: tag.id, assigned };
     const inv = inverseMutations(engine.verbRead(), m);
-    const leaving = oneShot();
-    toast(
-      assigned ? refuse("tagTagged", tag.name) : refuse("tagUntagged", tag.name),
-      undoable(inv, leaving),
-    );
-    return gatedSaid(messageId, [m], painted(), leaving);
+    return pilePress(messageId, assigned ? refuse("tagTagged", tag.name) : refuse("tagUntagged", tag.name), inv, [m]);
   };
 
   const tagCreate = async (messageId: string, name: string): Promise<boolean> => {
@@ -5161,9 +5233,7 @@ export function liveActions(deps: LiveDeps): LiveWorldActions {
     // own verb and its own confirm (`inverseMutations`' tag arm states the same boundary).
     const m: EngineMutation = { kind: "tag_assign", messageId, tagId: deps.uuid(), assigned: true, createName: typed };
     const inv = inverseMutations(engine.verbRead(), m);
-    const leaving = oneShot();
-    toast(refuse("tagTagged", typed), undoable(inv, leaving));
-    return gatedSaid(messageId, [m], painted(), leaving);
+    return pilePress(messageId, refuse("tagTagged", typed), inv, [m]);
   };
 
   /**

@@ -141,7 +141,8 @@ export interface BackgroundEngine {
    * consent: over a mailbox nobody consented to on this phone the answer is `refused`.
    */
   claimHere(opts: { by: "press" | "watch" }): Promise<
-    "claimed" | "held" | "unreadable" | "meta_folder_full" | "meta_undeletable" | "refused"
+    "claimed" | "held" | "held_consented" | "held_returns" | "unreadable" | "meta_folder_full" | "meta_undeletable"
+    | "refused"
   >;
   /**
    * DOES A LIVE FOREIGN CLAIM HOLD THE MAILBOX, as the row says — asked before {@link claimHere},
@@ -1031,7 +1032,8 @@ export function createBackgroundOrganizing(deps: BackgroundDeps): BackgroundOrga
        for as long as the other machine organizes. The row turns `stopped` when it leaves. */
     const held = await (deps.engine.heldElsewhere?.() ?? Promise.resolve(null)).catch(() => null);
     if (held === true || disposed) return;
-    let outcome: "claimed" | "held" | "unreadable" | "meta_folder_full" | "meta_undeletable" | "refused";
+    let outcome: "claimed" | "held" | "held_consented" | "held_returns" | "unreadable" | "meta_folder_full"
+      | "meta_undeletable" | "refused";
     try {
       /* THE WATCH, NEVER A PERSON: it carries no consent, so it can only take back a mailbox
          somebody consented to on this phone. */
@@ -1054,7 +1056,9 @@ export function createBackgroundOrganizing(deps: BackgroundDeps): BackgroundOrga
       return;
     }
     /* A folder the person must fix on the server is a standing refusal: backed off like one. */
-    reclaimSettled(outcome === "meta_folder_full" || outcome === "meta_undeletable" ? "refused" : outcome);
+    /* `held_consented` and `held_returns` are a person's press only; the watch's answer is `held`. */
+    reclaimSettled(outcome === "meta_folder_full" || outcome === "meta_undeletable" ? "refused"
+      : outcome === "held_consented" || outcome === "held_returns" ? "held" : outcome);
   };
 
   const claimLostCheck = async (): Promise<void> => {

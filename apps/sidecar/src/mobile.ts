@@ -207,6 +207,17 @@ export type ClaimHereOutcome =
   /** A live foreign claim. The door refused, nothing was written, and no sentence is owed. */
   | "held"
   /**
+   * A live foreign claim, refused — and this PERSON'S consent was recorded without a claim. Its own
+   * word because a sentence IS owed: the person's next Start takes the mailbox once the holder lets
+   * go. Only a press carries consent, so the watch never answers it.
+   */
+  | "held_consented"
+  /**
+   * The same refusal over a mailbox THIS install organized: its claim watch takes it back by itself
+   * once the holder lets go (`organizedHere`), so the sentence says that and asks for no press.
+   */
+  | "held_returns"
+  /**
    * THE DOOR COULD NOT SEE WHETHER ANYBODY HOLDS THE MAILBOX, so it wrote nothing.
    *
    * Its own word rather than `refused`, because the two want opposite sentences: `refused` is
@@ -1304,6 +1315,8 @@ async function composePhoneEngine(
     readonly heldBy: string | null;
     readonly reason: StandDownReason;
     readonly logged: string;
+    /** The engine's own look when this was written; a look that moved since is the newer fact. */
+    readonly lookWas: OrganizerState["holderState"];
   }>();
 
   /**
@@ -1336,8 +1349,18 @@ async function composePhoneEngine(
     const states = sidecar.organizerStates();
     for (const [mailboxId, refused] of refusedHolders) {
       const state = states[mailboxId];
-      if (state === undefined || state.reason !== null) continue;
-      states[mailboxId] = { ...state, organizing: false, heldBy: refused.heldBy, reason: refused.reason };
+      if (state === undefined) continue;
+      /* AND ITS OCCUPANCY: the door read a live claim, so `held`, over a gate's reason too. The look's
+         word from before the press (`none`) kept the card free, with Start, until the next look —
+         measured on a device. A look that MOVED since the refusal is newer and ENDS the memo: kept,
+         it re-applied when the look came back to that word, over a holder that had let go. */
+      if ((state.holderState ?? null) !== (refused.lookWas ?? null)) {
+        refusedHolders.delete(mailboxId);
+        continue;
+      }
+      states[mailboxId] = state.reason !== null
+        ? { ...state, heldBy: state.heldBy ?? refused.heldBy, holderState: "held" }
+        : { ...state, organizing: false, heldBy: state.heldBy ?? refused.heldBy, reason: refused.reason, holderState: "held" };
     }
     return states;
   };
@@ -1506,6 +1529,7 @@ async function composePhoneEngine(
       heldBy: holder.name === "" ? null : holder.name,
       reason: standDownReasonForKind(holder.kind),
       logged: signature,
+      lookWas: sidecar.organizerStates()[mailboxId]?.holderState ?? null,
     });
     return new Response(
       JSON.stringify({
@@ -1518,6 +1542,9 @@ async function composePhoneEngine(
            members: the app's reader distinguishes "named nothing" from "no holder" by the STATUS,
            and an optional member here would collapse them. */
         holder: { name: holder.name, kind: holder.kind },
+        /* AND WHETHER THIS PRESS'S CONSENT WAS KEPT, so the app's refusal can say both facts:
+           who holds it, and that the person's next Start takes it once they let go. */
+        consentRecorded,
       }),
       { status: 409, headers: { "content-type": "application/json" } },
     );
@@ -1749,7 +1776,15 @@ async function composePhoneEngine(
       log("organizer_claim_here_failed", { err, mailboxId });
       return "refused";
     }
-    if (res.status === 409) return "held";
+    if (res.status === 409) {
+      const kept = await res.json().then(
+        (b) => (b as { consentRecorded?: unknown }).consentRecorded === true,
+        () => false,
+      );
+      if (opts.by !== "press") return "held";
+      if (sidecar.organizedHere(mailboxId)) return "held_returns";
+      return kept ? "held_consented" : "held";
+    }
     /* THE THIRD ANSWER, AND IT IS NOT `refused`. The door says 503 exactly where it could not see
        whether anybody holds the mailbox; folding it into `refused` would put "we could not start
        organizing" in front of a person whose real answer is "try again". */

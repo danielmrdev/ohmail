@@ -971,6 +971,9 @@ export function WorldProvider({ children }: { children: ReactNode }) {
     () => ownAddressesOf(mailboxes ?? []),
     [mailboxes],
   );
+  /** The roster as it stands now, for `LiveDeps.readsOnly` — behind a ref for the same reason. */
+  const mailboxesNow = useRef<readonly PhoneMailbox[] | null>(null);
+  mailboxesNow.current = mailboxes;
   /**
    * THE PROJECTION THE LISTS ARE DRAWN FROM, behind a ref for `addressesNow`'s reason: the
    * actions facade keeps ONE identity for the session while this reader is rebuilt per mirror
@@ -1320,6 +1323,12 @@ export function WorldProvider({ children }: { children: ReactNode }) {
         // captured `locale` would stamp Trash rows in the mount-time language for ever.
         locale: () => activeLocale(),
         ownAddresses: () => addressesNow.current,
+        /* A READER ROW ON THIS ROSTER: piles and tags there wait for the server's answer. */
+        readsOnly: (mailboxId) => {
+          const row = mailboxesNow.current?.find((m) => m.id === mailboxId);
+          return row?.organizerRole === "reader"
+            ? { organizedBy: row.organizedBy, organizerState: row.organizerState } : null;
+        },
         // A GETTER, like the addresses beside it and for the same reason: this facade is
         // identity-stable while the consent read that carries the time lands later, so the
         // horizon-less verbs must ask at every use rather than capture a boot-time null.
