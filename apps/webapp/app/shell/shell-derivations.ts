@@ -22,7 +22,7 @@ import {
   readerWithEffects,
   receiptsByDay,
   resurfacedThreads,
-  rulesList,
+  rulesAsRun,
   scheduledSendsList,
   sendingMailboxId,
   tagsCrossView,
@@ -555,8 +555,14 @@ export function useShellDerivations({
         : [],
     [presented, derived, openFolder],
   );
-  /** Every rule the consent gate has written, newest first. */
-  const rules = useMemo(() => rulesList(reader), [reader, derived]);
+  /** The rule verbs waiting on this browser's queue: the server still runs each rule as it was. */
+  const rulesQueued = useMemo(
+    // Optional-called, as below: a test's engine double may have no queue to read.
+    () => engine.queuedRuleWrites?.() ?? [],
+    [engine, reader, derived],
+  );
+  /** Every rule the consent gate has written, newest first, as the server still runs it. */
+  const rules = useMemo(() => rulesAsRun(reader, rulesQueued), [reader, derived, rulesQueued]);
   /** The rule requests waiting on the organizer — the Rules page's own group (`waitingOnOrganizer`). */
   const rulesWaiting = useMemo(
     // Optional-called: a test's engine double that never organizes has no list to read.
@@ -673,7 +679,7 @@ export function useShellDerivations({
     folderUnread,
     openFolder,
     folderMessages,
-    rules, rulesWaiting,
+    rules, rulesWaiting, rulesQueued,
     mailboxes,
     draft,
     aiChip,

@@ -401,6 +401,7 @@ export {
   scheduledSendsList,
   HELD_SEND_RECHECK_MS, SENDING_STALE_AFTER_MS,
   rulesList,
+  rulesAsRun,
   storedRuleDestination,
   heldReleaseDismissedOf,
   heldReleaseFingerprintOf,
@@ -679,6 +680,8 @@ export {
   type MutationResult,
   type MutationStatus,
   type OrganizerRequestView,
+  // A rule verb waiting on this client's queue, for the rules surface.
+  type QueuedRuleWrite,
   type WaitingOnOrganizerView,
   // Cancel's vocabulary: what a withdrawal found, and the refusal code a withdrawn verb settles
   // with — a surface reads the code to say nothing rather than "it failed".

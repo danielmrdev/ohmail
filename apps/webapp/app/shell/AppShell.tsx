@@ -1391,7 +1391,7 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTranspor
     ownAddresses, firstImportDoneAt, ownNameOf, mailboxLabelOf, consentView, presented, trashPage, trashWindow,
     older, folderOlder, ohbox, resurfacedRows, partition, receipts, receiptsPartition, piles,
     parked, tagGroups, history, tags, folders, folderMailboxes,
-    folderUnread, openFolder, folderMessages, rules, rulesWaiting, mailboxes, draft, aiChip, account,
+    folderUnread, openFolder, folderMessages, rules, rulesWaiting, rulesQueued, mailboxes, draft, aiChip, account,
     notifications, allOhbox, participantsOf, threadCountOf, threadSubjectOf, fallbackMailboxId,
     drafts, scheduled,
   } = useShellDerivations({
@@ -3120,7 +3120,7 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTranspor
                 tagCounts={Object.fromEntries(
                   tagGroups.map((g) => [g.tag.id, g.messages.length]),
                 )}
-                rules={{ items: rules, waiting: rulesWaiting, mailboxLabel: mailboxLabelOf, onRevoke: revokeRule, onRetarget: retargetRule, pastMail: rulePastMailOf, posture: rulesPosture }}
+                rules={{ items: rules, waiting: rulesWaiting, queued: rulesQueued, mailboxLabel: mailboxLabelOf, onRevoke: revokeRule, onRetarget: retargetRule, pastMail: rulePastMailOf, posture: rulesPosture }}
                 /* Rename and delete. Not gated on `demo`, unlike the four injected panes:
                    both are ordinary engine mutations, so the FixturesAdapter serves them out
                    of `mutationEffects` and the demo is correct with no special case. */

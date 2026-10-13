@@ -11,7 +11,8 @@ import type { MutationRejectedError } from "./types.js";
  */
 export type PressVerdict =
   | { kind: "applied" }
-  | { kind: "queued"; wait: "retry" | "organizer"; holder: string | null }
+  /** `failed`: the server answered this client's try with a failure and is asked again — not offline. */
+  | { kind: "queued"; wait: "retry" | "organizer"; holder: string | null; failed?: true }
   | { kind: "refused"; refusal: MutationRejectedError | undefined }
   /** A newer press for the same field owns the sentence: this one says nothing at all. */
   | { kind: "silent" };
@@ -28,7 +29,7 @@ export const PRESS_THREW: PressVerdict = { kind: "refused", refusal: undefined }
  * A whole {@link MutationResult} satisfies it.
  */
 export type PressAnswer = Pick<MutationResult, "status">
-  & Partial<Pick<MutationResult, "error" | "queuedWith">>;
+  & Partial<Pick<MutationResult, "error" | "queuedWith" | "serverFailed">>;
 
 /**
  * THE ONE READING OF A MUTATION RESULT. The `never` binding is the gate, evaluated by `tsc`: a
@@ -41,7 +42,9 @@ export function pressVerdict(res: PressAnswer): PressVerdict {
     case "confirmed":
       return { kind: "applied" };
     case "queued":
-      return { kind: "queued", wait: "retry", holder: null };
+      return res.serverFailed === true
+        ? { kind: "queued", wait: "retry", holder: null, failed: true }
+        : { kind: "queued", wait: "retry", holder: null };
     case "awaiting_organizer":
       return { kind: "queued", wait: "organizer", holder: res.queuedWith?.name ?? null };
     case "rolled_back":

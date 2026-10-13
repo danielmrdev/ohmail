@@ -1121,6 +1121,9 @@ export type ForeignKeyMarker = readonly [conname: string, definitionSubstring: s
 export const SCHEMA_FK_MARKERS: ReadonlyArray<ForeignKeyMarker> = [
   ["drafts_forward_of_message_id_account_fk",
     "FOREIGN KEY (forward_of_message_id, account_id) REFERENCES messages(id, account_id)"],
+  // Mail 0153_rule_revoke_keeps_its_decisions — the rule key drops its pointer on a revoke. Against
+  // a 0152 database the revoke of a rule that filed a gap batch is refused 23503 and answers 500.
+  ["routing_decisions_matched_rule_id_account_fk", "ON DELETE SET NULL (matched_rule_id)"],
 ] as const;
 
 /* `EXPECTED_MARKERS` — the BOTH-HALVES count — moved to `./health-cloud.js` with the list it
@@ -1227,7 +1230,7 @@ export const MAIL_EXPECTED_MARKERS =
 // tolerated state, not a schema fault a serving API should 503 over.
 // mail 0146_rule_person_decided_followup (the stamps an older settings copy and a whole-domain spam
 // decision left owed) is two UPDATEs and adds no object: no marker.
-export const MAIL_SCHEMA_MARKER_JOURNAL_TAG = "0152_search_gin_pending_bounded";
+export const MAIL_SCHEMA_MARKER_JOURNAL_TAG = "0153_rule_revoke_keeps_its_decisions";
 
 /** The whole mail tier, in one frozen record: what a mail-tier Postgres host is probed against. */
 export interface MailTier {
