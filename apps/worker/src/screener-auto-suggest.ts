@@ -13,7 +13,8 @@ import { screenerUsageHook, type UsageHook } from "./ai-usage-line.js";
 import { capabilityForKind } from "@trafficflow/core/adapters/organizer-lease";
 import { correspondentsAmong } from "@trafficflow/core/adapters/drizzle-repo";
 import {
-  askScreeningQuestion, capSuggestion, ModelDeclinedError, senderCheckAll, senderFacts, silentLogger,
+  askScreeningQuestion, capSuggestion, ModelDeclinedError, SensitivePayloadRefusal, senderCheckAll, senderFacts,
+  silentLogger,
   type ClassifierPort, type Logger, type SenderSignals,
 } from "@trafficflow/core/mail";
 
@@ -44,11 +45,11 @@ const SCREENER = "ohmail/Screener";
 export const AUTO_SUGGEST_BATCH = 10;
 
 /**
- * THE SENDERS A MODEL DECLINED, held out of the candidate page for a while. The page is the ten
- * OLDEST unadvised senders and a decline stores no advice, so without this the same decliners
- * came back first every cycle: ten of them and nobody behind them was ever asked, and every cycle
- * paid for the same refusals again. Keyed by the representative MESSAGE, so a sender who writes
- * again is asked about the new message at once.
+ * THE SENDERS A MODEL DECLINED OR THE OUTBOUND SCREEN REFUSED, held out of the candidate page for
+ * a while. The page is the ten OLDEST unadvised senders and neither answer stores advice, so
+ * without this the same senders came back first every cycle: ten of them and nobody behind them
+ * was ever asked, and every cycle paid for the same refusals again. Keyed by the representative
+ * MESSAGE, so a sender who writes again is asked about the new message at once.
  */
 export interface DeclineMemory {
   heldOut(accountId: string, nowMs: number): string[];
@@ -467,15 +468,22 @@ export async function screenerAutoSuggestPass(
           ...(facts ? { senderFacts: facts } : {}),
         }, deps.usageHook ? screenerUsageHook(deps.usageHook, accountId, (l) => { usageLine = l; }) : undefined);
       } catch (err) {
-        // A DECLINE SKIPS THIS SENDER AND THE BATCH GOES ON. A refusal or a cut-off answer speaks
-        // for one sender, not the endpoint: stopping on it stalled every later held sender behind
-        // the oldest one, each cycle, and kept a charge that bought nothing. The charge comes back
-        // at the door (`drafter_failed` is the closed set's "the model call it paid for produced
-        // nothing"), uncounted, and the sender is held out for a day unless it writes again.
-        if (err instanceof ModelDeclinedError) {
-          log.info("screener_auto_suggest_declined", {
-            accountId, messageId: c.messageId, stopReason: err.stopReason, refusalCategory: err.refusalCategory,
-          });
+        // A DECLINE OR A REFUSAL AT THE SINK SKIPS THIS SENDER AND THE BATCH GOES ON. Each speaks
+        // for one sender's mail, not the endpoint: stopping on it stalled every later held sender
+        // behind the oldest one, each cycle, and kept a charge that bought nothing. The charge comes
+        // back at the door (`drafter_failed`: the call it paid for produced nothing), uncounted, and
+        // the sender is held out for a day unless it writes again; the sink's screen reads the same
+        // bytes the same way, so asking sooner draws the same refusal.
+        if (err instanceof ModelDeclinedError || err instanceof SensitivePayloadRefusal) {
+          if (err instanceof ModelDeclinedError) {
+            log.info("screener_auto_suggest_declined", {
+              accountId, messageId: c.messageId, stopReason: err.stopReason, refusalCategory: err.refusalCategory,
+            });
+          } else {
+            log.warn("screener_auto_suggest_refused_at_sink", {
+              accountId, messageId: c.messageId, refusal: err.screen.reason ?? "unnamed", cooldownMs: DECLINE_COOLDOWN_MS,
+            });
+          }
           if (chargedAttempt !== undefined) result.chargedAttempts--;
           refundOnRelease = "drafter_failed";
           declines.remember(accountId, c.messageId, now.getTime() + DECLINE_COOLDOWN_MS);
