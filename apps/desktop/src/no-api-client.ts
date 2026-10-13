@@ -603,6 +603,15 @@ export const screenerAutoFiled: {
     undo: (messageIds: readonly string[]) => Promise<{ putBack: string[]; requested: string[] }>;
 } = absent;
 
+export interface ScreeningWindowWire {
+    baselineAt: string | null;
+    dormancyDays: number;
+    scope: "window" | "all_time";
+    source: "own" | "organizer" | "unread" | "unstated";
+    holder: { kind: string | null; name: string | null; since: string | null } | null;
+    asOf: string | null;
+}
+
 export interface ConsentStateWire {
     seedConfirmedAt: string | null;
     screeningResetAt: string | null;
@@ -621,6 +630,7 @@ export interface ConsentStateWire {
     };
     dormancyChange?: ChangeWire;
     signatureChanges?: Record<string, ChangeWire>;
+    screeningByMailbox?: Record<string, ScreeningWindowWire>;
 }
 
 export interface SeedCandidateWire {
