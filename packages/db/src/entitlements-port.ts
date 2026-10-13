@@ -296,6 +296,7 @@ export async function reverseCharge(
       await obligations.owe(debt);
       owed = true;
     } catch (err) {
+      // Said to the door, never thrown: the refund below is still tried.
       say({ fact: "unrecorded", err });
     }
   }
@@ -307,6 +308,7 @@ export async function reverseCharge(
     try {
       await obligations!.settle(debt.accountId, debt.attempt);
     } catch (err) {
+      // Said to the door, never thrown: the program took the refund, and the open debt is the drain's.
       say({ fact: "settle_failed", err });
     }
   }
