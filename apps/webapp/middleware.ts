@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { resolveApiOrigin, resolveInternalApiOrigin } from "./app/api-origin";
 import { canonicalRedirect } from "./app/canonical-host";
-import { API_BASE, HANDLER_PATHS, REFRESH_SCOPED_PATHS } from "./routes.mjs";
+import { API_BASE, HANDLER_PATHS, REFRESH_SCOPED_PATHS, isZonePath } from "./routes.mjs";
+import { armedZone, resolveLandingZone, zoneRequestHeaders, zoneTarget } from "./landing-zone.mjs";
 import { newNonce, nonceCsp } from "./app/security-headers";
 import { cookieFromStore } from "./app/shell/cookie-jar";
 import {
@@ -43,10 +44,16 @@ import {
  *    about the ORIGIN rather than about `/`: the canonical-host redirect below, and the
  *    nonce CSP on the credential screens. They cost one edge invocation and NOT a fetch:
  *    the session gate runs on `/` and nowhere else.
+ *  - **the landing zone's paths** (`ZONE_PATHS` in `routes.mjs`) — once `landing-zone.mjs` is
+ *    armed the website is a SEPARATE deployment, and these are rewritten to it with the request's
+ *    headers rebuilt from an allow-list, so no cookie of this origin reaches it. Only middleware
+ *    can replace a request's header set; a config rewrite forwards the jar. Unarmed, they are
+ *    served here exactly as before.
  *
- * `/api/*`, `/auth/refresh` and the sign-out door below it, `/_next/*`, `/demo/*` and the
- * icons are deliberately NOT matched. They are proxied or static, they are the hot path, and
- * putting a function in front of them would buy nothing — `next.config.mjs`'s `headers()` covers them.
+ * `/api/*` (bar `/api/waitlist`, a zone path), `/auth/refresh` and the sign-out door below it,
+ * `/_next/*`, `/demo/*` and the icons are deliberately NOT matched. They are proxied or static,
+ * they are the hot path, and putting a function in front of them would buy nothing —
+ * `next.config.mjs`'s `headers()` covers them.
  *
  * ## Caching
  *
@@ -104,6 +111,12 @@ const SELF_HOST_BUILD = process.env.NEXT_PUBLIC_OHMAIL_FLAVOR === "selfhost";
 const API_ORIGIN = SELF_HOST_BUILD
   ? resolveInternalApiOrigin(process.env.OHMAIL_INTERNAL_API_ORIGIN)
   : resolveApiOrigin(process.env.TF_API_ORIGIN);
+
+/**
+ * The landing zone, validated against the compiled list like `API_ORIGIN` and for the same reason: a
+ * dashboard edit may select a listed zone, never name one. None on a self-host build (compiled out).
+ */
+const LANDING_ZONE = SELF_HOST_BUILD ? null : resolveLandingZone(process.env.LANDING_ZONE_ORIGIN);
 
 /**
  * How long the FIRST-RUN probe may hold up an anonymous `/`. Shorter than the session gate's
@@ -215,12 +228,18 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     return NextResponse.redirect(home, 308);
   }
 
+  // The landing zone answers its paths only with a listed zone AND a bypass, the bypass read per
+  // request; otherwise this deployment serves them as it always has.
+  const bypass = (process.env.LANDING_ZONE_BYPASS ?? "").trim();
+  const zone = armedZone(LANDING_ZONE, bypass);
+
   // 3. Every matched path that is NOT `/` is an ordinary page: no cookie is read, no
   //    session is looked up, nothing is fetched. `/login` and `/join` take credentials, so
   //    they are served under the strict script policy; the marketing pages are static
   //    prerenders and keep the baseline policy from `next.config.mjs` (a nonce cannot
   //    survive a prerender — see `app/security-headers.ts`).
   if (pathname !== "/") {
+    if (zone !== null && isZonePath(pathname)) return zoneRewrite(request, zone, bypass);
     if (
       pathname === "/login" || pathname === "/join" || pathname === "/verify-email" ||
       // `/link-desktop` receives no credential and PRINTS one, which needs the same three
@@ -317,7 +336,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   const target = surface === "resume" ? RESUME_ROUTE : APP_ROUTE;
   const response =
     surface === "marketing"
-      ? NextResponse.next()
+      ? (zone !== null ? zoneRewrite(request, zone, bypass) : NextResponse.next())
       : strict(request, (init) => NextResponse.rewrite(withPathname(request, target), init));
 
   // Per-user responses must not be cached. A MARKER-bearing request is per-user too even
@@ -392,6 +411,19 @@ function strict(
   return response;
 }
 
+/**
+ * Hand a request to the landing zone. A REWRITE, so the address bar keeps this origin; the request
+ * the zone receives carries only `zoneRequestHeaders`' allow-list. Next REPLACES the header set
+ * with the override (every header not on the list is dropped, the cookie jar first), and a config
+ * rewrite has no such door — it forwards the jar whole, which is why no zone path is one.
+ */
+function zoneRewrite(request: NextRequest, zone: string, bypass: string): NextResponse {
+  const { pathname, search } = request.nextUrl;
+  return NextResponse.rewrite(zoneTarget(zone, pathname, search), {
+    request: { headers: zoneRequestHeaders(request.headers, bypass) },
+  });
+}
+
 function withPathname(request: NextRequest, pathname: string): URL {
   const url = request.nextUrl.clone();
   url.pathname = pathname;
@@ -402,9 +434,9 @@ function withPathname(request: NextRequest, pathname: string): URL {
  * The matcher is STATICALLY ANALYSED by `next build` — it is read out of the source,
  * not evaluated — so `APP_ROUTE` cannot appear here and the paths have to be spelled
  * again as literals. A drift guard asserts they never drift from `EDGE_PATHS` — the routes
- * marked `edge: true` in `routes.mjs`, the one table this app's split is declared in — because
- * a silent divergence would leave the rewrite target publicly reachable or a legacy host
- * serving the product.
+ * marked `edge: true` in `routes.mjs` plus every landing-zone path, the two prefixes as
+ * `/:path*` — because a silent divergence would leave the rewrite target publicly reachable
+ * or a legacy host serving the product.
  *
  * `/de` — the German landing — sits with the other MARKETING documents rather than beside `/`,
  * because that is what it is: a static page this origin answers, matched for the canonical-host
@@ -425,7 +457,8 @@ export const config = {
   matcher: [
     "/", "/mailbox", "/resume", "/login", "/join", "/join/invite", "/setup", "/verify-email",
     "/link-desktop", "/authorize-desktop", "/approve", "/subscribed", "/de", "/privacy", "/imprint",
-    "/subprocessors",
+    "/subprocessors", "/flathub-verification", "/.well-known/org.flathub.VerifiedApps.txt", "/api/waitlist",
+    "/site-assets/:path*", "/landing/:path*",
     { source: "/((?!api(?:/|$)|auth/refresh(?:/logout)?$|_next/).*)", has: [{ type: "header", key: "next-action" }] },
     { source: "/((?!api(?:/|$)|auth/refresh(?:/logout)?$|_next/).*)", has: [{ type: "header", key: "content-type" }] },
   ],

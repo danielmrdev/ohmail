@@ -1,8 +1,11 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import createNextIntlPlugin from "next-intl/plugin";
-import { API_BASE, MARKETING_PATHS, rewritesFor } from "./routes.mjs";
-import { assertMeasurementId, withAnalytics } from "./analytics.mjs";
+import { API_BASE, MARKETING_PATHS, ZONE_PATHS, rewritesFor } from "./routes.mjs";
+import { GA_ID_VAR, assertMeasurementId, withAnalytics } from "./analytics.mjs";
+import {
+  ALLOWED_LANDING_ZONES, ZONE_BYPASS_VAR, ZONE_VAR, armedZone, resolveLandingZone,
+} from "./landing-zone.mjs";
 const withNextIntl = createNextIntlPlugin();
 
 /* The route table is `routes.mjs` — one declaration read by this config AND by every
@@ -363,6 +366,44 @@ export function assertApiArmed(origin, env) {
 }
 
 /**
+ * THE LANDING ZONE'S REFUSALS (`landing-zone.mjs`). A self-host build has no website to route to; a
+ * SET zone that is unlisted or malformed is a typo or a repoint, and the message names the permitted
+ * set, never the value; a measurement id beside a zone gives the website two owners of its tag; and a
+ * production tree without the in-app website answers 404 on `/` unless the zone is armed. While the
+ * in-app website exists, an unarmed production build serves it exactly as before.
+ *
+ * @param {string} rawZone the trimmed {@link ZONE_VAR}, or ""
+ * @param {string | null} zone what `resolveLandingZone` made of it
+ * @param {Record<string, string | undefined>} env
+ * @param {{ selfhost: boolean, inAppMarketing: boolean, gaId: string | null }} build
+ */
+export function assertLandingZone(rawZone, zone, env, { selfhost, inAppMarketing, gaId }) {
+  const bypass = (env[ZONE_BYPASS_VAR] ?? "").trim();
+  if (selfhost && (rawZone !== "" || bypass !== "")) {
+    throw new Error(
+      `${ZONE_VAR} and ${ZONE_BYPASS_VAR} must not be set on a ${FLAVOR_VAR}=selfhost build — ` +
+        "an operator's install has no website to route to",
+    );
+  }
+  if (rawZone !== "" && zone === null) {
+    throw new Error(
+      `${ZONE_VAR} must be one of ${ALLOWED_LANDING_ZONES.join(", ")} (or a loopback origin for development)`,
+    );
+  }
+  if (gaId !== null && zone !== null) {
+    throw new Error(
+      `${GA_ID_VAR} must not be set beside ${ZONE_VAR} — the website's measurement id belongs to the landing project`,
+    );
+  }
+  if ((env.VERCEL_ENV ?? "").trim() === "production" && !inAppMarketing && armedZone(zone, bypass) === null) {
+    throw new Error(
+      `${ZONE_VAR} and ${ZONE_BYPASS_VAR} are required for a production build of a tree without the ` +
+        "in-app website — without them / answers 404",
+    );
+  }
+}
+
+/**
  * THE SECURITY RESPONSE HEADERS.
  *
  * This origin shipped none. The staff console's config — holding strictly
@@ -451,15 +492,30 @@ const STATIC_SECURITY_HEADERS = [
 ];
 
 /**
+ * The zone's paths as alternatives inside a header `source` group, which path-to-regexp hands to
+ * RegExp as written: the exact paths without their leading slash (`/` is the empty alternative),
+ * escaped, and the two prefixes without their `/:path*`.
+ */
+const asPattern = (/** @type {string} */ p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const ZONE_EXACT_SOURCE = ZONE_PATHS.filter((p) => !p.endsWith("/:path*"))
+  .map((p) => asPattern(p.slice(1))).join("|");
+const ZONE_PREFIX_SOURCE = ZONE_PATHS.filter((p) => p.endsWith("/:path*"))
+  .map((p) => asPattern(p.slice(1, -"/:path*".length))).join("|");
+
+/**
  * The header rules, for a build with or without a website measurement id (`analytics.mjs`).
  * Without one they are exactly the two rules every build had. With one, the website's documents
  * (`MARKETING_PATHS`) get the baseline plus the Google sources, and the blanket rule EXCLUDES them
  * by lookahead for the `/demo` reason above: two CSP headers intersect. Every other path, the
  * branded 404 included, keeps the baseline; credential pages are re-set by middleware as before.
+ * With an ARMED landing zone the zone's paths (`ZONE_PATHS`) get the three static headers and no
+ * policy from here — the website sends its own, Google's sources included, and a second would
+ * intersect with it — while every other path keeps exactly the rule it has unarmed.
  *
  * @param {string | null} gaId
+ * @param {string | null} [zone] the armed zone (`armedZone` in `landing-zone.mjs`), or null
  */
-export function headerRules(gaId) {
+export function headerRules(gaId, zone = null) {
   const demo = {
     // FIRST and EXCLUSIVE — see the note above SHARED_CSP. The demo is the real mail
     // client in demo mode (`app/(product)/demo/page.tsx`), framed same-origin by the
@@ -475,6 +531,24 @@ export function headerRules(gaId) {
       { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
     ],
   };
+  if (zone !== null) {
+    return [
+      demo,
+      {
+        // Every path but the demo and the zone's, which the blanket policy would intersect with.
+        source: `/((?!demo)(?!(?:${ZONE_EXACT_SOURCE})$)(?!(?:${ZONE_PREFIX_SOURCE})/).*)`,
+        headers: [
+          { key: "Content-Security-Policy", value: BASELINE_CSP },
+          ...STATIC_SECURITY_HEADERS,
+        ],
+      },
+      {
+        // The zone's paths: no policy, the three static headers (a signed-in `/` is the app).
+        source: `/((?:${ZONE_EXACT_SOURCE})|(?:${ZONE_PREFIX_SOURCE})/.*)`,
+        headers: [...STATIC_SECURITY_HEADERS],
+      },
+    ];
+  }
   if (gaId === null) {
     return [
       demo,
@@ -571,6 +645,13 @@ const origin = selfhost ? null : apiOrigin(process.env[API_ORIGIN_VAR]);
 assertApiArmed(origin, process.env);
 assertApiBaseNotOverridden(process.env[API_BASE_VAR], origin, selfhost);
 assertPublicFlavorNotOverridden(process.env[PUBLIC_FLAVOR_VAR], selfhost);
+// The landing zone, read once at config time: the refusals, and the zone the header rules arm on.
+const rawZone = (process.env[ZONE_VAR] ?? "").trim();
+const zone = selfhost ? null : resolveLandingZone(rawZone);
+const gaId = assertMeasurementId(process.env);
+const inAppMarketing = existsSync(fileURLToPath(new URL("./app/(marketing)/page.tsx", import.meta.url)));
+assertLandingZone(rawZone, zone, process.env, { selfhost, inAppMarketing, gaId });
+const headerZone = armedZone(zone, (process.env[ZONE_BYPASS_VAR] ?? "").trim());
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -624,7 +705,7 @@ const nextConfig = {
   },
 
   async headers() {
-    return headerRules(assertMeasurementId(process.env));
+    return headerRules(gaId, headerZone);
   },
 
   async rewrites() {

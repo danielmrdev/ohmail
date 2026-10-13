@@ -109,14 +109,16 @@ export const REFRESH_SCOPED_PATHS = Object.freeze([REFRESH_PATH, SIGN_OUT_PATH])
  *
  * `handler: true` marks a path a ROUTE HANDLER answers rather than a page (see `HANDLER_PATHS`).
  *
- * @typedef {{ path: string, edge: boolean, handler?: boolean, marketing?: boolean, why?: string }} OwnRoute
+ * `zone: true` marks a path the website deployment answers once it is armed (see `ZONE_PATHS`).
+ *
+ * @typedef {{ path: string, edge: boolean, handler?: boolean, marketing?: boolean, zone?: boolean, why?: string }} OwnRoute
  * @type {readonly Readonly<OwnRoute>[]}
  */
 export const OWN_ROUTES = Object.freeze(/** @type {OwnRoute[]} */ ([
-  { path: "/", edge: true, marketing: true },
-  { path: "/privacy", edge: true, marketing: true },
-  { path: "/imprint", edge: true, marketing: true },
-  { path: "/subprocessors", edge: true, marketing: true },
+  { path: "/", edge: true, marketing: true, zone: true },
+  { path: "/privacy", edge: true, marketing: true, zone: true },
+  { path: "/imprint", edge: true, marketing: true, zone: true },
+  { path: "/subprocessors", edge: true, marketing: true, zone: true },
   // `/de` is the GERMAN landing — the same composition `/` renders, under a second marketing
   // root layout that pins the German `lang` attribute (`app/(marketing-de)`). A path rather than
   // a negotiated body on `/`: one URL with two bodies needs `Vary: Accept-Language` to be
@@ -124,7 +126,7 @@ export const OWN_ROUTES = Object.freeze(/** @type {OwnRoute[]} */ ([
   // records that, measured against a real `next start`). The legal pages
   // have no German twin on purpose — their text is binding and deliberately outside the
   // catalogue — so this is one path, not a mirrored tree.
-  { path: "/de", edge: true, marketing: true },
+  { path: "/de", edge: true, marketing: true, zone: true },
   // `/resume` is INTERNAL like `/mailbox`: the rewrite target for a browser holding the
   // `tf_resume` marker but no usable access cookie. Middleware 308s a direct request back
   // to `/`, so it never appears in the address bar — but it is a path this deployment
@@ -182,9 +184,11 @@ export const OWN_ROUTES = Object.freeze(/** @type {OwnRoute[]} */ ([
   },
   {
     path: "/api/waitlist",
-    edge: false,
+    edge: true,
+    zone: true,
     handler: true,
-    why: "a route handler, not a document — see the shadow note above",
+    why: "a zone path: armed, the form's POST goes to the website deployment with an allow-listed"
+      + " header set, so the cookie jar never meets it; unarmed, the local handler answers",
   },
   {
     // `/version` answers a short digest of the build this deployment is serving, for one reader:
@@ -203,10 +207,11 @@ export const OWN_ROUTES = Object.freeze(/** @type {OwnRoute[]} */ ([
     // fetches is rewritten onto it by `STATIC_REWRITES`, so the token lives in one place; with
     // no token configured the route has no body, which is the 404 the path gave before it existed.
     path: "/flathub-verification",
-    edge: false,
+    edge: true,
+    zone: true,
     handler: true,
-    why: "`/version`'s class — a machine-read token one crawler fetches, carrying no session and"
-      + " rendering no document",
+    why: "a zone path: armed, the website deployment answers the token with no cookie handed over;"
+      + " unarmed, the local handler does",
   },
   {
     // The catch-all behind the branded 404 (`app/(product)/[...missing]/page.tsx`): every
@@ -222,8 +227,30 @@ export const OWN_ROUTES = Object.freeze(/** @type {OwnRoute[]} */ ([
 /** The paths, in declaration order — the enumeration the route census compares itself to. */
 export const OWN_PATHS = Object.freeze(OWN_ROUTES.map((r) => r.path));
 
+/**
+ * THE LANDING ZONE'S PATHS — what `middleware.ts` rewrites to the website deployment once
+ * `landing-zone.mjs` arms it: every route marked `zone`, then the three only the zone answers (the
+ * Flathub alias, the website's asset prefix and its images). `ZONE_ONLY_PATHS` is the route census's
+ * mark for those three: no route file here answers them. Each is a matcher literal, so every zone
+ * path is in `EDGE_PATHS` too.
+ */
+export const ZONE_ONLY_PATHS = Object.freeze([
+  "/.well-known/org.flathub.VerifiedApps.txt", "/site-assets/:path*", "/landing/:path*",
+]);
+export const ZONE_PATHS = Object.freeze([...OWN_ROUTES.filter((r) => r.zone).map((r) => r.path), ...ZONE_ONLY_PATHS]);
+
+const ZONE_PREFIXES = ZONE_PATHS.filter((p) => p.endsWith("/:path*")).map((p) => p.slice(0, -":path*".length));
+const ZONE_EXACT = ZONE_PATHS.filter((p) => !p.endsWith("/:path*"));
+
+/** Does the zone answer `pathname`: an exact zone path, or anything below one of its two prefixes? */
+export function isZonePath(/** @type {string} */ pathname) {
+  return ZONE_EXACT.includes(pathname) || ZONE_PREFIXES.some((p) => pathname.startsWith(p));
+}
+
 /** The subset the middleware matcher must carry, and nothing else. */
-export const EDGE_PATHS = Object.freeze(OWN_ROUTES.filter((r) => r.edge).map((r) => r.path));
+export const EDGE_PATHS = Object.freeze([
+  ...new Set([...OWN_ROUTES.filter((r) => r.edge).map((r) => r.path), ...ZONE_PATHS]),
+]);
 
 /**
  * The WEBSITE's documents — the paths where the optional visit statistics may run and where their
