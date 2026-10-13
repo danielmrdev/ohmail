@@ -64,6 +64,23 @@ other devices within about fifteen minutes, without a reload. When the organizin
 ohmail, or its settings have not been read yet, the Screener lists everyone in the Screener folder and
 says so.
 
+### Folders deleted on the mail server leave the folder list
+<!-- changes: fix-026-deleted-folders-leave-the-list.md -->
+
+A folder deleted on your mail server or in another mail app leaves the folder list on every device
+at the next sync, empty or not, and mail that was only in it leaves with it. A folder made on the
+mail server appears without a re-sync. A folder listing that fails changes nothing. An empty
+folder's page no longer claims the folder exists on your mail server, and a folder that disappears
+while it is open says so.
+
+### Revoking a rule that filed letters after a hand-back works
+<!-- changes: fix-026-rule-revoke-after-a-gap-file.md -->
+
+Revoking a rule that had filed the letters arriving after a hand-back failed with a server error and
+the rule kept filing. It is removed now. When the server refuses a revoke or a change, the Rules page
+keeps the rule on screen and says so, instead of saying you are offline. The Screener, the sender
+sheets and subject rules say the same when the server refuses the rule they make.
+
 ### Still to come
 
 Signed installers — a real Apple Developer ID and an Authenticode certificate. See
