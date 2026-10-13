@@ -1900,9 +1900,10 @@ export function withPullKick(
   onGapPress: (mailboxId: string) => void = () => undefined,
 ): Route[] {
   return routes.map((r) => {
-    /* "ORGANIZE HERE" RINGS ITS OWN MAILBOX: the next gated pass re-reads the stamp and the lease
-       decides, so the claim is not left to the next poll. */
-    if (r.method === "POST" && r.pattern === "/mailboxes/:id/organize") {
+    /* "ORGANIZE HERE" AND "HAND THE MAILBOX BACK" RING THEIR OWN MAILBOX: the next gated pass
+       re-reads the stamp (a release is its first arm) and the lease decides, so neither press is
+       left to the next poll. */
+    if (r.method === "POST" && (r.pattern === "/mailboxes/:id/organize" || r.pattern === "/mailboxes/:id/release")) {
       return { ...r, handler: async (req, deps, params) => {
         const res = await r.handler(req, deps, params);
         if (res.status === 202) runtimeFor(params.id ?? "")?.ring();

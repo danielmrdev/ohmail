@@ -6034,9 +6034,10 @@ export async function startWorkerWithLock(
             kick: (mailboxId) => { noteWake(mailboxId); kickCycle(); },
             // A stamped mailbox nobody here serves yet — a new one — asks for its roster pass now.
             requestRoster, askedFor: syncKickAskedFor,
-            // A served reader with an unspent "Organize here" press: the roster refreshes its lease
-            // columns, so the cycle this kick asks for gates on the press rather than on the
-            // value read before it. Asking only; the fenced gate decides.
+            // A served mailbox with an unspent lease press ("Organize here" or "Hand the mailbox
+            // back"): the roster refreshes its lease columns, so the cycle this kick asks for gates
+            // on the press rather than on the value read before it. Asking only; the fenced gate
+            // decides, and it honours a release first.
             leasePressed: () => { requestRoster(); },
             log,
           });
