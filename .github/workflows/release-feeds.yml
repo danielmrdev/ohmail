@@ -881,6 +881,10 @@ jobs:
     # A verify-only dispatch never reaches a key. `inputs` is null on a release event, so this
     # reads `null != true` there and the job runs, which is the ordinary path.
     if: inputs.verify_only != true
+    # The update keys live in the `release` environment, which admits a run on a release tag only: a
+    # release event, or a dispatch made ON the tag (`--ref v<version>`). A dispatch from a branch is
+    # refused here, before the job starts, so no branch's copy of this file ever holds a key.
+    environment: release
     runs-on: macos-15
     timeout-minutes: 20
     permissions:

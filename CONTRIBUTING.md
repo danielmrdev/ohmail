@@ -119,10 +119,10 @@ commit's author or its committer, so `git rebase --signoff` works and so does a
 maintainer signing off a patch they are landing for you. Merge commits are
 skipped.
 
-It runs on pull requests and merge groups and never on pushes, and that is not an
-oversight: the commits on `main` are machine-generated syncs from a private
-development repository and carry no trailer, so a check that ran on pushes would
-sit permanently red and teach everyone to ignore a red build. The check is
+It runs on pull requests and merge groups and never on pushes, because nothing
+reaches `main` by a push: every change is a pull request, including the batches
+published from our private development repository, whose commits carry their
+authors' sign-off like anyone else's. The check is
 `.github/scripts/assert-dco.sh` and it is meant to be read.
 
 If you forget, the check tells you which commits and what to run. Nobody will

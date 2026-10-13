@@ -32,11 +32,11 @@ name: dco
 #
 # ── PULL REQUESTS AND MERGE GROUPS ONLY, NEVER PUSH ──────────────────────────────────────────
 #
-# This repository's history is GENERATED — commits arrive in batches, replayed from the
-# development repository with their original authors and dates and with messages written for a
-# public reader. Those messages carry no sign-off and never will, so a push trigger would fail
-# every publish while proving nothing about anybody's contribution, and the first thing anyone
-# would do about a permanently red build is learn to ignore it.
+# Nothing reaches `main` by a push: every change is a pull request merged through the merge
+# queue, the batches published from the development repository included. Those are replayed
+# with their original authors and dates and with messages written for a public reader, and each
+# replayed commit carries its author's sign-off, so this check reads them like anyone's. A push
+# trigger would only re-read what the pull request and its merge group already checked.
 #
 # `merge_group` is included so that a queued merge is checked against the same rule as the pull
 # request it came from, rather than being a way past it.
