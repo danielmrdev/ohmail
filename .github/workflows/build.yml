@@ -118,6 +118,7 @@ name: build
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
   # When `main` takes pull requests through a merge queue, its required checks (the engine and the
   # engine-bearing UI) must report on the queue's merge group, or the queue waits until it gives up.
