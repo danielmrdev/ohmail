@@ -26,6 +26,44 @@ On ohmail Cloud, the credit for a Screener suggestion the model declined, or one
 saved, is now written down before it is returned, so a return the billing service does not receive
 is made on a later pass. If it cannot be written down, the return is still tried.
 
+### Text size, display size and foldable fixes on the phone
+<!-- changes: fix-026-layout-sizes-r3.md -->
+
+Changing the text size while the Ohbox is open re-lays the list at the new size on iPhone and iPad; before, the rows
+kept the size the app started with. On Android, changing the display size and density together no longer leaves the
+screen laid out wider than the window, with the reply bar or the navigation missing. Unfolding a foldable with a
+reply open brings the keyboard back on the first unfold too. Half open like a book, the "Kept in Drafts" note stands
+on the reading side of the fold. On a wide inner screen, the first screen and the connect form are centred. At the
+largest text sizes "Mark all read" moves under the list title instead of running off the screen. On an iPad, the
+space kept clear of the window controls is the one iPadOS reports.
+
+### A phone that reads a mailbox says who organizes it
+<!-- changes: fix-026-phone-card-follows-the-look.md -->
+
+A phone reading a mailbox that a computer organizes went on saying "Nothing organizes this mailbox",
+with Start organizing here, after that computer handed the mailbox back and took it again. It now
+names the computer and offers Start only while nothing organizes the mailbox. Later, Park and tags on
+a mailbox the phone only reads no longer say "Queued in Answer Later" before they are refused; the
+phone says it only reads the mailbox and who organizes it.
+
+### A credit is returned even when its refund cannot be written down
+<!-- changes: fix-026-refund-survives-a-failed-obligation-write.md -->
+
+On ohmail Cloud, a credit spent on a draft that failed, or on an automatic Screener suggestion the model
+declined, is now returned even when writing that refund down fails. A failed draft says your credits will be
+returned only when the return is on record, and says they are back whenever the return went through.
+
+### Every device screens a mailbox by the window of the device that organizes it
+<!-- changes: fix-026-the-organizer-window-travels.md -->
+
+A device that only reads a mailbox now applies the screening window of the device or service that
+organizes it, so its Screener lists and counts the same senders. A phone that only reads a mailbox
+therefore shows the organizing device's count, no longer every sender in the Screener folder. The
+window travels in the settings message ohmail keeps in the mailbox, and a change to it reaches your
+other devices within about fifteen minutes, without a reload. When the organizing device runs an older
+ohmail, or its settings have not been read yet, the Screener lists everyone in the Screener folder and
+says so.
+
 ### Still to come
 
 Signed installers — a real Apple Developer ID and an Authenticode certificate. See
