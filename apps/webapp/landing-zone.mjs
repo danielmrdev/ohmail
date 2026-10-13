@@ -85,8 +85,32 @@ export function zoneRequestHeaders(requestHeaders, bypass) {
 }
 
 /**
+ * Query parameters the zone's platform reads as instructions (`x-vercel-set-bypass-cookie` answers
+ * with a cookie that opens the protected zone to whoever holds it). Matched on the decoded name,
+ * case-insensitively; a visitor's query never carries one to the zone.
+ */
+const RESERVED_QUERY = /^(x-vercel-|_vercel)/i;
+
+/** Does a query pair name a reserved parameter, read as a decoded name and with `;` as a separator too? */
+function reserved(/** @type {string} */ pair) {
+  return pair.split(";").some((part) => {
+    const name = part.split("=")[0] ?? "";
+    let decoded = name;
+    try { decoded = decodeURIComponent(name.replace(/\+/g, " ")); } catch { /* matched raw */ }
+    return RESERVED_QUERY.test(decoded.trim()) || RESERVED_QUERY.test(name);
+  });
+}
+
+/** `search` without its reserved pairs; every other pair keeps its exact bytes and order. */
+function zoneSearch(/** @type {string} */ search) {
+  const kept = search.replace(/^\?/, "").split("&").filter((pair) => !reserved(pair));
+  return kept.some((pair) => pair !== "") ? `?${kept.join("&")}` : "";
+}
+
+/**
  * Where a request for `pathname` + `search` goes on the zone. Set onto the zone's own URL rather
- * than resolved against it, so no path can name a host: `//elsewhere/x` stays on the zone.
+ * than resolved against it, so no path can name a host: `//elsewhere/x` stays on the zone. The
+ * query loses its reserved parameters (`RESERVED_QUERY`).
  *
  * @param {string} zone
  * @param {string} pathname
@@ -96,6 +120,6 @@ export function zoneRequestHeaders(requestHeaders, bypass) {
 export function zoneTarget(zone, pathname, search) {
   const url = new URL(zone);
   url.pathname = pathname;
-  url.search = search;
+  url.search = zoneSearch(search);
   return url;
 }

@@ -12,7 +12,6 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { SettingsRow, SettingsSection } from "@ohmail/ui";
 import { accountHeaderCapability, apiConfigured, mailboxes as mailboxApi, messageOf, type MailboxDTO } from "../../api-client";
@@ -155,9 +154,9 @@ export function AboutSection() {
           label={t("yourMail")}
           control={
             <span className="about-links">
-              <Link href="/privacy">{tf("privacy")}</Link>
-              <Link href="/subprocessors">{tf("subprocessors")}</Link>
-              <Link href="/imprint">{tf("imprint")}</Link>
+              <a href="/privacy">{tf("privacy")}</a>
+              <a href="/subprocessors">{tf("subprocessors")}</a>
+              <a href="/imprint">{tf("imprint")}</a>
             </span>
           }
         />

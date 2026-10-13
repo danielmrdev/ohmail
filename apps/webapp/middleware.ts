@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { resolveApiOrigin, resolveInternalApiOrigin } from "./app/api-origin";
 import { canonicalRedirect } from "./app/canonical-host";
-import { API_BASE, HANDLER_PATHS, REFRESH_SCOPED_PATHS, isZonePath } from "./routes.mjs";
+import { API_BASE, HANDLER_PATHS, REFRESH_SCOPED_PATHS, zonePathOf } from "./routes.mjs";
 import { armedZone, resolveLandingZone, zoneRequestHeaders, zoneTarget } from "./landing-zone.mjs";
 import { newNonce, nonceCsp } from "./app/security-headers";
 import { cookieFromStore } from "./app/shell/cookie-jar";
@@ -239,7 +239,9 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   //    prerenders and keep the baseline policy from `next.config.mjs` (a nonce cannot
   //    survive a prerender — see `app/security-headers.ts`).
   if (pathname !== "/") {
-    if (zone !== null && isZonePath(pathname)) return zoneRewrite(request, zone, bypass);
+    // Decided on the path the router would serve too, so `/%70rivacy` meets the zone, never a copy.
+    const zonePath = zone !== null ? zonePathOf(pathname) : null;
+    if (zone !== null && zonePath !== null) return zoneRewrite(request, zone, bypass, zonePath);
     if (
       pathname === "/login" || pathname === "/join" || pathname === "/verify-email" ||
       // `/link-desktop` receives no credential and PRINTS one, which needs the same three
@@ -336,7 +338,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   const target = surface === "resume" ? RESUME_ROUTE : APP_ROUTE;
   const response =
     surface === "marketing"
-      ? (zone !== null ? zoneRewrite(request, zone, bypass) : NextResponse.next())
+      ? (zone !== null ? zoneRewrite(request, zone, bypass, "/") : NextResponse.next())
       : strict(request, (init) => NextResponse.rewrite(withPathname(request, target), init));
 
   // Per-user responses must not be cached. A MARKER-bearing request is per-user too even
@@ -412,14 +414,13 @@ function strict(
 }
 
 /**
- * Hand a request to the landing zone. A REWRITE, so the address bar keeps this origin; the request
- * the zone receives carries only `zoneRequestHeaders`' allow-list. Next REPLACES the header set
- * with the override (every header not on the list is dropped, the cookie jar first), and a config
- * rewrite has no such door — it forwards the jar whole, which is why no zone path is one.
+ * Hand a request to the landing zone, at `pathname` (the zone path `zonePathOf` named). A REWRITE, so
+ * the address bar keeps this origin; the request the zone receives carries only `zoneRequestHeaders`'
+ * allow-list. Next REPLACES the header set with the override (every header not on the list is dropped,
+ * the cookie jar first), and a config rewrite has no such door — it forwards the jar whole.
  */
-function zoneRewrite(request: NextRequest, zone: string, bypass: string): NextResponse {
-  const { pathname, search } = request.nextUrl;
-  return NextResponse.rewrite(zoneTarget(zone, pathname, search), {
+function zoneRewrite(request: NextRequest, zone: string, bypass: string, pathname: string): NextResponse {
+  return NextResponse.rewrite(zoneTarget(zone, pathname, request.nextUrl.search), {
     request: { headers: zoneRequestHeaders(request.headers, bypass) },
   });
 }
@@ -443,12 +444,14 @@ function withPathname(request: NextRequest, pathname: string): URL {
  * redirect and for nothing else. The gate's `pathname` early return above fires before it, so it
  * costs one edge invocation and no fetch, exactly like `/privacy`.
  *
- * PATH LITERALS FIRST, THEN THE TWO CONDITIONAL ARMS, and no comment inside the array. Both
+ * PATH LITERALS FIRST, THEN THE CONDITIONAL ARMS, and no comment inside the array. Both
  * drift guards read the literals by pulling every double-quoted string out of the span before
  * the first `{`, so a note containing `"/"` reads as a duplicate matcher entry. Measured while
  * adding `/de`.
  *
- * The two arms reach EVERY page — the catch-all and `/demo` too — but only for a request that
+ * The last arm takes a path with a `.` or `..` segment, which no literal matches although the router
+ * serves it (`/./privacy` is the privacy page): the middleware sees it already resolved.
+ * The two arms before it reach EVERY page — the catch-all and `/demo` too — but only for a request that
  * carries `Next-Action` or a body type, the only requests Next's action decoder reads; a plain
  * GET off the list still costs no edge invocation, and `/api`, the two refresh-scoped paths and
  * `/_next` never run this function.
@@ -461,5 +464,6 @@ export const config = {
     "/site-assets/:path*", "/landing/:path*",
     { source: "/((?!api(?:/|$)|auth/refresh(?:/logout)?$|_next/).*)", has: [{ type: "header", key: "next-action" }] },
     { source: "/((?!api(?:/|$)|auth/refresh(?:/logout)?$|_next/).*)", has: [{ type: "header", key: "content-type" }] },
+    { source: "/((?:[^/]*/)*\\.\\.?(?:/.*)?)" },
   ],
 };

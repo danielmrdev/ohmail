@@ -241,10 +241,36 @@ export const ZONE_PATHS = Object.freeze([...OWN_ROUTES.filter((r) => r.zone).map
 
 const ZONE_PREFIXES = ZONE_PATHS.filter((p) => p.endsWith("/:path*")).map((p) => p.slice(0, -":path*".length));
 const ZONE_EXACT = ZONE_PATHS.filter((p) => !p.endsWith("/:path*"));
+const zoneSpelling = (/** @type {string} */ p) => ZONE_EXACT.includes(p) || ZONE_PREFIXES.some((x) => p.startsWith(x));
 
-/** Does the zone answer `pathname`: an exact zone path, or anything below one of its two prefixes? */
+/**
+ * The path the router serves for `pathname`: decoded once, dot segments resolved (a prerendered page
+ * answers `/%70rivacy` as `/privacy`). Null when it does not decode.
+ */
+export function routedPath(/** @type {string} */ pathname) {
+  let decoded;
+  try { decoded = decodeURIComponent(pathname); } catch { return null; }
+  const out = [];
+  for (const segment of decoded.split("/").slice(1)) {
+    if (segment === "..") out.pop();
+    else if (segment !== ".") out.push(segment);
+  }
+  return `/${out.join("/")}`;
+}
+
+/**
+ * The zone path that answers `pathname`, or null: the path as sent when it is one, else the path
+ * the router would serve — so no spelling reaches the in-app copy of a page the zone answers.
+ */
+export function zonePathOf(/** @type {string} */ pathname) {
+  if (zoneSpelling(pathname)) return pathname;
+  const routed = routedPath(pathname);
+  return routed !== null && zoneSpelling(routed) ? routed : null;
+}
+
+/** Does the zone answer `pathname`, as sent or as the router would read it? */
 export function isZonePath(/** @type {string} */ pathname) {
-  return ZONE_EXACT.includes(pathname) || ZONE_PREFIXES.some((p) => pathname.startsWith(p));
+  return zonePathOf(pathname) !== null;
 }
 
 /** The subset the middleware matcher must carry, and nothing else. */

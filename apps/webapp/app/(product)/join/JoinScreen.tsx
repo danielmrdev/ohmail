@@ -664,7 +664,7 @@ export function JoinScreen({ initialCode, billingReturn, publicSignup = false }:
         <p className="sub" role="alert">{fatal}</p>
         <div className="join-actions">
           {capacity ? (
-            <Link className="btn primary" href="/#pricing">{t("capacityCta")}</Link>
+            <a className="btn primary" href="/#pricing">{t("capacityCta")}</a>
           ) : (
             <Link className="btn primary" href="/login">{t("signIn")}</Link>
           )}

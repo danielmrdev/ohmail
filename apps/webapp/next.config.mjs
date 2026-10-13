@@ -368,9 +368,10 @@ export function assertApiArmed(origin, env) {
 /**
  * THE LANDING ZONE'S REFUSALS (`landing-zone.mjs`). A self-host build has no website to route to; a
  * SET zone that is unlisted or malformed is a typo or a repoint, and the message names the permitted
- * set, never the value; a measurement id beside a zone gives the website two owners of its tag; and a
- * production tree without the in-app website answers 404 on `/` unless the zone is armed. While the
- * in-app website exists, an unarmed production build serves it exactly as before.
+ * set, never the value; a loopback zone is for development, and a production build holding one would
+ * fail every anonymous `/`; a measurement id beside a zone gives the website two owners of its tag;
+ * and a production tree without the in-app website answers 404 on `/` unless the zone is armed. While
+ * the in-app website exists, an unarmed production build serves it exactly as before.
  *
  * @param {string} rawZone the trimmed {@link ZONE_VAR}, or ""
  * @param {string | null} zone what `resolveLandingZone` made of it
@@ -390,12 +391,19 @@ export function assertLandingZone(rawZone, zone, env, { selfhost, inAppMarketing
       `${ZONE_VAR} must be one of ${ALLOWED_LANDING_ZONES.join(", ")} (or a loopback origin for development)`,
     );
   }
+  const production = (env.VERCEL_ENV ?? "").trim() === "production";
+  if (production && zone !== null && !ALLOWED_LANDING_ZONES.includes(zone)) {
+    throw new Error(
+      `${ZONE_VAR} must be one of ${ALLOWED_LANDING_ZONES.join(", ")} on a production build — ` +
+        "a loopback zone is for development",
+    );
+  }
   if (gaId !== null && zone !== null) {
     throw new Error(
       `${GA_ID_VAR} must not be set beside ${ZONE_VAR} — the website's measurement id belongs to the landing project`,
     );
   }
-  if ((env.VERCEL_ENV ?? "").trim() === "production" && !inAppMarketing && armedZone(zone, bypass) === null) {
+  if (production && !inAppMarketing && armedZone(zone, bypass) === null) {
     throw new Error(
       `${ZONE_VAR} and ${ZONE_BYPASS_VAR} are required for a production build of a tree without the ` +
         "in-app website — without them / answers 404",

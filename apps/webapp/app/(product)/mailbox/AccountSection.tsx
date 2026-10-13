@@ -384,7 +384,7 @@ export function AccountSection() {
               server are theirs to describe. */}
           <p className="acct-fine">
             {t("backups")}
-            {SELF_HOST_BUILD ? null : <> <Link href="/privacy">{t("backupsLink")}</Link></>}
+            {SELF_HOST_BUILD ? null : <> <a href="/privacy">{t("backupsLink")}</a></>}
           </p>
         </div>
       </div>
