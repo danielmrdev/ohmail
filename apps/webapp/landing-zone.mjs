@@ -90,14 +90,19 @@ export function zoneRequestHeaders(requestHeaders, bypass) {
  * case-insensitively; a visitor's query never carries one to the zone.
  */
 const RESERVED_QUERY = /^(x-vercel-|_vercel)/i;
+/** What a name may lead with and still be read as the name after it: blanks and every `?`. */
+const NAME_LEAD = /^[\s?]+/;
 
-/** Does a query pair name a reserved parameter, read as a decoded name and with `;` as a separator too? */
+/**
+ * Does a query pair name a reserved parameter? Read raw and decoded, with `;` as a separator too and
+ * the `NAME_LEAD` set aside first (`??x-vercel-…` is that name to some reader).
+ */
 function reserved(/** @type {string} */ pair) {
   return pair.split(";").some((part) => {
     const name = part.split("=")[0] ?? "";
     let decoded = name;
     try { decoded = decodeURIComponent(name.replace(/\+/g, " ")); } catch { /* matched raw */ }
-    return RESERVED_QUERY.test(decoded.trim()) || RESERVED_QUERY.test(name);
+    return [decoded, name].some((read) => RESERVED_QUERY.test(read.replace(NAME_LEAD, "")));
   });
 }
 

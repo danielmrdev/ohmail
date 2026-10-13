@@ -244,8 +244,9 @@ const ZONE_EXACT = ZONE_PATHS.filter((p) => !p.endsWith("/:path*"));
 const zoneSpelling = (/** @type {string} */ p) => ZONE_EXACT.includes(p) || ZONE_PREFIXES.some((x) => p.startsWith(x));
 
 /**
- * The path the router serves for `pathname`: decoded once, dot segments resolved (a prerendered page
- * answers `/%70rivacy` as `/privacy`). Null when it does not decode.
+ * The path the router serves for `pathname`: decoded once, dot segments resolved and a trailing slash
+ * dropped (a prerendered page answers `/%70rivacy` and `/privacy/.` as `/privacy`). Null when it does
+ * not decode.
  */
 export function routedPath(/** @type {string} */ pathname) {
   let decoded;
@@ -255,6 +256,7 @@ export function routedPath(/** @type {string} */ pathname) {
     if (segment === "..") out.pop();
     else if (segment !== ".") out.push(segment);
   }
+  if (out.length > 1 && out[out.length - 1] === "") out.pop();
   return `/${out.join("/")}`;
 }
 
