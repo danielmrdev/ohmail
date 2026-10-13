@@ -25,8 +25,23 @@ export interface PostureNative {
    * windows are, so it answers asynchronously; absent (Android) or null where there is none.
    */
   getWindowFrame?(): Promise<WindowFrame | null>;
-  /** Android: measure React's root again, so it lays out in the current density. */
-  relayoutRoot?(): boolean;
+  /**
+   * iOS 26+: the top inset of the safe area adapted around the window's own controls, in window
+   * points; null before iOS 26 or where no window answers. Absent on Android.
+   */
+  getWindowControlsInset?(): Promise<number | null>;
+  /**
+   * Android: measure React's root again in the current density; with `screens`, after a density change,
+   * each native stack screen's frame too.
+   */
+  relayoutRoot?(screens: boolean): boolean;
+  /**
+   * iOS: React Native's surface reads the text size again, after the system's notification has been
+   * handled. Answers the size category read and how many surfaces it asked.
+   */
+  refreshTextScale?(): Promise<{ category: string; surfaces: number }>;
+  /** Android: the keyboard for the view with this tag, once its window has input focus. */
+  showKeyboardWhenFocused?(viewTag: number): Promise<boolean>;
   addListener?(event: string, listener: (payload: { folds: FoldFeature[] }) => void): { remove(): void };
 }
 

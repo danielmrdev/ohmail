@@ -7,7 +7,7 @@
  * the open message, scroll and focus survive. Beside it: the status cluster the closed Duo's
  * rail starts below, and the `@canvas` door that renders the app root at a pose's own size.
  */
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Dimensions, Platform, View, useWindowDimensions } from "react-native";
 import { SafeAreaInsetsContext, useSafeAreaInsets } from "react-native-safe-area-context";
 import { topInsetWithControls } from "../window-controls";
@@ -23,7 +23,9 @@ import {
   type WindowFrame,
 } from "./derive";
 import { nativePosture } from "./posture-native";
-import { logPostureDerived } from "../../engine/engine-log";
+import { logPostureDerived, logTextScaleRefresh } from "../../engine/engine-log";
+import { textEpochOf } from "../../theme/text-scale";
+import { TextEpochContext } from "../../theme/text-epoch";
 
 export * from "./derive";
 
@@ -111,12 +113,39 @@ export function PostureProvider({
 
   /* EVERY WINDOW CHANGE RE-MEASURES THE ROOT: size and density together left the root laid out in
      the old dp (`relayoutRoot`), and the layout derives from the window as it is now. */
+  const relaidScale = useRef(dims.scale);
   useEffect(() => {
-    nativePosture()?.relayoutRoot?.();
+    /* The screens' frames only after a density change: a size change moves their pixels itself. */
+    const densityMoved = relaidScale.current !== dims.scale;
+    relaidScale.current = dims.scale;
+    nativePosture()?.relayoutRoot?.(densityMoved);
   }, [dims.width, dims.height, dims.scale, dims.fontScale]);
 
-  return <PostureContext.Provider value={value}>{children}</PostureContext.Provider>;
+  /* AND EVERY TEXT IS MEASURED AGAIN after a density or text-size change (`textEpochOf`): the epoch is
+     set from an effect, so the render that moves every text's cap follows the root measure above. */
+  const [textEpoch, setTextEpoch] = useState(0);
+  const textMetrics = useRef({ scale: dims.scale, fontScale: dims.fontScale });
+  useEffect(() => {
+    const prev = textMetrics.current;
+    const next = { scale: dims.scale, fontScale: dims.fontScale };
+    textMetrics.current = next;
+    if (textEpochOf(0, prev, next) === 0) return undefined;
+    /* iOS: the surface reads the text size again first, so the pass below measures in it. */
+    let current = true;
+    const bump = () => { if (current) setTextEpoch((e) => e + 1); };
+    const posture = nativePosture();
+    if (posture?.refreshTextScale === undefined) bump();
+    else posture.refreshTextScale().then((r) => { logTextScaleRefresh(r, next.fontScale); bump(); }, bump);
+    return () => { current = false; };
+  }, [dims.scale, dims.fontScale]);
+
+  return (
+    <PostureContext.Provider value={value}>
+      <TextEpochContext.Provider value={textEpoch}>{children}</TextEpochContext.Provider>
+    </PostureContext.Provider>
+  );
 }
+
 
 /* ─────────────────────────────────── the canvas door ────────────────────────────────────── */
 
@@ -208,11 +237,21 @@ export function WindowControlsInsets({ children }: { children: ReactNode }) {
   const insets = useSafeAreaInsets();
   const dims = useWindowDimensions();
   const screen = Dimensions.get("screen");
+  const isPad = Platform.OS === "ios" && Platform.isPad === true;
+  /* The controls' edge as the system reads it, again on every window size and safe-area change. */
+  const [controlsTop, setControlsTop] = useState<number | null>(null);
+  useEffect(() => {
+    const posture = isPad ? nativePosture() : null;
+    if (posture?.getWindowControlsInset === undefined) return undefined;
+    let current = true;
+    posture.getWindowControlsInset().then((v) => { if (current) setControlsTop(typeof v === "number" ? v : null); }, () => { if (current) setControlsTop(null); });
+    return () => { current = false; };
+  }, [isPad, dims.width, dims.height, insets.top]);
   const top = topInsetWithControls(insets.top, {
-    isPad: Platform.OS === "ios" && Platform.isPad === true,
+    isPad,
     window: { width: dims.width, height: dims.height },
     screen: { width: screen.width, height: screen.height },
-  });
+  }, controlsTop);
   const value = useMemo(() => ({ ...insets, top }), [insets, top]);
   /* Always the provider, so a window entering Split View re-renders and never remounts. */
   return <SafeAreaInsetsContext.Provider value={value}>{children}</SafeAreaInsetsContext.Provider>;

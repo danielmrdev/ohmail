@@ -4,11 +4,19 @@ import android.app.ActivityManager
 import android.content.Context
 import android.view.View
 import android.view.ViewGroup
+import android.os.Build
+import android.view.ViewTreeObserver
+import android.view.WindowInsets
+import android.view.inputmethod.InputMethodManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import androidx.window.layout.FoldingFeature
 import androidx.window.layout.WindowInfoTracker
+import com.swmansion.rnscreens.Screen
+import com.swmansion.rnscreens.ScreenStack
+import com.swmansion.rnscreens.bottomsheet.usesFormSheetPresentation
+import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import kotlinx.coroutines.CoroutineScope
@@ -29,7 +37,7 @@ import kotlinx.coroutines.launch
  * `getNetwork` answers "online" or "offline" from the default network's INTERNET capability, and a
  * default-network callback sends `onNetworkChanged`. Any failure answers "unknown", never a throw.
  */
-/** React's root, by class name: this module does not link react-android. */
+/** React's root, by class name: the root view classes are react-android's internals. */
 private val REACT_ROOTS = setOf("com.facebook.react.runtime.ReactSurfaceView", "com.facebook.react.ReactRootView")
 
 private fun isReactRoot(v: View): Boolean {
@@ -39,6 +47,24 @@ private fun isReactRoot(v: View): Boolean {
     c = c.superclass
   }
   return false
+}
+
+/** How many times a keyboard is asked for while the window reads it as hidden, and how far apart. */
+private const val KEYBOARD_ASKS = 3
+private const val KEYBOARD_ASK_MS = 400L
+
+/**
+ * The keyboard for a field still holding the caret, asked of the input method for that field. Where
+ * the window can say (Android 11+), its insets then tell whether the keyboard is up, and an ask the
+ * input method dropped is made again, a few times; it never asks for a field that let the caret go.
+ */
+private fun askForKeyboard(view: View, attempt: Int) {
+  if (!view.isAttachedToWindow || !view.isFocused || !view.hasWindowFocus()) return
+  (view.context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)?.showSoftInput(view, 0)
+  if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || attempt + 1 >= KEYBOARD_ASKS) return
+  view.postDelayed({
+    if (view.rootWindowInsets?.isVisible(WindowInsets.Type.ime()) != true) askForKeyboard(view, attempt + 1)
+  }, KEYBOARD_ASK_MS)
 }
 
 class OhmailPostureModule : Module() {
@@ -102,9 +128,10 @@ class OhmailPostureModule : Module() {
      * THE ROOT LAYS OUT IN THE CURRENT DENSITY. A size and a density change arriving together left
      * React's root laid out in the OLD dp at the NEW density (the second change moved no pixel, so
      * nothing measured again). The provider asks for this on every window change; the forced
-     * measure hands the surface the current density. Idempotent.
+     * measure hands the surface the current density; after a density change (`screens`), each native
+     * stack screen its frame in it too. Idempotent.
      */
-    Function("relayoutRoot") {
+    Function("relayoutRoot") { screens: Boolean ->
       val activity = appContext.currentActivity ?: return@Function false
       activity.runOnUiThread {
         val content = activity.findViewById<ViewGroup>(android.R.id.content) ?: return@runOnUiThread
@@ -114,13 +141,39 @@ class OhmailPostureModule : Module() {
           if (isReactRoot(v)) {
             v.forceLayout()
             v.requestLayout()
-            continue
+          }
+          /* A native stack screen sends its frame to React in dp only when its pixels move, so a density
+             change alone left every pushed screen laid out in the old dp, past the window. It sends it
+             again here, in the density it now has, as its own layout would. */
+          if (screens && v is Screen && v.isAttachedToWindow && v.container is ScreenStack && !v.usesFormSheetPresentation()) {
+            v.updateState(v.width, v.height, v.top)
           }
           if (v is ViewGroup) for (i in 0 until v.childCount) queue.addLast(v.getChildAt(i))
         }
       }
       true
     }
+    /*
+     * THE KEYBOARD COMES BACK WITH THE CARET. A field focused in a dialog window that has no input focus
+     * yet (a redraw's new window, measured: served view null, mInputShown=false) asks for the keyboard
+     * too early and nothing answers. The request waits for that window's focus and is made then, for
+     * the field still holding the caret only.
+     */
+    AsyncFunction("showKeyboardWhenFocused") { viewTag: Int ->
+      val view = appContext.findView<View>(viewTag) ?: return@AsyncFunction false
+      if (view.hasWindowFocus()) {
+        askForKeyboard(view, 0)
+      } else if (view.viewTreeObserver.isAlive) {
+        view.viewTreeObserver.addOnWindowFocusChangeListener(object : ViewTreeObserver.OnWindowFocusChangeListener {
+          override fun onWindowFocusChanged(hasFocus: Boolean) {
+            if (!hasFocus) return
+            view.viewTreeObserver.removeOnWindowFocusChangeListener(this)
+            view.post { askForKeyboard(view, 0) }
+          }
+        })
+      }
+      true
+    }.runOnQueue(Queues.MAIN)
     Function("getLaunchOverride") {
       appContext.currentActivity?.intent?.getStringExtra("OHMAIL_POSTURE")
         ?: System.getenv("OHMAIL_POSTURE")

@@ -11,6 +11,12 @@ import { Copy } from "../copy";
 import { useTheme } from "../theme";
 import { Tap, Txt } from "./base";
 
+/**
+ * The row a view's head lays its title and this control in: it wraps, so at AX5 "Mark all read"
+ * took its own line instead of running 58pt off the screen.
+ */
+export const VIEW_HEAD_ROW = { flexDirection: "row", alignItems: "center", flexWrap: "wrap", columnGap: 10 } as const;
+
 export function MarkAllRead({
   unreadCount,
   freshCount = 0,
@@ -31,6 +37,11 @@ export function MarkAllRead({
         unreadCount > 0 ? Copy.markAllAria(unreadCount) : Copy.markAllAriaFresh(freshCount)
       }
       style={({ pressed }) => ({
+        /* THE HEAD WRAPS AROUND IT (`VIEW_HEAD_ROW`): it keeps to the trailing edge, on the title's
+           line while both fit and on its own line at the largest text sizes, never past the edge. */
+        marginLeft: "auto",
+        flexShrink: 1,
+        maxWidth: "100%",
         paddingHorizontal: 10,
         paddingVertical: 6,
         borderRadius: t.radius.pill,

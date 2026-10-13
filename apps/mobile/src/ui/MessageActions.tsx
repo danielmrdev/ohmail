@@ -101,6 +101,7 @@ import type { MailtoPrefill } from "./mailto";
 import { Segmented } from "./Segmented";
 import { Sheet, SheetBackdrop, SheetRow, useModalKey, useSheetPanelBounds } from "./Sheet";
 import { useFocusKeeper } from "./keep-focus";
+import { showKeyboardWhenFocused } from "./keyboard-native";
 import { sheetRoom } from "./sheet-bounds";
 import { composeBodyMin, notesPinned, pinnedNotesMax } from "./compose-fit";
 import { SurfaceBoundary } from "./ErrorBoundary";
@@ -1130,7 +1131,7 @@ export function ComposeSheet({
   const windowHeight = useWindowDimensions().height;
   const modalKey = useModalKey();
   /* An unfold redraws the dialog; the field that held the caret gets it back (`keep-focus.ts`). */
-  const focusKeeper = useFocusKeeper();
+  const focusKeeper = useFocusKeeper(Date.now, showKeyboardWhenFocused);
   const toField = useRef<TextInput | null>(null);
   const subjectField = useRef<TextInput | null>(null);
   const bodyField = useRef<TextInput | null>(null);

@@ -65,13 +65,27 @@ export function toastBottom(insetBottom: number, chromeExtent: number): number {
   return Math.max(insetBottom + TOAST_FLOOR, chromeExtent + TOAST_GAP);
 }
 
+/** The pill's inset from each side of the window. */
+export const TOAST_SIDE = 12;
+
+/**
+ * THE PILL'S SIDES: the window's, less the side a book fold keeps every screen off
+ * (`screenHingeClearance`, passed in), so "Kept in Drafts." is drawn on the reading side and never
+ * across the crease. No fold, no clearance: the whole window.
+ */
+export function toastSpan(hinge: { left: number; right: number }): { left: number; right: number } {
+  return { left: hinge.left + TOAST_SIDE, right: hinge.right + TOAST_SIDE };
+}
+
 /** The pill's frame in window points, for the suite: `bottom` is measured from the window's foot. */
 export function toastFrame(
   window: { width: number; height: number },
   insets: { top: number; bottom: number },
   chromeExtent: number,
   pillHeight: number,
+  hinge: { left: number; right: number } = { left: 0, right: 0 },
 ): { left: number; right: number; top: number; bottom: number; height: number } {
   const bottom = toastBottom(insets.bottom, chromeExtent);
-  return { left: 12, right: window.width - 12, top: window.height - bottom - pillHeight, bottom, height: pillHeight };
+  const span = toastSpan(hinge);
+  return { left: span.left, right: window.width - span.right, top: window.height - bottom - pillHeight, bottom, height: pillHeight };
 }

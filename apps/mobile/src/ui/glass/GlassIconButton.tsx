@@ -62,7 +62,7 @@ export function GlassIconButton({
       })}
     >
       {glyph !== undefined ? (
-        <Text maxFontSizeMultiplier={t.textCap} style={[t.type.button, { color, fontWeight: "700", letterSpacing: 0.5 }]}>{glyph}</Text>
+        <Text maxFontSizeMultiplier={t.textCap} minimumFontScale={t.textKey} style={[t.type.button, { color, fontWeight: "700", letterSpacing: 0.5 }]}>{glyph}</Text>
       ) : icon !== undefined ? (
         <Icon name={icon} size={17} weight={on ? 1.7 : 1.3} color={color} />
       ) : null}
@@ -85,7 +85,7 @@ export function GlassIconButton({
         >
           {/* The scale is applied here, from the same number as the pill, not by the OS. */}
           <Text
-            maxFontSizeMultiplier={t.textCap}
+            maxFontSizeMultiplier={t.textCap} minimumFontScale={t.textKey}
             allowFontScaling={false}
             style={[
               t.type.badge,

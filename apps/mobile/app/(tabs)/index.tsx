@@ -24,7 +24,7 @@ import { Doorbell, StateKnock, TopBar } from "../../src/ui/chrome";
 import { ListDetail, useListDetail } from "../../src/ui/list-detail";
 import { MailList, type ListGroup } from "../../src/ui/MailList";
 import { MailRow } from "../../src/ui/MailRow";
-import { MarkAllRead } from "../../src/ui/MarkAllRead";
+import { MarkAllRead, VIEW_HEAD_ROW } from "../../src/ui/MarkAllRead";
 import { MessageReader } from "../../src/ui/MessageReader";
 import { OrganizerStrip, useStandaloneClaim } from "../../src/ui/OrganizerStrip";
 import { knockSlotOf, noneOrganizedWhy, notOrganizingSay } from "../../src/ui/not-organizing";
@@ -194,9 +194,8 @@ function ViewHeadOhbox({
 }) {
   return (
     <View style={{ paddingHorizontal: 10, paddingTop: 8, paddingBottom: 14 }}>
-      <View style={{ flexDirection: "row", alignItems: "center" }}>
+      <View style={VIEW_HEAD_ROW}>
         <Txt variant="h1">{Copy.ohbox}</Txt>
-        <View style={{ flex: 1 }} />
         {/* Renders nothing over a cleared list — the component's own rule. */}
         <MarkAllRead unreadCount={unread} onPress={onMarkAll} />
       </View>

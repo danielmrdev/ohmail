@@ -18,7 +18,9 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { PostureCanvas, PostureProvider, WindowControlsInsets } from "../src/ui/posture";
 import { NavRail } from "../src/ui/nav-rail";
 import { ThemeProvider, resolveFace, useTheme } from "../src/theme";
-import { ConnectionProvider } from "../src/net/connection";
+import { ConnectionProvider, useConnection } from "../src/net/connection";
+import { gateFor } from "../src/state/gate";
+import { NavDrawnContext } from "../src/ui/nav-drawn";
 import { PrefsProvider, usePrefs } from "../src/state/store";
 import { WorldProvider, useWorld } from "../src/state/world";
 import { WakeProvider } from "../src/state/wake";
@@ -97,9 +99,13 @@ function Screens() {
   /* Subscribed so the stack's own options — nothing worded today, but the screen titles a later
      header would read — rebuild on a language switch along with everything below. */
   useLocale();
+  /* The dock and the rail stand only once a mailbox is open; the connect flow clears neither. */
+  const conn = useConnection();
+  const navDrawn = gateFor(conn.state, conn.profiles.length).to === "mail";
   return (
     /* The foot's chrome reports its height here and the toast reads it: the provider encloses
        the navigator (where the dock and the reader's bar live) AND the pill, or the pill reads 0. */
+    <NavDrawnContext.Provider value={navDrawn}>
     <BottomChromeProvider>
       <StatusBar style={t.scheme === "dark" ? "light" : "dark"} />
       {/* THE NET UNDER EVERYTHING THE NAVIGATOR DRAWS: a render throw that escapes every screen's
@@ -132,5 +138,6 @@ function Screens() {
           `toast-pill-placement.test.ts` holds it. */}
       <Toast />
     </BottomChromeProvider>
+    </NavDrawnContext.Provider>
   );
 }

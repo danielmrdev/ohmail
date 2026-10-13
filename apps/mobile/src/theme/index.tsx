@@ -16,7 +16,8 @@ import { ohmarchyEasing, ohmarchyRadius } from "./ohmarchy";
 import { paletteOf, type Palette, type SchemeName } from "./palette";
 import { type as typePresets } from "./type";
 import { HIT, layout, motion, radius, space, zLayer } from "./tokens";
-import { FIRST_READING, readProbe, textCapOf } from "./text-scale";
+import { FIRST_READING, readProbe, textCapOf, textKeyOf } from "./text-scale";
+import { useTextEpoch } from "./text-epoch";
 
 export * from "./face";
 export * from "./oklch";
@@ -83,6 +84,11 @@ export interface Theme {
    * (`./text-scale.ts`).
    */
   textCap: number;
+  /**
+   * The `minimumFontScale` every `Text` carries beside the cap: the part of the measurement cache's key
+   * that moves with it, so a moved cap is measured again rather than read back (`./text-scale.ts`).
+   */
+  textKey: number;
 }
 
 const ThemeContext = createContext<Theme | null>(null);
@@ -129,7 +135,9 @@ export function ThemeProvider({
     },
     [],
   );
-  const textCap = textCapOf(scale.generation);
+  const textGeneration = scale.generation + useTextEpoch();
+  const textCap = textCapOf(textGeneration);
+  const textKey = textKeyOf(textGeneration);
 
   const value = useMemo<Theme>(() => {
     const faced = faceTokens(face);
@@ -151,8 +159,9 @@ export function ThemeProvider({
       // The face's easing, paper's durations — `motion.duration` is deliberately not faced.
       ms: (d) => (reduceMotion ? 0 : motion.duration[d]),
       textCap,
+      textKey,
     };
-  }, [scheme, face, reduceMotion, textCap]);
+  }, [scheme, face, reduceMotion, textCap, textKey]);
 
   return (
     <ThemeContext.Provider value={value}>
@@ -160,7 +169,7 @@ export function ThemeProvider({
       {/* The text-size probe: one invisible line whose height is the live system scale. */}
       <Text
         onLayout={onProbe}
-        maxFontSizeMultiplier={textCap}
+        maxFontSizeMultiplier={textCap} minimumFontScale={textKey}
         numberOfLines={1}
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
