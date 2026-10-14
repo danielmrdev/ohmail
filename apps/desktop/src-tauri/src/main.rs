@@ -128,6 +128,21 @@ fn main() {
     // why the kill threshold is not among them.
     webview_budget::apply_process_pressure();
 
+    // Newer GTK applies sub-96 text DPI (Omarchy's 0.9091), shrinking WebKit's whole canvas
+    // compared with the release's GTK. Keep CSS pixels at their 96-DPI baseline, but leave
+    // larger configured text DPI and the monitor's scale alone. GTK is already up above.
+    #[cfg(target_os = "linux")]
+    if gtk::is_initialized_main_thread() {
+        use gtk::prelude::GtkSettingsExt;
+        if let Some(settings) = gtk::Settings::default() {
+            const CSS_DPI: i32 = 96 * 1024; // GTK stores text DPI in 1024ths.
+            let dpi = settings.gtk_xft_dpi();
+            if dpi > 0 && dpi < CSS_DPI {
+                settings.set_gtk_xft_dpi(CSS_DPI);
+            }
+        }
+    }
+
     let mut builder = tauri::Builder::default();
     // The commands the window may call, registered in `engine.rs` so that this file names none
     // of them. With the feature off the line is not compiled and the builder is untouched.
