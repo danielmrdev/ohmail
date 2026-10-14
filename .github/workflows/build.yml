@@ -163,7 +163,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: 22
+          node-version: 22.23.3
 
       - name: Toolchain
         run: |
@@ -842,7 +842,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: 22
+          node-version: 22.23.3
 
       - name: Toolchain
         run: |
@@ -1171,7 +1171,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: 22
+          node-version: 22.23.3
 
       # Tauri's Linux prerequisites: the WebKitGTK webview it renders in, the
       # GTK/soup stack under it, and the tools its bundlers shell out to.
@@ -2343,7 +2343,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: 22
+          node-version: 22.23.3
 
       # The same list as the x86_64 job. Every one of these has an arm64 build in
       # Ubuntu's own archive, so nothing here is architecture-conditional — which
@@ -3360,7 +3360,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: 22
+          node-version: 22.23.3
 
       # The builder and the runtimes the manifest names, read OUT OF the
       # manifest rather than repeated here: a runtime bump in the manifest that
@@ -3687,7 +3687,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: 22
+          node-version: 22.23.3
 
       # From the committed package-lock.json, so the dependency tree is the same
       # on every machine — the reproducibility the exact-pinned manifests promise.
@@ -3821,7 +3821,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: 22
+          node-version: 22.23.3
 
       # `apps/desktop` only, and no workspace: the Vite config aliases every
       # `@ohmail/*` specifier straight at a source path, which is why the three
