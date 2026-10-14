@@ -2050,11 +2050,13 @@ jobs:
             separator = /
           }
           CONF
+          # THE MAIL SERVER BY DIGEST: dovecot/dovecot:2.3.21 as Docker Hub served it on 2026-10-14,
+          # one linux/amd64 manifest. A tag can be pushed again; a bump is a reviewed commit.
           docker run -d --name ohmail-perf-imap \
             -p 127.0.0.1:11143:143 \
             -v "$PWD/perf-smoke/dovecot.conf:/etc/dovecot/dovecot.conf:ro" \
             -v "$PWD/perf-smoke/vmail:/tmp/vmail" \
-            dovecot/dovecot:2.3.21
+            dovecot/dovecot:2.3.21@sha256:1c18c756f20d03867077a1b509a6e2e3008ab1eafa56377b6f2eca12dc1ba581
           # Waited for, not slept on: a login against a server that is not up
           # yet fails for a reason that is not the app.
           UP=0
@@ -3178,9 +3180,11 @@ jobs:
   # turning that print into a failure would be asking Fedora for a promise
   # Debian was never asked for.
   #
-  # A pinned base image, deliberately: an install drill whose distribution moves
-  # under it reports a Fedora change as an ohmail regression. Bump it with a
-  # release, as a decision.
+  # A pinned base image, deliberately, and pinned BY DIGEST (fedora:42's multi-arch
+  # index as registry.fedoraproject.org served it on 2026-10-14): an install drill
+  # whose distribution moves under it reports a Fedora change as an ohmail
+  # regression. Bump it with a release, as a decision. The three packages dnf adds
+  # inside it still come from Fedora's signed repositories, at that day's versions.
   # ==========================================================================
   linux-rpm-install:
     name: Linux · the .rpm installs on Fedora
@@ -3326,7 +3330,7 @@ jobs:
           # a base image continuing to carry it.
           docker run --rm \
             -v "$PWD/build:/work:ro" \
-            registry.fedoraproject.org/fedora:42 \
+            registry.fedoraproject.org/fedora:42@sha256:e78cd1a688cd079c23864f289a89a49a3f4ad66d817864e325e1d058310ee95c \
             bash -c 'dnf -y install desktop-file-utils findutils file >/dev/null && bash /work/rpm-install-drill.sh'
 
       - name: Run summary
@@ -3339,7 +3343,7 @@ jobs:
             echo "|---|---|"
             echo "| commit | \`${GITHUB_SHA:0:9}\` |"
             echo "| package | \`ohmail-linux-x86_64.rpm\` from the x86_64 Linux job |"
-            echo "| container | \`registry.fedoraproject.org/fedora:42\` |"
+            echo "| container | \`registry.fedoraproject.org/fedora:42\`, by its pinned digest |"
             echo
             echo 'Installs, lands its files where the shell resolves them, starts its own mail'
             echo 'engine from the installed layout, and uninstalls. The window is not opened here.'
@@ -3417,6 +3421,10 @@ jobs:
           ' "$M")"
           echo "the manifest asks for GNOME $RUNTIME_VERSION"
 
+          # WHAT FLOATS HERE, NAMED: flatpak verifies every install below against the key in the
+          # flathub.flatpakrepo fetched above over HTTPS, but no commit is pinned. The builder is
+          # whatever its stable branch carries on the day, the runtimes and both SDK extensions
+          # whatever their branches carry. This job holds no secret and its bundle ships nowhere.
           flatpak install -y --user flathub org.flatpak.Builder
           sudo flatpak install -y --system flathub \
             "org.gnome.Platform//$RUNTIME_VERSION" "org.gnome.Sdk//$RUNTIME_VERSION" \
@@ -3719,7 +3727,9 @@ jobs:
       # the unrelated `tsc` package. The @types back the engine's `node:` and
       # untyped-dependency imports; the runtime deps ship their own declarations. Each is the
       # version this repository's own typecheck uses, and the tree is read again afterwards,
-      # because the engine bundle below is built from it.
+      # because the engine bundle below is built from it. WHAT FLOATS, NAMED: with no lockfile,
+      # their own ranges resolve against the registry on the day (iconv-lite ^0.6.3, htmlparser2
+      # ^10.1 and its dependencies), installed beside the locked tree, scriptless, read by tsc only.
       - name: Typecheck the engine source
         run: |
           npm install --no-save --ignore-scripts --no-audit --no-fund \
