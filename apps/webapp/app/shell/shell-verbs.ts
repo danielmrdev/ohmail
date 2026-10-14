@@ -67,6 +67,7 @@ import {
   withResolution,
   isOwnSubject,
   moveSubjectIds,
+  queuedRuleKey,
   refusedAsOwnAddress,
   worstStatus,
   type PressMove,
@@ -83,6 +84,7 @@ import type { ShellOpenState } from "./shell-open-state";
 import type { ScreenerState } from "./screener-state";
 import { useStableCallback } from "./stable-callback";
 import { planSubjectRule, subjectRuleContext, subjectRuleToast, type TermField } from "./subject-rule";
+import { browserOffline, queuedWaitOf } from "./queued-sentence";
 import { placePicker } from "./TagPicker";
 
 /**
@@ -461,7 +463,8 @@ export function useShellVerbs({
           return;
         }
         if (o.worst === "queued") {
-          toast(t("screening.toastRuleQueued", { sender: p.who, place: p.place, count: p.gained() }));
+          const key = queuedRuleKey(queuedWaitOf(o.results, browserOffline()));
+          toast(t(`screening.${key}`, { sender: p.who, place: p.place, count: p.gained() }));
           return;
         }
         for (const id of o.changed) {
@@ -849,7 +852,7 @@ export function useShellVerbs({
       if (!plan.ruleMutations.includes(m)) void engine.mutate(m);
     }
     void Promise.all(rules).then((results) => {
-      const key = subjectRuleToast(plan, worstStatus(results));
+      const key = subjectRuleToast(plan, worstStatus(results), queuedWaitOf(results, browserOffline()));
       if (key === null) return;
       // The count is `matched`, not `outOfPlace`: the sentence is about the mail the rule NAMES,
       // which is what the confirm row showed. Reporting the smaller number afterwards would read

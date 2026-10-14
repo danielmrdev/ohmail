@@ -5,14 +5,16 @@ import {
   resolveCutline, senderIsActiveSql, senderIsDecidedSql, senderIsOwnSql, heldSortKey, type ResolvedCutline,
   screenerAttemptKey, storeScreenerSuggestion,
   screenerSuggestedSenderExists, hasScreenerSuggestionForSender,
-  decisionCanBeApplied, readRequestEligibility,
-  type AiUsageLine, type RefundObligationPort, type RefundObligationReason, type SpendPort, type Tx,
+  decisionCanBeApplied, readRequestEligibility, reverseCharge,
+  type AiUsageLine, type RefundObligationPort, type RefundObligationReason, type ReverseChargeFact, type SpendPort,
+  type Tx,
 } from "@trafficflow/db";
 import { screenerUsageHook, type UsageHook } from "./ai-usage-line.js";
 import { capabilityForKind } from "@trafficflow/core/adapters/organizer-lease";
 import { correspondentsAmong } from "@trafficflow/core/adapters/drizzle-repo";
 import {
-  askScreeningQuestion, capSuggestion, ModelDeclinedError, senderCheckAll, senderFacts, silentLogger,
+  askScreeningQuestion, capSuggestion, ModelDeclinedError, SensitivePayloadRefusal, senderCheckAll, senderFacts,
+  silentLogger,
   type ClassifierPort, type Logger, type SenderSignals,
 } from "@trafficflow/core/mail";
 
@@ -43,11 +45,11 @@ const SCREENER = "ohmail/Screener";
 export const AUTO_SUGGEST_BATCH = 10;
 
 /**
- * THE SENDERS A MODEL DECLINED, held out of the candidate page for a while. The page is the ten
- * OLDEST unadvised senders and a decline stores no advice, so without this the same decliners
- * came back first every cycle: ten of them and nobody behind them was ever asked, and every cycle
- * paid for the same refusals again. Keyed by the representative MESSAGE, so a sender who writes
- * again is asked about the new message at once.
+ * THE SENDERS A MODEL DECLINED OR THE OUTBOUND SCREEN REFUSED, held out of the candidate page for
+ * a while. The page is the ten OLDEST unadvised senders and neither answer stores advice, so
+ * without this the same senders came back first every cycle: ten of them and nobody behind them
+ * was ever asked, and every cycle paid for the same refusals again. Keyed by the representative
+ * MESSAGE, so a sender who writes again is asked about the new message at once.
  */
 export interface DeclineMemory {
   heldOut(accountId: string, nowMs: number): string[];
@@ -79,6 +81,30 @@ export function makeDeclineMemory(cap = 10_000): DeclineMemory {
 }
 
 const PROCESS_DECLINES = makeDeclineMemory();
+
+/**
+ * The pass's refund facts, as lines naming the account, the message row and the attempt. A host
+ * with a gate and no store is a wiring fault (`refund-obligation-composition.test.ts` keeps the
+ * hosted worker off it), named rather than passed over.
+ */
+function sayAutoRefund(log: Logger, f: ReverseChargeFact, accountId: string, messageId: string, attempt: string): void {
+  if (f.fact === "settle_failed") {
+    log.warn("screener_auto_suggest_refund_settle_failed", {
+      accountId, messageId, attempt, err: f.err,
+      reason: "the refund settled and its debt could not be marked paid; the drain sends it again " +
+        "under the same attempt, which the program reverses once",
+    });
+    return;
+  }
+  log.warn("screener_auto_suggest_refund_unrecorded", {
+    accountId, messageId, attempt, ...(f.fact === "unrecorded" ? { err: f.err } : {}),
+    reason: f.fact === "unrecorded"
+      ? "the refund obligation could not be written; the refund is still tried, and a lost " +
+        "release would leave this charge with nothing to reverse it"
+      : "a refund is owed and no obligation port was composed beside the gate, so a " +
+        "lost release would leave this charge with nothing to reverse it",
+  });
+}
 
 export interface ScreenerAutoSuggestDeps {
   /** Scope to ONE account — the worker loops its served accounts. */
@@ -119,7 +145,7 @@ export interface ScreenerAutoSuggestDeps {
    * A refund here is a `release` like any other and can be lost like any other, and a lost one is
    * a person charged for advice they never got. The obligation is written BEFORE the reversal is
    * tried, so the debt survives the call. With a gate and no port the shortfall is LOGGED by name
-   * rather than passed over; `screener-auto-suggest-composition.test.ts` is what keeps the hosted
+   * rather than passed over; `refund-obligation-composition.test.ts` is what keeps the hosted
    * worker from reaching that line at all.
    */
   obligations?: RefundObligationPort;
@@ -335,40 +361,25 @@ export async function screenerAutoSuggestPass(
     /** This candidate's model call, once made, for the one release to carry. */
     let usageLine: AiUsageLine | undefined;
     /**
-     * Give the claim back, once; reverse the charge only when told to.
-     *
-     * A REVERSAL IS OWED BEFORE IT IS TRIED. The obligation is written first, so a release the
-     * program never receives leaves a debt the drain settles instead of a charge nobody remembers;
-     * the receipt is what closes it. `owe` is idempotent per (account, attempt), so a pass that
-     * dies after writing and before releasing owes the same one debt next cycle.
+     * Give the claim back, once; reverse the charge only when told to — through `reverseCharge`,
+     * the pressed Screener's and the drafting route's door. The debt is written before the
+     * reversal is tried, a write that throws is named and the reversal still tried, and only a
+     * written debt is settled on a `settled` receipt. `owe` is idempotent per (account, attempt),
+     * so a pass that dies after writing and before releasing owes the same one debt next cycle.
      */
     const releaseClaim = async (reason: RefundObligationReason | null): Promise<void> => {
       if (!gate || !claimed || released) return;
       released = true;
       const meta = { messageId: c.messageId };
-      const reverses = reason !== null && chargedAttempt !== undefined;
-      if (reverses && deps.obligations) {
-        await deps.obligations.owe({
-          accountId, action: "screener", attemptKey, attempt: chargedAttempt!,
-          reason: reason!, meta,
-        });
-      } else if (reverses) {
-        // A metered host with no memory for what it owes. Named rather than passed over: the
-        // hosted worker composes both (`screener-auto-suggest-composition.test.ts`), so reaching
-        // this line at all is a wiring fault and not a state to design around.
-        log.warn("screener_auto_suggest_refund_unrecorded", {
-          accountId, messageId: c.messageId,
-          reason: "a refund is owed and no obligation port was composed beside the gate, so a " +
-            "lost release would leave this charge with nothing to reverse it",
-        });
-      }
       const usage = usageLine ? { usage: [usageLine] } : {};
-      const receipt = await gate.release(accountId, reverses
-        ? { action: "screener", attemptKey, refund: true, attempt: chargedAttempt!, meta, ...usage }
-        : { action: "screener", attemptKey, refund: false, meta, ...usage });
-      if (reverses && receipt === "settled" && deps.obligations) {
-        await deps.obligations.settle(accountId, chargedAttempt!);
+      if (reason === null || chargedAttempt === undefined) {
+        await gate.release(accountId, { action: "screener", attemptKey, refund: false, meta, ...usage });
+        return;
       }
+      const attempt = chargedAttempt;
+      await reverseCharge(gate, deps.obligations, {
+        accountId, action: "screener", attemptKey, attempt, reason, meta, ...usage,
+      }, (f) => sayAutoRefund(log, f, accountId, c.messageId, attempt));
     };
     try {
       if (gate) {
@@ -457,15 +468,22 @@ export async function screenerAutoSuggestPass(
           ...(facts ? { senderFacts: facts } : {}),
         }, deps.usageHook ? screenerUsageHook(deps.usageHook, accountId, (l) => { usageLine = l; }) : undefined);
       } catch (err) {
-        // A DECLINE SKIPS THIS SENDER AND THE BATCH GOES ON. A refusal or a cut-off answer speaks
-        // for one sender, not the endpoint: stopping on it stalled every later held sender behind
-        // the oldest one, each cycle, and kept a charge that bought nothing. The charge comes back
-        // at the door (`drafter_failed` is the closed set's "the model call it paid for produced
-        // nothing"), uncounted, and the sender is held out for a day unless it writes again.
-        if (err instanceof ModelDeclinedError) {
-          log.info("screener_auto_suggest_declined", {
-            accountId, messageId: c.messageId, stopReason: err.stopReason, refusalCategory: err.refusalCategory,
-          });
+        // A DECLINE OR A REFUSAL AT THE SINK SKIPS THIS SENDER AND THE BATCH GOES ON. Each speaks
+        // for one sender's mail, not the endpoint: stopping on it stalled every later held sender
+        // behind the oldest one, each cycle, and kept a charge that bought nothing. The charge comes
+        // back at the door (`drafter_failed`: the call it paid for produced nothing), uncounted, and
+        // the sender is held out for a day unless it writes again; the sink's screen reads the same
+        // bytes the same way, so asking sooner draws the same refusal.
+        if (err instanceof ModelDeclinedError || err instanceof SensitivePayloadRefusal) {
+          if (err instanceof ModelDeclinedError) {
+            log.info("screener_auto_suggest_declined", {
+              accountId, messageId: c.messageId, stopReason: err.stopReason, refusalCategory: err.refusalCategory,
+            });
+          } else {
+            log.warn("screener_auto_suggest_refused_at_sink", {
+              accountId, messageId: c.messageId, refusal: err.screen.reason ?? "unnamed", cooldownMs: DECLINE_COOLDOWN_MS,
+            });
+          }
           if (chargedAttempt !== undefined) result.chargedAttempts--;
           refundOnRelease = "drafter_failed";
           declines.remember(accountId, c.messageId, now.getTime() + DECLINE_COOLDOWN_MS);

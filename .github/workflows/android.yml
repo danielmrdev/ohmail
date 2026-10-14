@@ -94,14 +94,18 @@ on:
     branches: [main]
     tags: ["android-v*"]
   pull_request:
+  # When `main` takes pull requests through a merge queue, the queue's merge group builds the APK too.
+  merge_group:
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# Only a pull request's superseded run is cancelled. A run on main, on a tag or on a merge group has a
+# group of its own — the commit — so it is never cancelled, nor dropped while pending behind another.
 concurrency:
-  group: android-${{ github.ref }}
-  cancel-in-progress: true
+  group: android-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # ── the build check: prove the tree still builds an installable APK ─────────────────────
@@ -633,6 +637,10 @@ jobs:
     name: android · re-sign + attach the release APK and App Bundle
     needs: build
     if: github.repository == 'trafficflowhq/ohmail' && startsWith(github.ref, 'refs/tags/android-v')
+    # The `release` environment admits a run on a release tag and nothing else — a branch, a pull
+    # request or a dispatch from one is refused before a step runs — and a keystore kept there is
+    # readable by no other run.
+    environment: release
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

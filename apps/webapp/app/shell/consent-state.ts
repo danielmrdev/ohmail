@@ -12,7 +12,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DEFAULT_DORMANCY_DAYS } from "@ohmail/client-engine";
+import {
+  DEFAULT_DORMANCY_DAYS, readScreeningByMailbox, type MailboxScreening, type ScreeningSource,
+} from "@ohmail/client-engine";
 import { apiConfigured, consent as consentApi, type ConsentStateWire } from "../api-client";
 import { readBootCache, writeBootCache } from "./boot-cache";
 import { normalizeLocale, type AppLocale } from "./locale";
@@ -406,6 +408,12 @@ export interface ConsentState {
    * unrecognised string collapses to it, the pre-mode behaviour.
    */
   screeningScope: "window" | "all_time";
+  /**
+   * EACH MAILBOX'S WINDOW (`screeningByMailbox`, RULING-026), or `null` for a server that sends
+   * none — the three fields above then partition every mailbox, as before. Never cached at boot:
+   * the cache holds the three fields only, so a boot paints with them until the live read.
+   */
+  screeningByMailbox: Readonly<Record<string, MailboxScreening & ScreeningSource>> | null;
 }
 
 const RESTING: ConsentState = {
@@ -478,6 +486,7 @@ const RESTING: ConsentState = {
   // WINDOWED AT REST — the behaviour every build had before the mode existed, so an API too old
   // to carry it and a failed read land on exactly what that server actually does.
   screeningScope: "window",
+  screeningByMailbox: null,
 };
 
 /**
@@ -843,6 +852,8 @@ export function useConsentState(
           // both close the set, and anything else is a server this build does not understand,
           // which must land on the pre-mode behaviour rather than on an unknown partition.
           screeningScope: wire.screeningScope === "all_time" ? "all_time" : "window",
+          // The same read as the three fields above, so the map and they never come from two answers.
+          screeningByMailbox: readScreeningByMailbox(wire.screeningByMailbox),
           known: true,
           // Both of these are DERIVED on the way out (see the return) and are written here only
           // because the state object carries them. Nothing may read them off `state`.

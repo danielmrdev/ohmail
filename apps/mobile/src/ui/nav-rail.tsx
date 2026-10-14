@@ -4,7 +4,7 @@
  * the column (the prototype's pushed rail), the unfolded-landscape Duo's list while no message
  * is open, a split's outer edge. The tab bar yields to it (`(tabs)/_layout.tsx` renders the
  * dock alone), the reader's claim outranks it (`reader-rail.ts`, rendered by `ReaderRailHost`)
- * and the connect flow never sees it (`gateFor`). Placement is `plan.ts#railHome`'s: in the
+ * and the connect flow never sees it (`nav-drawn.ts`). Placement is `plan.ts#railHome`'s: in the
  * safe-area strip iOS reserves on the closed Duo, below the status cluster. This file renders.
  */
 import { Platform, View } from "react-native";
@@ -12,8 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, usePathname } from "expo-router";
 import { Copy } from "../copy";
 import { useLocale } from "../i18n/LocaleProvider";
-import { useConnection } from "../net/connection";
-import { gateFor } from "../state/gate";
+import { useNavDrawn } from "./nav-drawn";
 import { useWorld } from "../state/world";
 import { useTheme } from "../theme";
 import { GlassRail, type RailAction } from "./glass";
@@ -46,17 +45,17 @@ export function NavRail() {
   const plan = scaffoldPlan(posture, platformName);
   const readerRail = useReaderRail();
   const pathname = usePathname();
-  const conn = useConnection();
   const w = useWorld();
   const win = useAppWindow();
   const cluster = useStatusCluster();
-  const railShown = plan.nav === "rail" && gateFor(conn.state, conn.profiles.length).to === "mail"
+  const drawn = useNavDrawn();
+  const railShown = plan.nav === "rail" && drawn
     && !(plan.railCarriesReaderVerbs && readerRail !== null);
   /* The rail's folded set is More's to list, and nobody's once the rail is gone. */
   useEffect(() => (railShown ? () => publishFolded("rail", []) : undefined), [railShown]);
 
   if (plan.nav !== "rail") return null;
-  if (gateFor(conn.state, conn.profiles.length).to !== "mail") return null;
+  if (!drawn) return null;
   /* The reader holds the rail (a message open where the rail carries its verbs): one rail. */
   if (plan.railCarriesReaderVerbs && readerRail !== null) return null;
 

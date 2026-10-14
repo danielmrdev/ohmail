@@ -39,6 +39,7 @@ import {
   type EntityReader,
   type MutationResult,
   pressVerdict,
+  screeningDegrade,
   type Folder,
   type OhmailView,
   type SearchHit,
@@ -109,6 +110,7 @@ import { FoldersRow } from "./FoldersRow";
 import { SignaturesRow } from "./SignaturesRow";
 import { useFolderVerbs } from "./folder-verbs";
 import { junkFolderSaid } from "./folders";
+import { useFolderGoneSays } from "./folder-gone";
 import { AwayResponderRow, type AwayTransport } from "./AwayResponderRow";
 import { AwayNotice, useAwayNotice } from "./AwayNotice";
 import { OhmarchyOffer, useOhmarchyOffer } from "./OhmarchyOffer";
@@ -1225,9 +1227,13 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTranspor
    * one authority, so the two cannot drift.
    */
   const settingsStamp = useMemo(() => {
-    const rows = engine.read().entries<{ updatedAt?: string }>("settings");
-    if (rows.length === 0) return null;
-    return String(rows[0]?.entity?.updatedAt ?? "");
+    const read = engine.read();
+    const rows = read.entries<{ updatedAt?: string }>("settings");
+    /* …AND EACH MAILBOX_PROFILE ROW'S SEQ (RULING-026): a new organizer document can move a mailbox's
+       window, which `GET /consent` answers in `screeningByMailbox`; the row is the doorbell, never read. */
+    const profiles = read.entries("mailbox_profile").map((e) => `${e.id}:${e.seq}`).sort().join(",");
+    if (rows.length === 0 && profiles === "") return null;
+    return `${String(rows[0]?.entity?.updatedAt ?? "")}|${profiles}`;
     // `derived` is the subscription; the reader object is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine, derived]);
@@ -1386,7 +1392,7 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTranspor
     ownAddresses, firstImportDoneAt, ownNameOf, mailboxLabelOf, consentView, presented, trashPage, trashWindow,
     older, folderOlder, ohbox, resurfacedRows, partition, receipts, receiptsPartition, piles,
     parked, tagGroups, history, tags, folders, folderMailboxes,
-    folderUnread, openFolder, folderMessages, rules, rulesWaiting, mailboxes, draft, aiChip, account,
+    folderUnread, openFolder, folderMessages, rules, rulesWaiting, rulesQueued, mailboxes, draft, aiChip, account,
     notifications, allOhbox, participantsOf, threadCountOf, threadSubjectOf, fallbackMailboxId,
     drafts, scheduled,
   } = useShellDerivations({
@@ -1956,6 +1962,9 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTranspor
     if (!id) return;
     setFrValues((vals) => (id in vals ? vals : { ...vals, [id]: readReplyDraft(id) }));
   }, [frItem?.messageId]);
+
+  useFolderGoneSays(openFolder, route.view === "folder" ? route.folderId : null, consent.foldersEnabled,
+    (name) => toast(t("folder.gone", { name })));
 
   /**
    * A SEND THE RUN MADE THAT DID NOT LAND MUST SAY SO. `FocusReplyOverlay` renders a card and two buttons and has no
@@ -2677,6 +2686,7 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTranspor
               <ScreenerView
                 state={screener}
                 notOrganizingYet={demo ? null : nothingOrganizesOf(facts)}
+                screeningDegrade={demo ? null : screeningDegrade(consent.screeningByMailbox)}
                 /* Which address of yours a stranger wrote to, above one mailbox — the resolver
                    Reads is handed; the view draws the badge and the sheet's sentence from it. */
                 mailboxLabelOf={mailboxLabelOf}
@@ -3114,7 +3124,7 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTranspor
                 tagCounts={Object.fromEntries(
                   tagGroups.map((g) => [g.tag.id, g.messages.length]),
                 )}
-                rules={{ items: rules, waiting: rulesWaiting, mailboxLabel: mailboxLabelOf, onRevoke: revokeRule, onRetarget: retargetRule, pastMail: rulePastMailOf, posture: rulesPosture }}
+                rules={{ items: rules, waiting: rulesWaiting, queued: rulesQueued, mailboxLabel: mailboxLabelOf, onRevoke: revokeRule, onRetarget: retargetRule, pastMail: rulePastMailOf, posture: rulesPosture }}
                 /* Rename and delete. Not gated on `demo`, unlike the four injected panes:
                    both are ordinary engine mutations, so the FixturesAdapter serves them out
                    of `mutationEffects` and the demo is correct with no special case. */

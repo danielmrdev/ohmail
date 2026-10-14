@@ -79,7 +79,9 @@ export interface NavClearance {
  * Screener pill were clipped on the real Duo). The two-pane surfaces ("bars") reserve their own
  * gutter in `AppScaffold`, so a list there asks for nothing here.
  */
-export function listNavClearance(plan: ScaffoldPlan, dockClearance: number): NavClearance {
+export function listNavClearance(plan: ScaffoldPlan, dockClearance: number, navDrawn = true): NavClearance {
+  /* Nothing is drawn before a mailbox is open (the connect flow): nothing to clear. */
+  if (!navDrawn) return { bottom: 0, left: 0, right: 0 };
   if (plan.nav === "rail") {
     const w = RAIL_W + plan.gutter;
     return { bottom: 0, left: plan.navSide === "left" ? w : 0, right: plan.navSide === "right" ? w : 0 };
@@ -104,11 +106,12 @@ export function readerBarClearance(plan: ScaffoldPlan, inPane: boolean): { left:
  * the same clearance its floating bar takes, from the same source.
  */
 export function screenRailClearance(
-  plan: ScaffoldPlan, fullWindow: boolean, inPane = false,
+  plan: ScaffoldPlan, fullWindow: boolean, inPane = false, navDrawn = true,
 ): { left: number; right: number } {
   /* A pane of the pair never pays: the pair pays once, on a two-pane posture in its padding and
-     while a fold holds it open on its own Screen (`pairPadding`). */
-  if (plan.nav !== "rail" || inPane || !(plan.panes === 1 || fullWindow)) return { left: 0, right: 0 };
+     while a fold holds it open on its own Screen (`pairPadding`). Nor does a screen with no rail
+     drawn beside it: the connect flow sat a rail's width off centre at 718 dp. */
+  if (!navDrawn || plan.nav !== "rail" || inPane || !(plan.panes === 1 || fullWindow)) return { left: 0, right: 0 };
   const { left, right } = listNavClearance(plan, 0);
   return { left, right };
 }

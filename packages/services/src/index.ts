@@ -134,6 +134,9 @@ export {
   DEFAULT_DORMANCY_DAYS, cutlineCounts, hasUndecidedActiveSenders,
   type CutlineCounts, type CutlineOptions,
 } from "./consent-cutline.js";
+export {
+  cutlinesOf, effectiveScreeningWindows, type EffectiveScreeningWindow, type WindowSource,
+} from "./screening-window.js";
 
 
 export {

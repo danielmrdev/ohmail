@@ -3,6 +3,9 @@
 #   ghcr.io/trafficflowhq/ohmail-server   apps/server/Dockerfile             (the API host)
 #   ghcr.io/trafficflowhq/ohmail-worker   apps/worker/Dockerfile.selfhost    (the organizer)
 #   ghcr.io/trafficflowhq/ohmail-web      apps/webapp/Dockerfile             (the web app, selfhost flavor)
+#   ghcr.io/trafficflowhq/ohmail-worker-managed — no recipe of its own: an alias of ohmail-worker's
+#     version manifest (the same bytes, the same revision label), the managed deployment's image
+#     source. It never gets `latest`: that deployment pins a version.
 #
 # BUILT HERE, FROM THIS TREE, BY THIS REPOSITORY'S OWN ACTIONS. The recipes build from the
 # published source with the committed npm lockfile (`npm ci` inside each Dockerfile), so the
@@ -46,8 +49,10 @@
 #                      manifest first, then — and only once all three are readable — `latest`,
 #                      pointed at the version manifest rather than recomposed from the staging
 #                      pair. See the step comments for the skew that ordering exists to stop.
+#                      Between the two, the managed alias is written from the organizer's version
+#                      manifest and read anonymously, so it can stop a release before `latest` moves.
 #
-# Promotion is six registry writes; each is retried once, and a failure prints which tags moved —
+# Promotion is seven registry writes; each is retried once, and a failure prints which tags moved —
 # re-running heals forward, because the run's staging tags persist. The residual window is three
 # writes of `latest`, with every version tag whole behind it; pin OHMAIL_IMAGE_TAG to avoid it.
 #
@@ -112,7 +117,7 @@ jobs:
       image_tag: ${{ steps.decide.outputs.image_tag }}
       promote_public: ${{ steps.decide.outputs.promote_public }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Decide and validate the tags
         id: decide
@@ -152,16 +157,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: imjasonh/setup-crane@v0.4
+      - uses: imjasonh/setup-crane@31b88efe9de28ae0ffa220711af4b60be9435f6e # v0.4
 
       - name: Mirror every third-party image the lock names
         run: bash .github/scripts/mirror-images.sh
@@ -190,24 +195,24 @@ jobs:
           - image: ohmail-web
             dockerfile: apps/webapp/Dockerfile
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # For the prune check's patch read, which runs on the runner against the checked-out tree.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push the run-scoped STAGING tag (native ${{ matrix.arch }})
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: ${{ matrix.dockerfile }}
@@ -288,7 +293,7 @@ jobs:
             runner: ubuntu-24.04-arm
     steps:
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -403,7 +408,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Anonymous-pull gate — the packages must be publicly pullable
         env:
@@ -452,7 +457,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -480,6 +485,13 @@ jobs:
           for IMG in ohmail-server ohmail-worker ohmail-web; do
             docker buildx imagetools inspect --raw "ghcr.io/trafficflowhq/$IMG:$TAG" > /dev/null
           done
+          # The managed deployment's image is the organizer's candidate under a second name: the
+          # same manifest list, composed from the rc tag just read, never a build of its own.
+          docker buildx imagetools create \
+            -t "ghcr.io/trafficflowhq/ohmail-worker-managed:$TAG" \
+            "ghcr.io/trafficflowhq/ohmail-worker:$TAG"
+          docker buildx imagetools inspect --raw "ghcr.io/trafficflowhq/ohmail-worker-managed:$TAG" > /dev/null \
+            || { echo "ghcr.io/trafficflowhq/ohmail-worker-managed:$TAG is not readable after it was composed"; exit 1; }
           echo "candidate images ready: OHMAIL_IMAGE_TAG=$TAG"
 
   promote:
@@ -502,7 +514,7 @@ jobs:
           fi
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -555,6 +567,52 @@ jobs:
               || { echo "ghcr.io/trafficflowhq/$IMG:$V is not readable — refusing to move latest"; exit 1; }
           done
           echo "all three $V manifests readable"
+
+      # PASS 1b — THE MANAGED DEPLOYMENT'S IMAGE, AS AN ALIAS. `ohmail-worker-managed:<version>` is
+      # ohmail-worker's version manifest just checked: the same bytes and the same revision label,
+      # never a second build and never `latest` (that deployment pins a version). Written after the
+      # gate and before pass 2, so a failure here leaves every version tag whole and `latest` unmoved.
+      - name: Pass 1b — the managed alias, from the organizer's version manifest just checked
+        env:
+          V: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          ok=0
+          for attempt in 1 2; do
+            if docker buildx imagetools create \
+                 -t "ghcr.io/trafficflowhq/ohmail-worker-managed:$V" \
+                 "ghcr.io/trafficflowhq/ohmail-worker:$V"; then
+              ok=1; break
+            fi
+            echo "imagetools create failed for ohmail-worker-managed:$V (attempt $attempt)"
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo 'THE MANAGED ALIAS IS NOT WRITTEN, and latest has NOT moved for any image.'
+            echo "Every $V tag of the three images is in place; re-run this workflow to finish the set."
+            exit 1
+          fi
+          docker buildx imagetools inspect --raw "ghcr.io/trafficflowhq/ohmail-worker-managed:$V" > /dev/null \
+            || { echo "ghcr.io/trafficflowhq/ohmail-worker-managed:$V is not readable — refusing to move latest"; exit 1; }
+
+      # The alias must answer the anonymous pull the managed deployment makes, BEFORE latest moves. A
+      # GHCR package is born private, and the first run that writes this name creates the package;
+      # read here, a private one stops the run with every version tag whole and latest unmoved.
+      - name: The managed alias answers an anonymous pull, before latest moves
+        env:
+          V: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          TOKEN=$(curl -fsS "https://ghcr.io/token?scope=repository:trafficflowhq/ohmail-worker-managed:pull" | jq -r .token) || TOKEN=""
+          if ! curl -fsS -o /dev/null \
+               -H "Authorization: Bearer $TOKEN" \
+               -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" \
+               "https://ghcr.io/v2/trafficflowhq/ohmail-worker-managed/manifests/$V"; then
+            echo "ghcr.io/trafficflowhq/ohmail-worker-managed:$V does not answer an anonymous pull."
+            echo "One-time fix: package settings -> Danger Zone -> Change visibility -> Public. Then re-run this workflow."
+            echo "Every $V tag is in place, and latest has NOT moved for any image."
+            exit 1
+          fi
+          echo "ohmail-worker-managed:$V answers an anonymous pull"
 
       - name: Pass 2 — latest, last, pointed at the version manifest just checked
         env:

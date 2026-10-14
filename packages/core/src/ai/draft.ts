@@ -4,7 +4,7 @@ import {
   DRAFT_PREFIX, DRAFT_RESULT_SCHEMA, coerceDraftResult, draftUserPayload,
 } from "../draft-prompt.js";
 import { declineOf } from "../model-declined.js";
-import { thinkingOffFor } from "./model-rules.js";
+import { thinkingOffFor } from "../model-rules.js";
 
 /**
  * The drafter implementation — the model half of the seam in `../draft-port.ts`, mirroring the

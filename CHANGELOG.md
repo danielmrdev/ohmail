@@ -18,6 +18,84 @@ See [Status](README.md#status--read-this-first).
 Signed installers — a real Apple Developer ID and an Authenticode certificate. See
 [Roadmap](README.md#roadmap).
 
+## [0.25.24] — 2026-10-14
+
+### Your own Anthropic key sends each model its own thinking setting
+<!-- changes: fix-026-ai-follow-ups.md -->
+
+On the desktop with your own Anthropic key, the model you chose is sent the thinking setting it
+accepts, so Haiku 5.5 sorts with thinking off and Sonnet 5.5 drafts without a refused first request.
+With an Anthropic or an OpenAI key, a message the model declines is now sorted as it is with AI off,
+and AI sorting is not paused for it; with an Anthropic key, so is a message whose answer stops at the
+output limit.
+
+On ohmail Cloud, the credit for a Screener suggestion the model declined, or one that could not be
+saved, is now written down before it is returned, so a return the billing service does not receive
+is made on a later pass. If it cannot be written down, the return is still tried.
+
+### Text size, display size and foldable fixes on the phone
+<!-- changes: fix-026-layout-sizes-r3.md -->
+
+Changing the text size while the Ohbox is open re-lays the list at the new size on iPhone and iPad; before, the rows
+kept the size the app started with. On Android, changing the display size and density together no longer leaves the
+screen laid out wider than the window, with the reply bar or the navigation missing. Unfolding a foldable with a
+reply open brings the keyboard back on the first unfold too. Half open like a book, the "Kept in Drafts" note stands
+on the reading side of the fold. On a wide inner screen, the first screen and the connect form are centred. At the
+largest text sizes "Mark all read" moves under the list title instead of running off the screen. On an iPad, the
+space kept clear of the window controls is the one iPadOS reports.
+
+### A phone that reads a mailbox says who organizes it
+<!-- changes: fix-026-phone-card-follows-the-look.md -->
+
+A phone reading a mailbox that a computer organizes went on saying "Nothing organizes this mailbox",
+with Start organizing here, after that computer handed the mailbox back and took it again. It now
+names the computer and offers Start only while nothing organizes the mailbox. Later, Park and tags on
+a mailbox the phone only reads no longer say "Queued in Answer Later" before they are refused; the
+phone says it only reads the mailbox and who organizes it.
+
+### A credit is returned even when its refund cannot be written down
+<!-- changes: fix-026-refund-survives-a-failed-obligation-write.md -->
+
+On ohmail Cloud, a credit spent on a draft that failed, or on an automatic Screener suggestion the model
+declined, is now returned even when writing that refund down fails. A failed draft says your credits will be
+returned only when the return is on record, and says they are back whenever the return went through.
+
+### Every device screens a mailbox by the window of the device that organizes it
+<!-- changes: fix-026-the-organizer-window-travels.md -->
+
+A device that only reads a mailbox now applies the screening window of the device or service that
+organizes it, so its Screener lists and counts the same senders. A phone that only reads a mailbox
+therefore shows the organizing device's count, no longer every sender in the Screener folder. The
+window travels in the settings message ohmail keeps in the mailbox, and a change to it reaches your
+other devices within about fifteen minutes, without a reload. When the organizing device runs an older
+ohmail, or its settings have not been read yet, the Screener lists everyone in the Screener folder and
+says so.
+
+### Folders deleted on the mail server leave the folder list
+<!-- changes: fix-026-deleted-folders-leave-the-list.md -->
+
+A folder deleted on your mail server or in another mail app leaves the folder list on every device
+at the next sync, empty or not, and mail that was only in it leaves with it. A folder made on the
+mail server appears without a re-sync. A folder listing that fails changes nothing. An empty
+folder's page no longer claims the folder exists on your mail server, and a folder that disappears
+while it is open says so.
+
+### Revoking a rule that filed letters after a hand-back works
+<!-- changes: fix-026-rule-revoke-after-a-gap-file.md -->
+
+Revoking a rule that had filed the letters arriving after a hand-back failed with a server error and
+the rule kept filing. It is removed now. When the server refuses a revoke or a change, the Rules page
+keeps the rule on screen and says so, instead of saying you are offline. The Screener, the sender
+sheets and subject rules say the same when the server refuses the rule they make.
+
+### Hand the mailbox back lets go within seconds
+<!-- changes: fix-026-hand-back-rings-the-pass.md -->
+
+Handing a mailbox back no longer waits for the organizer's next scheduled pass. On a server and in the
+desktop app the organizer lets go within seconds, so another device can organize the mailbox straight away.
+When a stop could not save a device's settings to the mailbox, the line saying so now stays until that device
+organizes the mailbox again.
+
 ## [0.25.23] — 2026-10-13
 
 ### Layout fixes on tablets and phones
@@ -12205,7 +12283,8 @@ no network in any of them.
   Gatekeeper, SmartScreen and the AppImage's executable bit all need a manual
   step, and that is a real cost of a preview rather than something to gloss over.
 
-[Unreleased]: https://github.com/trafficflowhq/ohmail/compare/v0.25.23...HEAD
+[Unreleased]: https://github.com/trafficflowhq/ohmail/compare/v0.25.24...HEAD
+[0.25.24]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.24
 [0.25.23]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.23
 [0.25.22]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.22
 [0.25.21]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.21

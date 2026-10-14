@@ -385,9 +385,15 @@ export function scheduledNotHereSentence(holder: { name: string; stopped?: boole
   return holder.stopped ? Copy.scheduledReaderHereStopped(holder.name) : Copy.scheduledReaderHere(holder.name);
 }
 
-/** The connect notice's sentence: the holder named, or the claim that named nobody. */
-export function readingAtConnectLine(holder: { name: string }): string {
+/**
+ * The connect notice's sentence: the holder named, or the claim that named nobody — and where the
+ * Connect's agreement was recorded without a claim, what the person's next press does.
+ */
+export function readingAtConnectLine(holder: { name: string; consentRecorded?: boolean }): string {
   const name = holder.name.trim();
+  if (holder.consentRecorded === true) {
+    return name === "" ? Copy.readingAtConnectKeptUnknown : Copy.readingAtConnectKept(name);
+  }
   return name === "" ? Copy.readingAtConnectUnknown : Copy.readingAtConnect(name);
 }
 
@@ -397,10 +403,13 @@ export function readingAtConnectLine(holder: { name: string }): string {
  * organizes the mailbox, until a restart. It names the holder the claim names now;
  * a claim not read yet keeps what the connect said.
  */
-export function readingAtConnectNow(said: { name: string } | null, claim: PhoneClaim | null): { name: string } | null {
+export function readingAtConnectNow(
+  said: { name: string; consentRecorded?: boolean } | null, claim: PhoneClaim | null,
+): { name: string; consentRecorded?: boolean } | null {
   if (said === null || claim === null) return null;
-  if (claim.k === "theirs") return { name: claim.name };
-  if (claim.k === "theirsUnnamed") return { name: "" };
+  const kept = said.consentRecorded === true ? { consentRecorded: true } : {};
+  if (claim.k === "theirs") return { name: claim.name, ...kept };
+  if (claim.k === "theirsUnnamed") return { name: "", ...kept };
   return claim.k === "unknown" ? said : null;
 }
 
@@ -528,11 +537,13 @@ export function claimHere(
     /** The gate's named `_meta` refusal ({@link StandaloneHere}); absent reads as none. */
     metaBlocked?: "meta_folder_full" | "meta_undeletable" | null;
     /**
-     * WHO ELSE HOLDS IT, from the engine's stand-down and its last look. `holderState` decides
+     * WHO ELSE HOLDS IT, from the engine's stand-down or its last look. `holderState` decides
      * whether that holder still organizes: `none` or `stopped` is nobody, as {@link claimFrom}
-     * reads a paired row; `null` is a look not taken, and the remembered reason stands.
+     * reads a paired row; `null` is a look not taken, and the remembered reason stands. The reason
+     * is `null` where only the look names the holder (a reader nobody stood down): it decides the
+     * KIND in the sentence and nothing else.
      */
-    heldBy: { name: string; standDownReason: string; holderState: "held" | "stopped" | "none" | null } | null;
+    heldBy: { name: string; standDownReason: string | null; holderState: "held" | "stopped" | "none" | null } | null;
   },
   /**
    * THE SESSION'S ONE STANDING INSTRUCTION, and it may only ever MODIFY the engine's answer.
@@ -665,7 +676,7 @@ export function claimNoteLine(
  * and rendered each on its own, so the two could both be standing at once over one card.
  */
 export type PressSaid = "startRefused" | "startUnreadable" | "startMetaFolderFull" | "startMetaUndeletable"
-  | "stopRefused" | null;
+  | "startHeldConsented" | "startHeldReturns" | "stopRefused" | null;
 
 /** What a START press answered, as the line beside the verb records it; `null` owes no sentence. */
 export function pressSaidOf(outcome: string): PressSaid {
@@ -673,7 +684,9 @@ export function pressSaidOf(outcome: string): PressSaid {
     : outcome === "unreadable" ? "startUnreadable"
       : outcome === "meta_folder_full" ? "startMetaFolderFull"
         : outcome === "meta_undeletable" ? "startMetaUndeletable"
-          : null;
+          : outcome === "held_consented" ? "startHeldConsented"
+            : outcome === "held_returns" ? "startHeldReturns"
+              : null;
 }
 
 /**
@@ -710,6 +723,17 @@ export function pressSaidLine(said: PressSaid, claim: PhoneClaim): string | null
      chip already saying it needs no second copy beside it. */
   if (said === "startMetaFolderFull" || said === "startMetaUndeletable") {
     return claim.k === "blocked" ? null : metaBlockedLine(said === "startMetaFolderFull" ? "meta_folder_full" : "meta_undeletable");
+  }
+  /* HELD, CONSENT KEPT: both facts, while a holder still stands. Once nothing holds it the card
+     offers Start again and the sentence would describe a holder that left. */
+  if (said === "startHeldConsented") {
+    if (claim.k === "theirs") return Copy.settingsStartHeldConsented(claim.name);
+    return claim.k === "theirsUnnamed" || claim.k === "unknown" ? Copy.settingsStartHeldConsentedUnknown : null;
+  }
+  /* …and over a mailbox this phone organized, the claim watch takes it back with no press. */
+  if (said === "startHeldReturns") {
+    if (claim.k === "theirs") return Copy.settingsStartHeldReturns(claim.name);
+    return claim.k === "theirsUnnamed" || claim.k === "unknown" ? Copy.settingsStartHeldReturnsUnknown : null;
   }
   return said === "stopRefused" ? Copy.settingsStopHereFailed
     : said === "startUnreadable" ? Copy.settingsStartHereUnreadable

@@ -11,6 +11,8 @@ import os
  * frame, the closed face's right-strip cluster the rail starts below. `getFolds` still answers
  * nil: the fold's reserved-region read is newer than every toolchain this repo compiled
  * against, and `derive.ts` covers the open face with the centre-hinge heuristic meanwhile.
+ * `refreshTextScale` asks React Native's surface to read the text size again after a change.
+ * `getWindowControlsInset` reads the safe area adapted around the window's controls (iPadOS 26).
  * `getLaunchOverride` is the simulator door (`SIMCTL_CHILD_OHMAIL_POSTURE=<pose>[@canvas]`).
  * The network door's reader lives here too (`src/net/network-door.ts`): a path monitor answers
  * "online" or "offline" through `getNetwork`, "unknown" before its first path, and sends
@@ -142,6 +144,53 @@ public class OhmailPostureModule: Module {
       let frame = window.convert(window.bounds, to: scene.screen.coordinateSpace)
       if frame.width <= 0 || screen.width <= 0 { return nil }
       return ["x": Double(frame.origin.x), "w": Double(frame.width), "screenW": Double(screen.width)]
+    }.runOnQueue(.main)
+
+    // THE TOP INSET THAT CLEARS THE WINDOW'S OWN CONTROLS: the safe area adapted at its corners
+    // (iPadOS 26's window controls), read from the key window's root view in window points. Nil
+    // before iOS 26, where no window answers, or where the read is not a number.
+    AsyncFunction("getWindowControlsInset") { () -> Double? in
+      guard let scene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene
+        ?? UIApplication.shared.connectedScenes.first as? UIWindowScene,
+        let window = scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first else { return nil }
+      let view: UIView = window.rootViewController?.view ?? window
+      if #available(iOS 26.0, *) {
+        let top = view.edgeInsets(for: .safeArea(cornerAdaptation: .vertical)).top
+        return top.isFinite && top >= 0 ? Double(top) : nil
+      }
+      return nil
+    }.runOnQueue(.main)
+
+    // THE SURFACE TAKES THE TEXT SIZE THE APP NOW HAS. React Native's surface re-reads the text size
+    // when the system says it changed; this asks it again, after that notification has been handled, so
+    // the size it lays text out at is the one the app reads now. Answers the size it read and how many
+    // surfaces it asked (0 where none answers).
+    AsyncFunction("refreshTextScale") { () -> [String: Any] in
+      let category = UIApplication.shared.preferredContentSizeCategory.rawValue
+      let surfaceSel = NSSelectorFromString("surface")
+      let handleSel = NSSelectorFromString("handleContentSizeCategoryDidChangeNotification:")
+      var asked = 0
+      for scene in UIApplication.shared.connectedScenes {
+        guard let windowScene = scene as? UIWindowScene else { continue }
+        for window in windowScene.windows {
+          var level: [UIView] = [window]
+          for _ in 0..<4 {
+            var next: [UIView] = []
+            for view in level {
+              if view.responds(to: surfaceSel),
+                let surface = view.perform(surfaceSel)?.takeUnretainedValue() as? NSObject,
+                surface.responds(to: handleSel) {
+                surface.perform(handleSel, with: nil)
+                asked += 1
+              } else {
+                next.append(contentsOf: view.subviews)
+              }
+            }
+            level = next
+          }
+        }
+      }
+      return ["category": category, "surfaces": asked]
     }.runOnQueue(.main)
 
     Function("getLaunchOverride") { () -> String? in

@@ -2,10 +2,10 @@ import {
   CLASSIFY_RESULT_SCHEMA, DRAFT_PREFIX, DRAFT_RESULT_SCHEMA,
   SCREENING_PREFIX, SCREENING_RESULT_SCHEMA, TAXONOMY_PREFIX,
   classifyUserPayload, coerceClassifierResult, coerceDraftResult, coerceScreeningResult,
-  draftUserPayload,
+  declineOf, draftUserPayload, knownRequestRules,
 } from "@trafficflow/core/mail";
 import type {
-  ClassifierInput, ClassifierResult, DraftInput, DraftResult,
+  ClassifierInput, ClassifierResult, DraftInput, DraftResult, ThinkingOff,
 } from "@trafficflow/core/mail";
 import {
   fetchWithDeadline, probeKeyedCatalogue,
@@ -59,6 +59,31 @@ function extractJsonText(content: unknown, what: string): string {
   throw new Error(`${what}: response carried no text content block`);
 }
 
+/**
+ * How a call sized for thinking OFF asks `model` for it — the row `MODEL_REQUEST_RULES` holds for
+ * the hosted builders. A model the table does not know keeps `unknown`, the request this client
+ * always made; one that cannot turn thinking off omits the field and asks effort `low` if it takes
+ * effort, so a hand-picked 5.5 model is never sent another model's value or a refused round trip.
+ */
+function thinkingOffShape(
+  model: string, unknown: { thinking?: ThinkingOff },
+): { thinking?: ThinkingOff; effort?: "low" } {
+  const rules = knownRequestRules(model);
+  if (rules === null) return unknown;
+  if (rules.thinkingOff !== null) return { thinking: { ...rules.thinkingOff } };
+  return rules.effort ? { effort: "low" } : {};
+}
+
+/** The request fields {@link thinkingOffShape} answers, beside the structured-output format. */
+function shaped(
+  off: { thinking?: ThinkingOff; effort?: "low" }, format: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...(off.thinking ? { thinking: off.thinking } : {}),
+    output_config: { format, ...(off.effort ? { effort: off.effort } : {}) },
+  };
+}
+
 export function anthropicTransport(opts: AnthropicTransportOptions): AiTransport {
   const headers = {
     "content-type": "application/json",
@@ -67,13 +92,12 @@ export function anthropicTransport(opts: AnthropicTransportOptions): AiTransport
   };
 
   /**
-   * One request to the messages endpoint, and the one place a failure becomes an Error. The
-   * `thinking` field is sent, then DROPPED if the model refuses it: `max_tokens` bounds thinking and
-   * response text together, so a model that thinks adaptively can spend the budget before it writes;
-   * the hosted deployment disables thinking because it picks its own model, but here the model is the
-   * user's choice and some refuse to run without it, answering 400 for the field. That is a fact
-   * about the chosen model, so the request is remade ONCE without the field, conditional on the
-   * endpoint naming `thinking` in its refusal — an unrelated 400 stays a 400 and is not retried.
+   * One request to the messages endpoint, and the one place a failure becomes an Error. `max_tokens`
+   * bounds thinking and response text together, so thinking is asked OFF: a model the rules table
+   * knows is sent its own value ({@link thinkingOffShape}); a draft on one it does not know is sent
+   * `disabled`, which some refuse with a 400 for the field. That is a fact about the chosen model, so
+   * the request is remade ONCE without the field, conditional on the endpoint naming `thinking` in
+   * its refusal — an unrelated 400 stays a 400 and is not retried.
    */
   const call = async (body: Record<string, unknown>, what: string): Promise<unknown> => {
     const send = async (payload: Record<string, unknown>): Promise<Response> =>
@@ -99,7 +123,11 @@ export function anthropicTransport(opts: AnthropicTransportOptions): AiTransport
       // verification time and never on this path.
       throw new Error(`${what}: the model endpoint answered ${res.status}`);
     }
-    const json = (await res.json()) as { content?: unknown };
+    const json = (await res.json()) as { content?: unknown; stop_reason?: unknown; stop_details?: unknown };
+    // A refusal or a cut-off answer is the model ANSWERING for this one message, read before the
+    // content: thrown as `ModelDeclinedError`, never as the malformed reply a fault would be.
+    const declined = declineOf(json.stop_reason, json.stop_details);
+    if (declined) throw declined;
     const text = extractJsonText(json.content, what);
     try {
       return JSON.parse(text) as unknown;
@@ -118,7 +146,7 @@ export function anthropicTransport(opts: AnthropicTransportOptions): AiTransport
         max_tokens: 512,
         system: [{ type: "text", text: TAXONOMY_PREFIX, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: JSON.stringify(userPayload) }],
-        output_config: { format: { type: "json_schema", schema: CLASSIFY_RESULT_SCHEMA } },
+        ...shaped(thinkingOffShape(opts.classifyModel, {}), { type: "json_schema", schema: CLASSIFY_RESULT_SCHEMA }),
       }, "classifier");
       return coerceClassifierResult(raw);
     },
@@ -140,7 +168,7 @@ export function anthropicTransport(opts: AnthropicTransportOptions): AiTransport
         max_tokens: 512,
         system: [{ type: "text", text: SCREENING_PREFIX, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: JSON.stringify(userPayload) }],
-        output_config: { format: { type: "json_schema", schema: SCREENING_RESULT_SCHEMA } },
+        ...shaped(thinkingOffShape(opts.classifyModel, {}), { type: "json_schema", schema: SCREENING_RESULT_SCHEMA }),
       }, "screener");
       // A label outside the five piles becomes the gate, where a person decides — never a guess.
       return coerceScreeningResult(raw);
@@ -152,10 +180,10 @@ export function anthropicTransport(opts: AnthropicTransportOptions): AiTransport
       const raw = await call({
         model: opts.draftModel,
         max_tokens: 2048,
-        thinking: { type: "disabled" },
         system: [{ type: "text", text: DRAFT_PREFIX, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: JSON.stringify(userPayload) }],
-        output_config: { format: { type: "json_schema", schema: DRAFT_RESULT_SCHEMA } },
+        ...shaped(thinkingOffShape(opts.draftModel, { thinking: { type: "disabled" } }),
+          { type: "json_schema", schema: DRAFT_RESULT_SCHEMA }),
       }, "drafter");
       return coerceDraftResult(raw);
     },

@@ -1,10 +1,10 @@
 /**
  * THE iPAD'S WINDOW CONTROLS ARE PART OF THE TOP INSET. In Split View, Slide Over and a free window
  * iPadOS draws its window controls over the app's top-leading corner, and the safe area this app
- * reads does not include them: they sat on Back and on the list title, and a tap on Back opened the
- * controls. A window that does not fill the screen is given that strip on top of the
- * system inset. Read from the frames: the controls end ~42pt under the system inset in both shapes.
- * A full-screen window and every phone are untouched. Dependency-free so a node test can drive it.
+ * reads does not include them: they sat on Back and on the list title. The system says where they
+ * end: the safe area adapted at its corners (`getWindowControlsInset`, iOS 26+), which every iPad
+ * window takes where it is read. A 44pt strip read from frames stands in only for a window smaller
+ * than its screen where no reading exists. Every phone is untouched.
  */
 export const IPAD_WINDOW_CONTROLS_PT = 44;
 
@@ -20,7 +20,12 @@ export function windowedOnPad({ isPad, window, screen }: WindowShape): boolean {
   return window.width < screen.width - 1 || window.height < screen.height - 1;
 }
 
-/** The top inset a screen pays: the system's, plus the controls' strip on a windowed iPad. */
-export function topInsetWithControls(systemTop: number, shape: WindowShape): number {
+/**
+ * The top inset a screen pays: the system's, raised to the controls' own edge where the system
+ * read it (`controlsTop`, null where it could not), else the frame strip on a windowed iPad.
+ */
+export function topInsetWithControls(systemTop: number, shape: WindowShape, controlsTop: number | null = null): number {
+  if (!shape.isPad) return systemTop;
+  if (controlsTop !== null && Number.isFinite(controlsTop)) return Math.max(systemTop, controlsTop);
   return windowedOnPad(shape) ? systemTop + IPAD_WINDOW_CONTROLS_PT : systemTop;
 }

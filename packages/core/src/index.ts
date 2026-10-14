@@ -24,6 +24,7 @@ export * from "./husk-restore.js";
 export * from "./html-text.js";
 export * from "./message-search.js";
 export * from "./model-declined.js";
+export * from "./model-rules.js";
 export * from "./ai/classify.js";
 export * from "./ai/anthropic-client.js";
 export * from "./ai/draft.js";

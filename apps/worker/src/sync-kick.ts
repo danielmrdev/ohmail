@@ -6,9 +6,9 @@ import { silentLogger, type Logger } from "@trafficflow/core";
  * ENFORCED SYNC — the worker half of `mailboxes.sync_requested_at` (mail 0049). The API stamps it the
  * instant it finalizes a write the user is watching; this pass is the doorbell's other end — a short scan,
  * far more often than the 60 s poll, that kicks an out-of-band cycle for any stamped mailbox this process
- * serves and clears the stamp. SEVEN write sites ring it, each finalizing a write somebody is watching:
+ * serves and clears the stamp. EIGHT write sites ring it, each finalizing a write somebody is watching:
  * the send's finalize, the junk rescue, the junk sweep press, the folder-op service, the mailbox
- * service's resync and its create (the unserved arm asks for a roster), and "Organize here" (a served row with that press pending asks a roster first). Ordinary FILING does not — those writers commit desired state and stop, so filed mail waits ~105 s for its turn, a real gap left open deliberately. NOT a leader-locked backstop — it runs
+ * service's resync and its create (the unserved arm asks for a roster), and the two lease presses, "Organize here" and "Hand the mailbox back" (a served row with either pending asks a roster first). Ordinary FILING does not — those writers commit desired state and stop, so filed mail waits ~105 s for its turn, a real gap left open deliberately. NOT a leader-locked backstop — it runs
  * only inside a live worker, and writes only its own attached mailboxes (producer: the ~3 s timer in `index.ts`). The
  * clear is COMPARE-AND-CLEAR (`WHERE sync_requested_at = <observed>`) so a second stamp mid-flight is
  * preserved; and compared as TEXT (`::text` / `= <that>::timestamptz`) because `timestamptz` microseconds never survive a JS millisecond `Date` — measured 2026-08-26, an SQL `now()` stamp kicked every 3 s for 10+ min. Pure/hermetic, proven on real Postgres. */
@@ -33,8 +33,9 @@ export interface SyncKickDeps {
   requestRoster?: () => void;
   askedFor?: Map<string, string>;
   /**
-   * A served mailbox whose row carries an unspent "Organize here" press. The runtime's lease
-   * columns are refreshed only by a roster pass, so the kick alone would run the gate on the
+   * A served mailbox whose row carries an unspent lease press: "Organize here"
+   * (`takeover_authorized_at`) or "Hand the mailbox back" (`release_requested_at`). The runtime's
+   * lease columns are refreshed only by a roster pass, so the kick alone would run the gate on the
    * value read before the press; the worker wires this to `requestRoster`, called BEFORE `kick`
    * so the pass is queued ahead of the cycle. It only asks: the fenced gate still decides.
    */
@@ -77,6 +78,7 @@ export async function syncKickPass(deps: SyncKickDeps): Promise<SyncKickResult> 
       id: mailboxes.id,
       requestedAtText: sql<string | null>`${mailboxes.syncRequestedAt}::text`,
       pressed: mailboxes.takeoverAuthorizedAt,
+      released: mailboxes.releaseRequestedAt,
     })
     .from(mailboxes)
     .where(and(inArray(mailboxes.id, served), isNotNull(mailboxes.syncRequestedAt)));
@@ -88,7 +90,7 @@ export async function syncKickPass(deps: SyncKickDeps): Promise<SyncKickResult> 
     // Kick first: the mailbox owed a reconcile the moment we read the stamp, and a kick is only a
     // request for a cycle, so it is safe to issue before the clear even if the clear then misses.
     try {
-      if (row.pressed !== null) deps.leasePressed?.(row.id);
+      if (row.pressed !== null || row.released !== null) deps.leasePressed?.(row.id);
       await deps.kick(row.id);
       kicked.push(row.id);
     } catch (err) {

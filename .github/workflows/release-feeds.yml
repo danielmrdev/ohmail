@@ -117,6 +117,16 @@ on:
         required: false
         default: false
         type: boolean
+      tools:
+        description: >-
+          Where the scripts the prepare job runs come from: main, so a fix to one
+          reaches a release already tagged, or the tag itself. The run itself is
+          dispatched ON the tag (--ref <tag>), the only ref the signing job's
+          environment admits.
+        required: false
+        default: main
+        type: choice
+        options: [main, tag]
 
 # Read here, and write in exactly one place: the job that attaches the feeds
 # takes the write scope, and the job that holds the signing keys takes neither.
@@ -182,6 +192,8 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
           VERIFY_ONLY: ${{ inputs.verify_only }}
           RELEASE_ACTION: ${{ github.event.action }}
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
           REPO="$GITHUB_REPOSITORY"
@@ -196,6 +208,17 @@ jobs:
           SHAPE="$(tag_shape "$RELEASE_TAG")"
           echo "tag_shape=$SHAPE" >> "$GITHUB_OUTPUT"
           echo "$RELEASE_TAG names a $SHAPE"
+          # ── A RUN THE SIGNING JOB WILL BE REFUSED CHANGES NOTHING ─────────
+          # The signing job takes the `release` environment, which admits a run on a release tag
+          # and nothing else. A dispatch from a branch would fence a Latest page here and then be
+          # refused there, leaving it demoted with no new feeds. So it is refused first, before
+          # any read or edit: a recovery is dispatched ON the tag, its tools still from main.
+          if [ "${EVENT_NAME:?}" = workflow_dispatch ] && [ "${VERIFY_ONLY:-false}" != true ] \
+             && [ "${RUN_REF:?}" != "refs/tags/$RELEASE_TAG" ]; then
+            echo "FENCE-REFUSED $RELEASE_TAG: this dispatch runs on $RUN_REF, and the signing job admits only a run on refs/tags/$RELEASE_TAG." >&2
+            echo "Nothing was read or touched. Dispatch it on the tag: gh workflow run release-feeds.yml --ref $RELEASE_TAG -f tag=$RELEASE_TAG" >&2
+            exit 1
+          fi
           # A page promoted by hand is the refence job's to read. This job touches nothing on it.
           if [ "${RELEASE_ACTION:-}" = released ]; then
             echo "fence=hand-promotion" >> "$GITHUB_OUTPUT"
@@ -312,16 +335,15 @@ jobs:
           ref: ${{ github.event.release.tag_name || inputs.tag }}
           persist-credentials: false
 
-      # AND THE TOOLS FROM THE LAUNCHING REF, in a directory of their own. The checkout above is
-      # pinned to the tag on purpose — the version label must come from the same commit as the
-      # binaries — but that also pins the SCRIPTS this job runs to a released tree, and a fix to
-      # one of them could then never be used for a release already tagged. That is not
-      # hypothetical: the signer pinning read the monorepo's `pnpm-lock.yaml`, which the published
-      # repository does not carry, and the step died with ENOENT on a tag that could not be moved.
-      # So the release tree supplies the version and the artifacts; this one supplies the tools.
+      # AND THE TOOLS, in a directory of their own: the tag's on a release event, main's on a
+      # dispatch unless it asks for the tag's. The checkout above is pinned to the tag on purpose,
+      # but a fix to a script could then never be used for a release already tagged (the signer
+      # pinning once read a `pnpm-lock.yaml` the published repository does not carry, and died
+      # on a tag that could not be moved). A dispatch runs ON the tag, so its tools are named here.
       - uses: actions/checkout@v7
         with:
           path: .tools
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tools == 'main' && 'main' || github.ref }}
           persist-credentials: false
 
       - uses: actions/setup-node@v7
@@ -663,12 +685,13 @@ jobs:
           # a key is in any environment.
           #
           # The commit comes from the tag checkout at the top of this job, not
-          # from the API: the tag names the binaries, and the runs of the build
-          # workflow at that commit are what made them.
+          # from the API: the tag names the binaries, and the build workflow's
+          # run AT THAT TAG, of that commit, is what made them. A push to main
+          # builds the same commit, and its installers are not the release's.
           # ══════════════════════════════════════════════════════════════════
           TAG_COMMIT="$(git rev-parse HEAD)"
           echo "$RELEASE_TAG is commit $TAG_COMMIT"
-          node .tools/scripts/verify-assets-against-builder.mjs assets --repo "$REPO" --commit "$TAG_COMMIT"
+          node .tools/scripts/verify-assets-against-builder.mjs assets --repo "$REPO" --commit "$TAG_COMMIT" --tag "$RELEASE_TAG"
 
           # …and for a verify-only run that is the whole job. It stops HERE rather than before the
           # download, because the check is the thing being read; everything below it signs.
@@ -881,6 +904,11 @@ jobs:
     # A verify-only dispatch never reaches a key. `inputs` is null on a release event, so this
     # reads `null != true` there and the job runs, which is the ordinary path.
     if: inputs.verify_only != true
+    # The `release` environment admits a run on a release tag only: a release event, or a dispatch
+    # made ON the tag (`--ref v<version>`). A dispatch from a branch is refused here, before the job
+    # starts (and by the fence before it, so it changes nothing); a key kept in that environment is
+    # readable by no other run.
+    environment: release
     runs-on: macos-15
     timeout-minutes: 20
     permissions:

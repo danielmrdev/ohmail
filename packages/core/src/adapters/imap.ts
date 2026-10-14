@@ -3214,7 +3214,7 @@ export class ImapAdapter implements MailboxAdapter, AdapterPort, FolderScanner {
     passive: ReadonlySet<string>;
     /** Canonical path → the STATUS the server volunteered this pass. Empty without LIST-STATUS. */
     status: ReadonlyMap<string, FolderStatus>;
-    /** What the last answered LIST named, or `null` when none has answered. */
+    /** What the last answered LIST named; `null` when none has, or when this pass's own refresh failed. */
     listed: ReadonlySet<string> | null;
   }> {
     const resolved = await this.findSentForScan();
@@ -3236,6 +3236,9 @@ export class ImapAdapter implements MailboxAdapter, AdapterPort, FolderScanner {
     const stale = this.passiveCycle > 0
       && this.passiveCycle % ImapAdapter.PASSIVE_RELIST_CYCLES === 0;
     this.passiveCycle++;
+    // A refresh this pass asked for and did not get: the cached inventory still drives the scan,
+    // but no absence is read from it — a LIST that errors retires nothing.
+    let refreshFailed = false;
     if (this.passiveFolders === null || wantStatus || stale) {
       try {
         this.learnPassiveFolders(await this.listBounded(
@@ -3261,6 +3264,7 @@ export class ImapAdapter implements MailboxAdapter, AdapterPort, FolderScanner {
         // A LIST that fails costs the refresh and nothing else: keep the inventory we have rather
         // than dropping every customer folder out of the scan on one bad command.
         this.passiveFolders ??= [];
+        refreshFailed = true;
       }
     }
     const passive = (this.passiveFolders ?? []).filter(
@@ -3271,7 +3275,7 @@ export class ImapAdapter implements MailboxAdapter, AdapterPort, FolderScanner {
       sent,
       passive: new Set(passive),
       status: this.passiveStatus,
-      listed: this.listedPaths,
+      listed: refreshFailed ? null : this.listedPaths,
     };
   }
 
@@ -3931,22 +3935,27 @@ export class ImapAdapter implements MailboxAdapter, AdapterPort, FolderScanner {
       }
     }
 
-    // A REMEMBERED FOLDER AN ANSWERED LIST LEFT OUT IS ASKED BY NAME, and its instances go only on
-    // the server's own statement that it does not exist. A folder the rule excludes or the ceiling
-    // passes over is still LISTED, so never asked; Sent-shaped names never are either (a Sent
-    // renamed elsewhere re-reads as a window). Held while creates are owed: a folder renamed
-    // elsewhere must meet its new folder's creates in this pass, or it reads as a delete.
+    // A REMEMBERED FOLDER AN ANSWERED LIST LEFT OUT IS ASKED BY NAME, and it goes only on the
+    // server's own statement that it does not exist. An EMPTY one is asked too: the folder list is
+    // read from these rows, so a folder with no letters that is never asked stays listed for ever.
+    // Letters need their epoch to be believed; an empty folder carries none. A folder the rule
+    // excludes or the ceiling passes over is still LISTED, so never asked; Sent-shaped names never
+    // are either. Held while creates are owed: a folder renamed elsewhere must meet its new
+    // folder's creates in this pass, or it reads as a delete.
     const foldersGone: string[] = [];
     if (listedPaths !== null && stoppedAt === undefined && !createsOwed) {
       const scanned = new Set(scanFolders);
       for (const [name, prev] of stored) {
-        if (prev.known.length === 0 || scanned.has(name) || listedPaths.has(name)) continue;
+        if (scanned.has(name) || listedPaths.has(name)) continue;
         if (SENT_SHAPED_PATHS.includes(name.toLowerCase())) continue;
         const epoch = epochOf(prev.uidValidity);
-        if (!epoch.known || !(await this.folderStatedGone(name))) continue;
+        if (prev.known.length > 0 && !epoch.known) continue;
+        if (!(await this.folderStatedGone(name))) continue;
         foldersGone.push(name);
-        for (const k of prev.known) {
-          deletes.push({ folder: name, uidValidity: BigInt(epoch.value), uid: k.uid, messageId: k.messageId });
+        if (epoch.known) {
+          for (const k of prev.known) {
+            deletes.push({ folder: name, uidValidity: BigInt(epoch.value), uid: k.uid, messageId: k.messageId });
+          }
         }
         // Carried, so the cycle's epoch guard believes these deletes at the epoch they name.
         newFolders[name] = { uidValidity: prev.uidValidity, uidNext: prev.uidNext, highestModseq: prev.highestModseq };

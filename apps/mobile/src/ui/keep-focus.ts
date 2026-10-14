@@ -3,7 +3,9 @@
  * an unfold hands the composer a NEW one (measured: the dialog's window changed on every unfold,
  * never on a fold): the text survives, the field that held the caret does not. So the composer
  * remembers which field had it and, when its dialog is shown again, gives it back — unless the
- * person had let it go before the redraw (a blur longer ago than the redraw takes).
+ * person had let it go before the redraw (a blur longer ago than the redraw takes). The caret alone
+ * is not the keyboard: the new window has no input focus yet when it is shown, so the keyboard is
+ * asked for again once it has (`afterRefocus`, the native door on Android).
  */
 import { useRef, type RefObject } from "react";
 
@@ -23,7 +25,10 @@ export function refocusOnShow(show: number, last: FocusMemory | null, now: numbe
   return last.blurredAt === null || now - last.blurredAt <= REDRAW_BLUR_MS;
 }
 
-export function useFocusKeeper(now: () => number = Date.now): {
+export function useFocusKeeper(
+  now: () => number = Date.now,
+  afterRefocus: (field: Focusable) => void = () => undefined,
+): {
   bind(field: RefObject<Focusable | null>): { onFocus(): void; onBlur(): void };
   onShow(): void;
 } {
@@ -36,7 +41,10 @@ export function useFocusKeeper(now: () => number = Date.now): {
     }),
     onShow: () => {
       shows.current += 1;
-      if (refocusOnShow(shows.current, last.current, now())) last.current?.field.current?.focus();
+      const field = last.current?.field.current ?? null;
+      if (field === null || !refocusOnShow(shows.current, last.current, now())) return;
+      field.focus();
+      afterRefocus(field);
     },
   };
 }

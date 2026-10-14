@@ -107,6 +107,9 @@ export {
   DEFAULT_DORMANCY_DAYS, cutlineCounts, hasUndecidedActiveSenders,
   type CutlineCounts, type CutlineOptions,
 } from "./consent-cutline.js";
+export {
+  cutlinesOf, effectiveScreeningWindows, type EffectiveScreeningWindow, type WindowSource,
+} from "./screening-window.js";
 // The editable Ohbox preference: posture + free-text bar on account_settings.
 // Mail-half clean — it reads/writes `account_settings` (schema-mail) and resolves the policy through
 // `@trafficflow/core/mail`; no auth, billing or admin dependency, so it belongs in the engine barrel

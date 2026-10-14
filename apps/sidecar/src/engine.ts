@@ -1057,8 +1057,7 @@ function localServices(
     // wiring exactly. Only an ORGANIZER reaches this path: a consent-less reader's decision is a
     // REQUEST, and requests carry no courtesy. `landing-mailbox-truth.test.ts` reads this call
     // site — the landing's standalone qualifier comes out with it.
-    // While this install only reads, its queue is the gate the organizer filed.
-    screener: makeScreenerService({ unsubscribe, readerQueueIsTheGate: true, ...(classifier ? { classifier } : {}) }),
+    screener: makeScreenerService({ unsubscribe, ...(classifier ? { classifier } : {}) }),
     // `drafting` is ALWAYS present and `drafter` only when there is a model, which is the pairing
     // the route expects rather than an oversight. The two are different things: `drafting`
     // assembles the sensitivity-safe context and stores the result, `drafter` is the model. The
@@ -1901,9 +1900,10 @@ export function withPullKick(
   onGapPress: (mailboxId: string) => void = () => undefined,
 ): Route[] {
   return routes.map((r) => {
-    /* "ORGANIZE HERE" RINGS ITS OWN MAILBOX: the next gated pass re-reads the stamp and the lease
-       decides, so the claim is not left to the next poll. */
-    if (r.method === "POST" && r.pattern === "/mailboxes/:id/organize") {
+    /* "ORGANIZE HERE" AND "HAND THE MAILBOX BACK" RING THEIR OWN MAILBOX: the next gated pass
+       re-reads the stamp (a release is its first arm) and the lease decides, so neither press is
+       left to the next poll. */
+    if (r.method === "POST" && (r.pattern === "/mailboxes/:id/organize" || r.pattern === "/mailboxes/:id/release")) {
       return { ...r, handler: async (req, deps, params) => {
         const res = await r.handler(req, deps, params);
         if (res.status === 202) runtimeFor(params.id ?? "")?.ring();
@@ -4892,7 +4892,10 @@ export async function createSidecar(config: SidecarConfig): Promise<Sidecar> {
             holderState: seen.state,
             /* The two arms that peek are the two that hold nothing — a reader, and an install
                nobody has consented to. */
-            claimed: false };
+            claimed: false,
+            /* CARRIED: what the last stop left in the settings document stands until this install
+               claims again. A rung release pass followed by a forced cycle reads here second. */
+            ...(organizer.settingsLeft === undefined ? {} : { settingsLeft: organizer.settingsLeft }) };
           /* Zero writes in the steady state, and the check is new (0.14.1). This block claimed
            * "only when something changed" and then wrote unconditionally — one UPDATE per
            * mailbox per poll for four values already there. The hosted twin

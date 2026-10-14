@@ -85,6 +85,7 @@ export async function proposalGeneratePass(
         ? attributedProposer(deps.port, deps.accountId, deps.usageHook, (l) => { usageLine = l; })
         : deps.port,
       now: () => now,
+      log,
       // The money question, asked by `generateProposals` at the only point where the
       // answer is meaningful: after the patterns exist (so a pass that cannot reach a model is
       // never charged) and before the model is called (so revenue precedes token spend). A
@@ -157,7 +158,8 @@ function proposalRunId(accountId: string, now: Date): string {
 }
 
 /**
- * Cron wrapper (periodic). Guarded by the SAME session-level leader lock the always-on worker +
+ * Process entry. NOTHING SCHEDULES IT in production: no Railway process, no worker cycle. With an Anthropic key set `config.proposer` is live and metered, so one operator
+ * run charges every served account that has a pattern. Guarded by the SAME session-level leader lock the always-on worker +
  * reconcile/bubble-up/workflow crons use: if the live worker holds it, this exits without touching the DB;
  * otherwise one generation pass PER SERVED ACCOUNT (its shard, dev-filter narrowed, each isolated so one
  * failure never skips the rest) and release. A live model needs an Anthropic key (deployment config);

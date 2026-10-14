@@ -19,6 +19,7 @@ import {
   type Folder,
   type NoticePermission,
   type NotificationChannels,
+  type QueuedRuleWrite,
   type RuleDTO,
   type TagDTO,
   type WaitingOnOrganizerView,
@@ -463,6 +464,8 @@ export function SettingsView({
     posture?: RulesPosture;
     /** The rule requests waiting on the organizer — `engine.waitingOnOrganizer()`, `rule.*` only. */
     waiting?: readonly WaitingOnOrganizerView[];
+    /** The rule verbs waiting on this browser's queue — `engine.queuedRuleWrites()`. */
+    queued?: readonly QueuedRuleWrite[];
     /** A mailbox's address by id — what a waiting removal names. */
     mailboxLabel?: (mailboxId: string) => string | null;
   };
@@ -1323,7 +1326,7 @@ export function SettingsView({
 
           {shown === "rules" && rules ? (
             <RulesView rules={rules.items} onRevoke={rules.onRevoke} onRetarget={rules.onRetarget} pastMail={rules.pastMail}
-              posture={rules.posture} waiting={rules.waiting} mailboxLabel={rules.mailboxLabel} />
+              posture={rules.posture} waiting={rules.waiting} queued={rules.queued} mailboxLabel={rules.mailboxLabel} />
           ) : null}
 
           {shown === "tags" ? (

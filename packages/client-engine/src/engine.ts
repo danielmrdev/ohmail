@@ -204,11 +204,27 @@ export interface MutationResult {
   /** The server's `organizer_requests.id` for a queued mutation, where the door named one. */
   requestId?: string;
   /**
+   * THE SERVER ANSWERED THIS VERB WITH A FAILURE and it waits to be asked again — on a `queued`
+   * result only, by the test that spends the give-up ceiling ({@link OhmailEngine.serverAnswered}).
+   * Absent on a queued verb that never reached an answer: that one is offline or unreachable.
+   */
+  serverFailed?: true;
+  /**
    * THE SEND + DONE INTENT this send was pressed with — on its CONFIRMED result only, from the
    * send's own outbox row. A later boot's replay hands it back too, so whichever surface collects
    * the confirmation reads the release then (`releasePlanAt`); the intent itself is never applied.
    */
   andDone?: SendAndDonePlan;
+}
+
+/** One rule verb waiting on this client's queue — see {@link OhmailEngine.queuedRuleWrites}. */
+export interface QueuedRuleWrite {
+  id: string;
+  verb: "revoke" | "retarget";
+  ruleId: string;
+  /** The rule as the mirror holds it, without any overlay; absent when the mirror has none. */
+  rule: RuleDTO | undefined;
+  serverFailed: boolean;
 }
 
 /**
@@ -6367,7 +6383,11 @@ export class OhmailEngine {
     if (!w.armed || w.dirty) return;
     const gate = FOLDER_OF_VIEW.screener;
     for (const ch of changes) {
-      if (ch.type === "rule" || ch.type === "settings" || ch.type === "mailbox") { w.dirty = true; return; }
+      // A mailbox_profile change can move an organizer's window (RULING-026), which the store's queue reads.
+      if (ch.type === "rule" || ch.type === "settings" || ch.type === "mailbox" || ch.type === "mailbox_profile") {
+        w.dirty = true;
+        return;
+      }
       if (ch.type !== "message") continue;
       const now = ch.entity as EngineMessage | undefined;
       const was = this.store.record("message", ch.id)?.entity as EngineMessage | null | undefined;
@@ -7115,7 +7135,7 @@ export class OhmailEngine {
    *   a pool outage — a far bigger loss than the loop this ceiling closes.
    * · **No status at all.** Nothing reached an HTTP response, so nothing attributes the failure to the server.
    */
-  private static serverAnswered(err: MutationRejectedError): boolean {
+  private static serverAnswered(err: Pick<MutationRejectedError, "code" | "status" | "retryAfterMs">): boolean {
     if (err.code === "network" || err.code === "timeout") return false;
     if (err.retryAfterMs !== null) return false;
     if (MODELLED_WAIT_CODES.has(err.code ?? "")) return false;
@@ -8257,6 +8277,7 @@ export class OhmailEngine {
         return {
           id: p.id, key: p.key, status: "queued", seq: null, error: rejection,
           ...(rejection.entityId ? { entityId: rejection.entityId } : {}),
+          ...(counts ? { serverFailed: true as const } : {}),
         };
       }
       // EXPLICIT REFUSAL: the local effect rolls back VISIBLY, once — the overlay drops, the
@@ -8589,6 +8610,30 @@ export class OhmailEngine {
    */
   inFlightMutations(): ReadonlyArray<{ id: string; key: string; mutation: EngineMutation; andDone?: SendAndDonePlan; confirmed?: true }> {
     return [...this.inFlight.values()];
+  }
+
+  /**
+   * A RULE VERB ON THE QUEUE HAS NOT CHANGED THE RULE. Its overlay hides a revoked
+   * rule and moves a retargeted one while it waits, yet the server still runs the rule as the
+   * mirror holds it, so the rules surface shows that row (`rule`, overlay-free; absent when the
+   * mirror has none) and says what waits on it. `serverFailed`: the server answered the last try
+   * with a failure, by the ceiling's own test; otherwise it has not been answered yet.
+   */
+  queuedRuleWrites(): readonly QueuedRuleWrite[] {
+    const out: QueuedRuleWrite[] = [];
+    for (const p of this.queue) {
+      const m = p.mutation;
+      if (m.kind !== "rule_delete" && m.kind !== "rule_update") continue;
+      const e = p.lastError;
+      const serverFailed = e !== undefined && OhmailEngine.serverAnswered({
+        code: e.code, status: e.status, retryAfterMs: p.waitIsServerNamed === true ? 0 : null,
+      });
+      out.push({
+        id: p.id, verb: m.kind === "rule_delete" ? "revoke" : "retarget", ruleId: m.ruleId,
+        rule: this.storeTruth.get<RuleDTO>("rule", m.ruleId), serverFailed,
+      });
+    }
+    return out;
   }
 
   /**

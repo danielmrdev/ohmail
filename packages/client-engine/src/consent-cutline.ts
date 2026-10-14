@@ -103,6 +103,23 @@ export interface ConsentPartition {
   readonly retiredDecided: ReadonlySet<string>;
 }
 
+/**
+ * ONE MAILBOX'S SCREENING WINDOW — `GET /consent`'s `screeningByMailbox` entry (RULING-026): the
+ * window its ORGANIZER applies; `unread`/`unstated` arrive as `all_time`, the folder whole. The
+ * window only: whose it is ({@link ScreeningSource}) is no input to the partition.
+ */
+export interface MailboxScreening {
+  baselineAt: string | null;
+  dormancyDays: number;
+  scope: "window" | "all_time" | string;
+}
+
+/** Whose window an entry is, and the holder's name — read by {@link screeningDegrade} alone. */
+export interface ScreeningSource {
+  source?: "own" | "organizer" | "unread" | "unstated";
+  holderName?: string | null;
+}
+
 export interface ConsentOptions {
   now?: Date;
   /**
@@ -160,6 +177,13 @@ export interface ConsentOptions {
    * taken as finished: such a claim is listed rather than lost.
    */
   firstImportDoneAt?: Readonly<Record<string, string | null | undefined>>;
+  /**
+   * EACH MAILBOX'S WINDOW (RULING-026). When present a message is judged by its own mailbox's
+   * window and the three account fields above are not read; a mailbox it does not name is listed
+   * whole — the server's admitting `else`. A sender is waiting when active in ANY of its mailboxes.
+   * Absent (an older server): the account fields, as before.
+   */
+  byMailbox?: Readonly<Record<string, MailboxScreening>>;
 }
 
 /** The domain half of an address, lower-cased, or `null` when there is not one. */
@@ -429,12 +453,13 @@ const NO_SENDERS: ReadonlySet<string> = new Set();
 /** The senders a claim at the gate is held for inside the cutline ({@link claimInside}) — the server's
  *  `senderHasHeldClaimSql` with its cutoff, and like it not a row the person skip takes ({@link personSkip}). */
 function sendersWithAHeldClaim(
-  messages: readonly EngineMessage[], cutoff: number, index: ConsentIndex,
+  messages: readonly EngineMessage[], cutOf: ReturnType<typeof cutlineOfMailbox>, index: ConsentIndex,
   imports: ConsentOptions["firstImportDoneAt"],
 ): ReadonlySet<string> {
   const out = new Set<string>();
   for (const m of messages) {
-    if (m.folder === "ohmail/Screener" && m.senderCheck?.reason === "impersonation" && claimInside(m, cutoff, imports)) {
+    if (m.folder === "ohmail/Screener" && m.senderCheck?.reason === "impersonation"
+        && claimInside(m, cutOf(m.mailboxId).cutoff, imports)) {
       const key = senderKey(m.from.address);
       if (!personSkip(index, m, key)) out.add(key);
     }
@@ -517,6 +542,93 @@ export function cutlineFor(
   return { cutoff: from - days * 24 * 60 * 60 * 1000, baselined: baseline !== null, allTime: false };
 }
 
+type Cutline = ReturnType<typeof cutlineFor>;
+/** The server's admitting arm: no date retires anybody. */
+const ADMIT: Cutline = { cutoff: -Infinity, baselined: false, allTime: true };
+
+/**
+ * `GET /consent`'s `screeningByMailbox`, entry by entry — one reader for the web, the desktop and
+ * the phone. An entry this build cannot read is dropped, so its mailbox is admitted; no map is `null`.
+ */
+export function readScreeningByMailbox(raw: unknown): Readonly<Record<string, MailboxScreening & ScreeningSource>> | null {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+  const out: Record<string, MailboxScreening & ScreeningSource> = {};
+  for (const [id, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v !== "object" || v === null) continue;
+    const e = v as Record<string, unknown>;
+    if (typeof e.dormancyDays !== "number" || !Number.isFinite(e.dormancyDays)) continue;
+    if (e.baselineAt !== null && typeof e.baselineAt !== "string") continue;
+    const source = e.source === "own" || e.source === "organizer" || e.source === "unread" || e.source === "unstated"
+      ? e.source : undefined;
+    const holder = typeof e.holder === "object" && e.holder !== null ? (e.holder as { name?: unknown }).name : null;
+    out[id] = {
+      baselineAt: e.baselineAt as string | null, dormancyDays: e.dormancyDays,
+      scope: e.scope === "all_time" ? "all_time" : "window",
+      ...(source === undefined ? {} : { source }),
+      holderName: typeof holder === "string" && holder.length > 0 ? holder : null,
+    };
+  }
+  return out;
+}
+
+/**
+ * THE WIDEST WINDOW IN THE MAP, for the mirror's prune ({@link OhmailEngine.setCutline}): the prune is
+ * mirror-wide, so it keeps what ANY mailbox's organizer still screens by — `all_time` anywhere is
+ * `all_time`. `null` for no map; the caller then states the account's own fields, as before.
+ */
+export function widestWindowOf(
+  byMailbox: Readonly<Record<string, MailboxScreening>> | null | undefined,
+): { dormancyDays: number | null; scope: "window" | "all_time" } | null {
+  if (byMailbox == null) return null;
+  const all = Object.values(byMailbox);
+  if (all.some((w) => w.scope === "all_time")) return { dormancyDays: null, scope: "all_time" };
+  const days = all.map((w) => w.dormancyDays).filter((d) => Number.isFinite(d));
+  return { dormancyDays: days.length === 0 ? null : Math.max(...days), scope: "window" };
+}
+
+/**
+ * THE CUTLINE A MESSAGE OF `mailboxId` IS JUDGED BY: the account's one cutline without a map, the
+ * mailbox's own with one, and {@link ADMIT} for a mailbox the map does not name.
+ */
+export function cutlineOfMailbox(opts: ConsentOptions): (mailboxId: string | undefined) => Cutline {
+  const by = opts.byMailbox;
+  if (by === undefined) {
+    const one = cutlineFor(opts);
+    return () => one;
+  }
+  const memo = new Map<string, Cutline>();
+  return (mailboxId) => {
+    if (mailboxId === undefined || !Object.prototype.hasOwnProperty.call(by, mailboxId)) return ADMIT;
+    let c = memo.get(mailboxId);
+    if (c === undefined) {
+      const w = by[mailboxId]!;
+      c = cutlineFor({
+        ...(opts.now === undefined ? {} : { now: opts.now }),
+        dormancyDays: w.dormancyDays, baselineAt: w.baselineAt, screeningScope: w.scope,
+      });
+      memo.set(mailboxId, c);
+    }
+    return c;
+  };
+}
+
+/**
+ * WHAT A READER SAYS ABOUT ITS COUNT: `null` while every mailbox is screened by a stated window;
+ * otherwise the folder-whole state and whose window is missing — `unstated` (an older organizer)
+ * before `unread` (not read yet), then by mailbox id, so one sentence names one holder.
+ */
+export function screeningDegrade(
+  byMailbox: Readonly<Record<string, ScreeningSource>> | null | undefined,
+): { state: "unread" | "unstated"; holderName: string | null } | null {
+  if (byMailbox == null) return null;
+  const ids = Object.keys(byMailbox).sort();
+  for (const state of ["unstated", "unread"] as const) {
+    const id = ids.find((k) => byMailbox[k]!.source === state);
+    if (id !== undefined) return { state, holderName: byMailbox[id]!.holderName ?? null };
+  }
+  return null;
+}
+
 /**
  * ACTIVE if the sender has mail worth a decision today, DORMANT otherwise.
  * Without a baseline: any unread mail (regardless of age — that is exactly
@@ -534,7 +646,7 @@ export function senderActivity(
   /** The rules in force ({@link consentIndex}), for the held claim's person-consent half; absent = none. */
   index: ConsentIndex | null = null,
 ): Map<string, SenderActivity> {
-  const { cutoff, baselined, allTime } = cutlineFor(opts);
+  const cutOf = cutlineOfMailbox(opts);
 
   const out = new Map<string, SenderActivity>();
   for (const m of messages) {
@@ -542,6 +654,8 @@ export function senderActivity(
     const key = senderKey(m.from.address);
     if (own.has(key)) continue;
     if (out.get(key) === "active") continue;
+    // Per message, by its own mailbox's window: active in ANY mailbox is active.
+    const { cutoff, baselined, allTime } = cutOf(m.mailboxId);
     // ALL TIME IS A MODE, NOT A CUTOFF — the server's `activeSenderExpr` returns `true` here and
     // reads no date at all. Answering it through `cutoff = -Infinity` made it a comparison, so a
     // row with no instant read "not recent" and its sender retired under the one setting that
@@ -603,8 +717,8 @@ export function consentPartition(reader: EntityReader, opts: ConsentOptions = {}
   // The same line {@link senderActivity} measures from, read here for outbound mail — see the
   // own-sent branch below. One call, so the two halves of the partition cannot disagree about
   // where the cutline is.
-  const { cutoff } = cutlineFor(opts);
-  const heldClaim = sendersWithAHeldClaim(messages, cutoff, index, opts.firstImportDoneAt);
+  const cutOf = cutlineOfMailbox(opts);
+  const heldClaim = sendersWithAHeldClaim(messages, cutOf, index, opts.firstImportDoneAt);
 
   const placeOf = new Map<string, Folder | null>();
   /** Messages whose sender is consented, by thread — the anchor the thread rule uses. */
@@ -667,12 +781,12 @@ export function consentPartition(reader: EntityReader, opts: ConsentOptions = {}
         if (!own.has(key) && !m.unread && !isResurfaced(m)) {
           const decided = decidedDestination(index, m.from.address, m.mailboxId);
           const ms = messageMs(m);
-          if (!rulesOnly && decided === null && ms !== null && ms < cutoff) historyIds.add(m.id);
+          if (!rulesOnly && decided === null && ms !== null && ms < cutOf(m.mailboxId).cutoff) historyIds.add(m.id);
         }
         continue;
       }
       const sentMs = messageMs(m);
-      if (!rulesOnly && !isResurfaced(m) && sentMs !== null && sentMs < cutoff) {
+      if (!rulesOnly && !isResurfaced(m) && sentMs !== null && sentMs < cutOf(m.mailboxId).cutoff) {
         placeOf.set(m.id, null);
         historyIds.add(m.id);
       } else {

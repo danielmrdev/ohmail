@@ -38,7 +38,7 @@ import { dialect, pgOnly, type Dialect } from "@trafficflow/db/dialect";
 import { effectForDestination } from "../rules.js";
 // The Sent shape's single source — the stale-residue cleanup must never take a Sent row (its
 // export in imap-types.ts carries the watermark argument).
-import { SENT_SHAPED_CANONICAL } from "./imap-types.js";
+import { SENT_SHAPED_CANONICAL, userFolderExclusion } from "./imap-types.js";
 /* The stop's two shapes, imported rather than respelt: `BudgetStop` is what a pass REPORTS (it
    names the folder), `FolderBudgetStop` what one folder's row HOLDS (the row names it). */
 import type { BudgetStop, FolderBudgetStop, ImapConfig, MailboxAdapter } from "./imap-types.js";
@@ -477,6 +477,13 @@ export interface WorkerRepo extends RepoPort, RoutingPort {
   tombstoneFolderMessages(accountId: string, mailboxId: string, folder: string, limit: number, sentFolder?: string | null): Promise<number>;
   /** The folder left the server: drop its inventory row (CASCADE takes a subject op) + tombstone. */
   removeFolderRow(accountId: string, folderId: string): Promise<void>;
+  /**
+   * A folder the SERVER stated does not exist (`ChangeBatch.foldersGone`): forget every instance
+   * still spelled there, at any epoch, then drop its row and write the folder `delete` every
+   * folder list drains. `held` when a user's command owns the row (dropping it would cascade the
+   * command away); `absent` when no row exists. Optional: a fake repo without it retires nothing.
+   */
+  retireGoneFolder?(accountId: string, mailboxId: string, folder: string): Promise<"retired" | "held" | "absent">;
   /** The honest refusal: `status='failed'` + the closed code, carried on the entity until dismissed. */
   failFolderOp(op: Pick<FolderOpRow, "id" | "accountId" | "folderId">, error: string): Promise<void>;
   /** A transient miss: count the attempt, keep the command pending for the next cycle. */
@@ -2626,6 +2633,13 @@ export class DrizzleRepo implements WorkerRepo, RoutingPort {
      * and without it, so the conflict arm keeps the stored count wherever the row brought none.
      */
     const excluded = (c: string) => sql.raw("excluded." + c);
+    // A folder the server listed that has NO row yet is a folder every client's list lacks: its
+    // first row writes the folder `create` the delta carries, as the retirement writes the delete.
+    // Without it a folder made elsewhere, or made again after it left, waited for a re-snapshot.
+    const names = entries.map((e) => e.folder);
+    const had = new Set((await this.db.select({ folder: mailboxFolders.folder }).from(mailboxFolders)
+      .where(and(eq(mailboxFolders.mailboxId, mailboxId), inArray(mailboxFolders.folder, names))))
+      .map((r) => r.folder));
     await this.db.insert(mailboxFolders).values(entries.map(({ folder, cursor }) => ({
       mailboxId, folder,
       uidvalidity: BigInt(cursor.uidValidity), uidnext: BigInt(cursor.uidNext), highestmodseq: BigInt(cursor.highestModseq),
@@ -2638,6 +2652,30 @@ export class DrizzleRepo implements WorkerRepo, RoutingPort {
         serverExists: sql`coalesce(${excluded("server_exists")}, ${mailboxFolders.serverExists})`,
       },
     });
+    await this.announceNewFolders(mailboxId, names.filter((n) => !had.has(n) && userFolderExclusion(n) === null));
+  }
+
+  /**
+   * The folder `create` for rows this call made, read back by name. Callers pass only paths the
+   * one exclusion rule admits; the materializer still decides the rest (a mailbox with folders
+   * off drains it as a tombstone of an id nobody holds).
+   */
+  private async announceNewFolders(mailboxId: string, made: readonly string[]): Promise<void> {
+    if (made.length === 0) return;
+    const [mb] = await this.db.select({ accountId: mailboxes.accountId }).from(mailboxes)
+      .where(eq(mailboxes.id, mailboxId)).limit(1);
+    if (!mb) return;
+    const rows = await this.db.select({ id: mailboxFolders.id }).from(mailboxFolders)
+      .where(and(eq(mailboxFolders.mailboxId, mailboxId), inArray(mailboxFolders.folder, [...made])));
+    const changes = rows.map((r) => ({
+      accountId: mb.accountId, entityType: "folder" as const, entityId: r.id, op: "create" as const, meta: null,
+    }));
+    // Every production caller is inside the cycle's write group; a bare handle opens its own.
+    if (typeof (this.db as unknown as { rollback?: unknown }).rollback === "function") {
+      await recordChangesTx(this.db as LedgerTx, changes);
+    } else {
+      await this.db.transaction(async (tx) => { await recordChangesTx(tx as unknown as LedgerTx, changes); });
+    }
   }
 
   /**
@@ -2657,6 +2695,8 @@ export class DrizzleRepo implements WorkerRepo, RoutingPort {
     // UPSERT, because the stopped folder is one this pass took NOTHING from: it may have no row
     // at all yet, and a row whose three cursor columns stay NULL is exactly the cold state the
     // adapter already reads for a folder with no row.
+    const [had] = await this.db.select({ id: mailboxFolders.id }).from(mailboxFolders)
+      .where(and(eq(mailboxFolders.mailboxId, mailboxId), eq(mailboxFolders.folder, stop.folder))).limit(1);
     await this.db.insert(mailboxFolders).values({
       mailboxId, folder: stop.folder,
       budgetStopUid: BigInt(stop.uid), budgetStopUidvalidity: BigInt(stop.uidValidity),
@@ -2664,6 +2704,7 @@ export class DrizzleRepo implements WorkerRepo, RoutingPort {
       target: [mailboxFolders.mailboxId, mailboxFolders.folder],
       set: { budgetStopUid: BigInt(stop.uid), budgetStopUidvalidity: BigInt(stop.uidValidity) },
     });
+    if (!had && userFolderExclusion(stop.folder) === null) await this.announceNewFolders(mailboxId, [stop.folder]);
   }
 
   /**
@@ -3063,6 +3104,25 @@ export class DrizzleRepo implements WorkerRepo, RoutingPort {
     await this.recordChange({
       accountId, entityType: "folder", entityId: folderId, op: "delete", meta: null,
     });
+  }
+
+  async retireGoneFolder(accountId: string, mailboxId: string, folder: string): Promise<"retired" | "held" | "absent"> {
+    const [row] = await this.db.select({ id: mailboxFolders.id }).from(mailboxFolders)
+      .where(and(eq(mailboxFolders.mailboxId, mailboxId), eq(mailboxFolders.folder, folder))).limit(1);
+    if (!row) return "absent";
+    const [op] = await this.db.select({ id: folderOps.id }).from(folderOps)
+      .where(eq(folderOps.folderId, row.id)).limit(1);
+    if (op) return "held";
+    // The server's statement covers every epoch: residue of a dead one is no copy either, and a
+    // row-less folder would turn it into a "maybe alive" survivor the reaper never takes.
+    const residue = await this.db.select({ uidvalidity: messageInstances.uidvalidity, uid: messageInstances.uid })
+      .from(messageInstances)
+      .where(and(eq(messageInstances.mailboxId, mailboxId), eq(messageInstances.folder, folder)));
+    for (const r of residue) {
+      await this.forgetInstanceAt(mailboxId, { folder, ref: `${String(r.uidvalidity)}:${r.uid}` });
+    }
+    await this.removeFolderRow(accountId, row.id);
+    return "retired";
   }
 
   async failFolderOp(op: Pick<FolderOpRow, "id" | "accountId" | "folderId">, error: string): Promise<void> {

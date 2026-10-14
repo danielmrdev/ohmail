@@ -26,6 +26,10 @@ import { portRefusal, type StandaloneFields } from "../ui/standalone-form";
  */
 export type ClaimHereOutcome =
   | "claimed" | "held" | "unreadable"
+  /** Held, and this person's consent was recorded without a claim: their next Start takes it. */
+  | "held_consented"
+  /** Held, over a mailbox this install organized: its claim watch takes it back by itself. */
+  | "held_returns"
   /** The gate cannot read `ohmail/_meta` for a reason fixed on the mail server — the desktop row's sentence. */
   | "meta_folder_full" | "meta_undeletable"
   | "refused";

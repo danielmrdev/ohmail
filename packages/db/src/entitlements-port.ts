@@ -259,6 +259,63 @@ export interface RefundObligationPort {
 }
 
 /**
+ * What {@link reverseCharge} tells its door, so each door writes its own line: no store was
+ * composed, the debt write threw, or the refund settled and marking the debt paid threw.
+ */
+export type ReverseChargeFact =
+  | { fact: "no_store" }
+  | { fact: "unrecorded"; err: unknown }
+  | { fact: "settle_failed"; err: unknown };
+
+/** One reversal: the program's receipt, and whether the debt was written. */
+export interface ReverseChargeResult {
+  receipt: ReleaseReceipt;
+  owed: boolean;
+}
+
+/**
+ * REVERSE A CHARGE THAT BOUGHT NOTHING — the debt, the release, the settlement, in that order, for
+ * every door that reverses an attempt it was told it charged. A debt that cannot be written is
+ * said and the release is still tried. Only a written debt is settled, and only on `settled`. A
+ * settle that throws is said, never thrown: the program took the refund, and the drain's re-send
+ * of the open debt names the same attempt, which the program reverses once. A release that throws
+ * propagates (the port says it never does).
+ */
+export async function reverseCharge(
+  gate: Pick<SpendPort, "release">,
+  obligations: RefundObligationPort | undefined,
+  charge: RefundObligation & { usage?: readonly AiUsageLine[] },
+  say: (fact: ReverseChargeFact) => void,
+): Promise<ReverseChargeResult> {
+  const { usage, ...debt } = charge;
+  let owed = false;
+  if (!obligations) {
+    say({ fact: "no_store" });
+  } else {
+    try {
+      await obligations.owe(debt);
+      owed = true;
+    } catch (err) {
+      // Said to the door, never thrown: the refund below is still tried.
+      say({ fact: "unrecorded", err });
+    }
+  }
+  const receipt = await gate.release(debt.accountId, {
+    action: debt.action, attemptKey: debt.attemptKey, refund: true, attempt: debt.attempt,
+    ...(debt.meta ? { meta: debt.meta } : {}), ...(usage ? { usage } : {}),
+  });
+  if (owed && receipt === "settled") {
+    try {
+      await obligations!.settle(debt.accountId, debt.attempt);
+    } catch (err) {
+      // Said to the door, never thrown: the program took the refund, and the open debt is the drain's.
+      say({ fact: "settle_failed", err });
+    }
+  }
+  return { receipt, owed };
+}
+
+/**
  * What erasure learned when it stopped the money — the erasure response's own three values, so
  * nothing translates between them and none of them can be reported as another.
  */

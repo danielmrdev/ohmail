@@ -450,7 +450,7 @@ export const WORKER_PASSES: readonly WorkerPass[] = [
     name: "proposal_generate",
     module: `${W}/proposal-cron.ts`, entry: "proposalGeneratePass",
     triggers: ["cron-backstop"],
-    cadence: "runProposalCron process (a reconcile-cron sibling); pass runs per account",
+    cadence: "operator invocation; unscheduled in production",
     budget: "spend-gated through the AI credit gate; per-account isolation",
     owns: "AI proposals are generated between visits without a user press",
     fence: "the worker's leader lock",

@@ -1,12 +1,9 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
-// `@trafficflow/core/mail`, NOT the default barrel: this module rides into the desktop
-// ENGINE bundle through `sync-service.ts`, and the default barrel puts the classifier and the
-// drafter (and, through them, the private cloud schema) into esbuild's input graph — which the
-// engine's private-input gate refuses outright (`scripts/engine-bundle.mjs`). The mail barrel
-// is the vocabulary half, exactly what imap-types.ts does internally for the same reason.
-import { DESTINATIONS } from "@trafficflow/core/mail";
-// The Sent shape's single source — see its export for the two readers and their stakes.
-import { SENT_SHAPED_CANONICAL } from "@trafficflow/core/adapters/imap-types";
+// A core LEAF, NOT the default barrel: this module rides into the desktop ENGINE bundle through
+// `sync-service.ts`, and the default barrel puts the classifier and the drafter (and, through
+// them, the private cloud schema) into esbuild's input graph, which the engine's private-input
+// gate refuses outright (`scripts/engine-bundle.mjs`).
+import { userFolderExclusion } from "@trafficflow/core/adapters/imap-types";
 import { accountSettings, folderOps, mailboxFolders, mailboxes } from "@trafficflow/db";
 import type { Db } from "./context.js";
 
@@ -16,36 +13,16 @@ import type { Db } from "./context.js";
  * `ohmail` namespace, and THE SENT FOLDER — an open edge: the worker resolves Sent at connect and
  * does not persist the answer, so this module can only recognise Sent-SHAPED paths; the residual
  * appears as a user folder until the resolved path is persisted beside `mailboxes.junk_folder`.
- * STALENESS is the second edge: rows are never deleted, so a folder renamed elsewhere reads as a
- * PHANTOM until discovery learns to prune — bounded and honest: a phantom renders EMPTY, never
- * with another folder's mail. Nothing here writes to the mailbox.
+ * A row whose folder the server states gone is retired by the worker's cycle, and a new row
+ * announces itself, so the list follows the server. Nothing here writes to the mailbox.
  */
 
 /**
- * Sent-shaped canonical paths, at top level or under the INBOX prefix — the adapter's Sent belt
- * (`folder-roles.ts`) plus the German localized family the SPECIAL-USE resolver can surface. Deliberately
- * NOT matching nested forms (`Alternativen/Sent Messages` is a folder the user keeps, and the
- * resolver would never pick it): the anchor covers exactly the places a resolved Sent can live.
+ * Why a `mailbox_folders` row is NOT one of the user's own folders, or `null` when it IS. Lives
+ * beside the passive rule in core, so the worker's folder `create` asks the same question this
+ * module's reads do.
  */
-const SENT_SHAPED = SENT_SHAPED_CANONICAL;
-
-/** The `ohmail` namespace, in canonical form, at any depth — imap-types' spelling. */
-const OHMAIL_SEGMENT = /(?:^|\/)ohmail(?:\/|$)/i;
-
-/**
- * Why this `mailbox_folders` row is NOT one of the user's own folders, or `null` when it IS —
- * `passiveFolderExclusion`'s answer shape, for its reason: a folder that did not become an
- * entity should be explainable in a sentence, not a boolean.
- */
-export function userFolderExclusion(path: string): string | null {
-  if (path.toUpperCase() === "INBOX") return "it is the Imbox";
-  if ((DESTINATIONS as readonly string[]).includes(path)) {
-    return "it is one of the folders ohmail organizes";
-  }
-  if (OHMAIL_SEGMENT.test(path)) return "it is inside the ohmail namespace";
-  if (SENT_SHAPED.test(path)) return "it is the mailbox's Sent folder";
-  return null;
-}
+export { userFolderExclusion } from "@trafficflow/core/adapters/imap-types";
 
 /**
  * A pending or failed user COMMAND on this folder (`folder_ops`, mail 0074) — what lets every

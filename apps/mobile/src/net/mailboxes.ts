@@ -314,7 +314,11 @@ export type OrganizeOutcome =
    * `""` where the claim named nothing — "named nobody" and "nobody holds it" are different facts
    * and the STATUS is what tells them apart, so an absent member here would collapse them.
    */
-  | { kind: "held"; name: string; holderKind: string }
+  | {
+    kind: "held"; name: string; holderKind: string;
+    /** The door recorded this person's agreement without a claim (`consentRecorded`); absent reads false. */
+    consentRecorded: boolean;
+  }
   /** Nothing was recorded, and the sentence says what the route answered. */
   | { kind: "refused"; reason: Refusal };
 
@@ -371,14 +375,16 @@ export async function organizeHere(
    * holder is a 409 with the holder named, whoever pressed. The holder rides the body (no other
    * source), and a malformed body is still a `held` — the STATUS is the fact, the name the detail. */
   if (res.status === 409) {
-    const held = await res.json().then(
-      (b) => (b as { holder?: { name?: unknown; kind?: unknown } }).holder,
+    const body = await res.json().then(
+      (b) => b as { holder?: { name?: unknown; kind?: unknown }; consentRecorded?: unknown },
       () => undefined,
     );
+    const held = body?.holder;
     return {
       kind: "held",
       name: typeof held?.name === "string" ? held.name : "",
       holderKind: typeof held?.kind === "string" ? held.kind : "",
+      consentRecorded: body?.consentRecorded === true,
     };
   }
   /* ── A LOOK THAT DID NOT LAND IS NOT A NUMBER ─────────────────────────────────────────────

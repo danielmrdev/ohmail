@@ -24,7 +24,7 @@ import { ListDetail, useListDetail } from "../../src/ui/list-detail";
 import { MailList, type RowFrame } from "../../src/ui/MailList";
 import { AttachmentTiles, MessageReader } from "../../src/ui/MessageReader";
 import { FadeOut } from "../../src/ui/FadeOut";
-import { MarkAllRead } from "../../src/ui/MarkAllRead";
+import { MarkAllRead, VIEW_HEAD_ROW } from "../../src/ui/MarkAllRead";
 import { SkeletonList } from "../../src/ui/Skeleton";
 import { useLocale } from "../../src/i18n/LocaleProvider";
 import { SurfaceBoundary } from "../../src/ui/ErrorBoundary";
@@ -120,12 +120,11 @@ function ReadsBody() {
         refresh={pull}
         head={
           <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <View style={VIEW_HEAD_ROW}>
               <Txt variant="h1">{Copy.reads}</Txt>
               <Txt variant="meta" tone="ink3" tabular>
                 {metaWhen(surface, meta) ?? " "}
               </Txt>
-              <View style={{ flex: 1 }} />
               {/* The web's ReadsView press, both halves: flip the stream's unread AND commit the
                   waterline above the newest issue — a fresh-only stream ("2 new", nothing
                   unread) still gets its clearing control. */}

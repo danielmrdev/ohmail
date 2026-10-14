@@ -1,6 +1,6 @@
 import {
   buildSeedReview, confirmSeed, consentSettings, cutlineCounts, mailboxFoldersOff,
-  effectiveMailboxSignatures,
+  effectiveMailboxSignatures, effectiveScreeningWindows,
   resetScreeningState, setAutoAct, setAutoSuggest, setBlockAutoUnsubscribe, setBlockRemoteImages,
   setBlockTrackingPixels,
   setDormancyDays, setFoldersEnabled, setLocale, setMailboxFoldersEnabled, setMailboxSignature,
@@ -685,19 +685,14 @@ export const consentRoutes: Route[] = [
       const ctx = serviceContext(deps, req);
       const settings = await consentSettings(ctx);
       const dormancyDays = settings.dormancyDays ?? DEFAULT_DORMANCY_DAYS;
-      // BOTH SIDES OF THE CUTLINE FROM ONE READ. The count below and the `screeningBaselineAt`
-      // sent to the client are computed from the SAME `settings` row, so the number the shell
-      // shows and the partition it draws can never be measured from different baselines — which
-      // is the failure a second `consentSettings()` call, or a client that fetched the baseline
-      // on its own, would eventually produce.
-      const baselineAt = settings.screeningBaselineAt === null
-        ? null
-        : new Date(settings.screeningBaselineAt);
+      // EACH MAILBOX'S WINDOW, from the one resolver the queue reads (RULING-026): the count, the
+      // queue and the client's partition are measured against the same per-mailbox cutlines.
+      const windows = await effectiveScreeningWindows(ctx);
       // THE SENDER COUNTS ARE AN OPT-IN (`?counts=1`, exactly "1"): a whole-mailbox aggregate that no
       // first-party client reads, and this route is read on every boot and every phone drain. Absent
       // from the body otherwise, which every client already reads as unknown.
       const counts = new URL(req.url).searchParams.get("counts") === "1"
-        ? await cutlineCounts(ctx, { dormancyDays, baselineAt })
+        ? await cutlineCounts(ctx, { windows })
         : undefined;
       /* BOTH SIGNATURE MAPS FROM ONE READ, and it is the read that knows about the ORGANIZER.
          On a mailbox this install only reads, `mailboxes.signature` is a dead local copy and the
@@ -721,6 +716,10 @@ export const consentRoutes: Route[] = [
         // the row, found no baseline" from "this server predates mail 0056" — the wire already
         // carries the difference for the day one of them acts on it.
         screeningBaselineAt: settings.screeningBaselineAt,
+        // THE WINDOW EACH MAILBOX IS SCREENED BY, and whose: `own` (this install organizes it),
+        // `organizer` (the organizer's published window), `unread`/`unstated` (the folder whole,
+        // said). The three fields above stay the account's own row, for clients that predate this.
+        screeningByMailbox: Object.fromEntries(windows),
         // AUTO-SUGGEST, as the INSTANT it was turned on or `null` for off. Deliberately not
         // normalised to a boolean the way `dormancyDays` is normalised to a number: a window is
         // useless to a client without a value, whereas "off" is a complete and actionable

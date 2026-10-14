@@ -88,6 +88,8 @@ import {
   mirrorSettled,
   presentedWorld,
   scheduleLabel,
+  answersPerMailbox,
+  widestWindowOfAnswer,
   screeningAnswered,
   SCREENING_UNANSWERED,
   SCREENING_UNSUPPLIED,
@@ -969,6 +971,9 @@ export function WorldProvider({ children }: { children: ReactNode }) {
     () => ownAddressesOf(mailboxes ?? []),
     [mailboxes],
   );
+  /** The roster as it stands now, for `LiveDeps.readsOnly` — behind a ref for the same reason. */
+  const mailboxesNow = useRef<readonly PhoneMailbox[] | null>(null);
+  mailboxesNow.current = mailboxes;
   /**
    * THE PROJECTION THE LISTS ARE DRAWN FROM, behind a ref for `addressesNow`'s reason: the
    * actions facade keeps ONE identity for the session while this reader is rebuilt per mirror
@@ -1318,6 +1323,12 @@ export function WorldProvider({ children }: { children: ReactNode }) {
         // captured `locale` would stamp Trash rows in the mount-time language for ever.
         locale: () => activeLocale(),
         ownAddresses: () => addressesNow.current,
+        /* A READER ROW ON THIS ROSTER: piles and tags there wait for the server's answer. */
+        readsOnly: (mailboxId) => {
+          const row = mailboxesNow.current?.find((m) => m.id === mailboxId);
+          return row?.organizerRole === "reader"
+            ? { organizedBy: row.organizedBy, organizerState: row.organizerState } : null;
+        },
         // A GETTER, like the addresses beside it and for the same reason: this facade is
         // identity-stable while the consent read that carries the time lands later, so the
         // horizon-less verbs must ask at every use rather than capture a boot-time null.
@@ -1604,8 +1615,9 @@ export function WorldProvider({ children }: { children: ReactNode }) {
     /* ONLY AN ANSWER IS A CUTLINE. `unanswered` is the read still outstanding and `unsupplied` is
        a server that carries none of the three fields — neither is a cutoff, and handing the engine
        one built from either is the wide guess this posture exists to stop. */
+    // Each mailbox's organizer's window where the answer says (RULING-026): the phone's own row is inert.
     engine.setCutline(screening.state === "answered"
-      ? { dormancyDays: screening.answer.dormancyDays, scope: screening.answer.scope }
+      ? widestWindowOfAnswer(screening) ?? { dormancyDays: screening.answer.dormancyDays, scope: screening.answer.scope }
       : null);
   }, [engine, screening]);
 
@@ -1639,7 +1651,10 @@ export function WorldProvider({ children }: { children: ReactNode }) {
     /* THE STANDALONE DOOR HAS NOBODY TO ASK — this app IS the engine there and `GET /consent` is
        a route this session does not dial. Waiting for an answer that can never arrive would
        withhold the Screener for the life of the session, so that door is `unsupplied`. */
-    const posture: ScreeningPosture = session.standalone ? SCREENING_UNSUPPLIED : screening;
+    /* …UNLESS ITS OWN ENGINE ANSWERED WITH EACH MAILBOX'S WINDOW (RULING-026): the map names the
+       organizer's window for every mailbox, so the standalone door partitions by it too. */
+    const posture: ScreeningPosture = !session.standalone || answersPerMailbox(screening)
+      ? screening : SCREENING_UNSUPPLIED;
     return projector.project({
       engine, worldKey: session.ownerKey, standalone: session.standalone, bearer: session.bearer,
       /* Whose mail this is, in words a person reads: a paired door names its server's host and the

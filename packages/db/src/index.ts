@@ -417,7 +417,7 @@ export {
  * it is store-neutral — the phone runs the same engine on the device store.
  */
 export {
-  resolveCutline, senderIsActiveSql, senderIsDecidedSql, senderIsOwnSql, senderScreenedOutByPersonSql, activeSenderExpr, anyOf,
+  resolveCutline, cutlineArms, perMailboxSql, senderIsActiveSql, senderIsDecidedSql, senderIsOwnSql, senderScreenedOutByPersonSql, activeSenderExpr, anyOf,
   senderHasHeldClaimSql, heldClaimInsideSql, heldClaimWaitsSql, personSkipSql, senderHasPersonConsentSql,
   CUTLINE_PERSON_WRITTEN_PROVENANCE,
   mailboxCountsAsOwn, mailboxCountsAsOwnSql,
@@ -425,7 +425,7 @@ export {
   cutlineInstant,
   CUTLINE_PRESENTED_FOLDERS, CUTLINE_DEFAULT_DORMANCY_DAYS, CUTLINE_ALLOW_DESTINATIONS,
   CUTLINE_DECIDED_DESTINATIONS, CUTLINE_GATE_FOLDER, destinationIsDecision, destinationIsDecisionSql,
-  type CutlineFacts, type ResolvedCutline,
+  type CutlineFacts, type CutlineSet, type ResolvedCutline,
 } from "./screener-cutline.js";
 
 /** The account's own addresses, read whole for the router's gate, and the one-time release of own mail it filed there. */
@@ -478,6 +478,7 @@ export {
   type SpendOutcome, type SpendAction, type SpendRelease, type ReleaseOutcome,
   type ReleaseReceipt, type UsageReceipt, type RefundObligation, type RefundObligationPort,
   type RefundObligationReason, type ReturnConfirmOutcome,
+  reverseCharge, type ReverseChargeFact, type ReverseChargeResult,
   aiUsageLineOf, AI_USAGE_LINES_PER_POST, AI_USAGE_LINES_PER_RELEASE,
   type AiUsageLine, type AiUsageHost, type AiUsageCounts,
 } from "./entitlements-port.js";

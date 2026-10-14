@@ -12,9 +12,10 @@ import {
   screenerSuggestionsBySender,
   SCREENER_SUGGESTION_PROVENANCE,
   UNPRICED,
+  reverseCharge, type ReverseChargeFact,
   // 0.14.1, 0.14.1 — the request path. See `screener-apply.ts` and `organizer-role.ts` in
   // `@trafficflow/db` for why the transactional core and the eligibility read live there.
-  resolveCutline, senderIsActiveSql, senderIsDecidedSql, senderIsOwnSql, heldSortKey, type ResolvedCutline,
+  senderIsActiveSql, senderIsDecidedSql, senderIsOwnSql, heldSortKey, type CutlineSet,
   senderHasHeldClaimSql, heldRowById, applyScreenerDecision, AccountErasedError, readAccountErasedAt, domainOf, ruleNamesSenderSql,
   readRequestEligibility, decisionCanBeApplied, readListAddresses,
   listOutstandingForAccount,
@@ -27,7 +28,7 @@ import {
  * answers. This service names a gate it may be handed; it never builds one, and it must
  * compile in a deployment where no gate and no ledger exist. */
 import type {
-  AccessPort, ActionPricing, AiCreditGate, AiRefusalReason, AiUsageHost, SpendPort,
+  AccessPort, ActionPricing, AiCreditGate, AiRefusalReason, AiUsageHost, RefundObligationPort, SpendPort,
 } from "@trafficflow/db";
 import { carryDialect, dialect } from "@trafficflow/db/dialect";
 import { usageLines } from "./ai-usage-lines.js";
@@ -55,6 +56,7 @@ import { materializeRules } from "./dto/materialize.js";
 import { ServiceError, IdempotencyRaceLost } from "./errors.js";
 import { refuseAiSpend, type AiRefusalClass } from "./ai-refusal.js";
 import { getScreeningPreference } from "./screening-preference.js";
+import { cutlinesOf, effectiveScreeningWindows } from "./screening-window.js";
 import { LearningService } from "./learning-service.js";
 import { refuseOwnAddressRule, SHARED_PROVIDER_REFUSAL_SENTENCE } from "./rules-service.js";
 import { isSharedProviderDomain, sharedProviderAllowRefusal } from "@trafficflow/core/rule-order";
@@ -76,6 +78,29 @@ type GateRefusal = { refusal: AiRefusalClass; verdict: string; reason?: AiRefusa
  * single warn line on a path whose failure costs one rotation, and nothing reads it back.
  */
 const doorbellLog = createLogger({ service: "filing" });
+
+/** Where a purchase's refund that has no obligation store to remember it is named. */
+const suggestLog = createLogger({ service: "screener" });
+
+/** A purchase's refund facts, as lines naming the account and the attempt — never an address. */
+function saySuggestRefund(f: ReverseChargeFact, accountId: string, attempt: string): void {
+  if (f.fact === "settle_failed") {
+    suggestLog.warn("screener_suggest_refund_settle_failed", {
+      accountId, attempt, err: f.err,
+      reason: "the refund settled and its debt could not be marked paid; the drain sends it again "
+        + "under the same attempt, which the program reverses once",
+    });
+    return;
+  }
+  suggestLog.warn("screener_suggest_refund_unrecorded", {
+    accountId, attempt, ...(f.fact === "unrecorded" ? { err: f.err } : {}),
+    reason: f.fact === "unrecorded"
+      ? "the refund obligation could not be written; the refund is still tried, and a lost "
+        + "release would leave this charge with nothing to reverse it"
+      : "a refund is owed and no obligation store was composed beside the gate, so a lost "
+        + "release would leave this charge with nothing to reverse it",
+  });
+}
 
 /** Where unknown first-contact senders are held (core routing, `source:"screener"`). */
 export const SCREENER_FOLDER: Destination = "ohmail/Screener";
@@ -127,13 +152,6 @@ export interface ScreenerDeps {
      */
     onScreenOut(ctx: ServiceContext, messageIds: string[]): Promise<{ considered: number }>;
   };
-  /**
-   * A READING INSTALL LISTS THE GATE AS FILED — the local door sets it. While this install
-   * organizes none of the account's mailboxes its own screening answer is not in force (the
-   * organizer's is, and it lives on the organizer), and the window retired senders the organizer
-   * still holds at the gate, so the reader's count fell short. Absent: the hosted rule.
-   */
-  readerQueueIsTheGate?: boolean;
 }
 
 /**
@@ -916,15 +934,8 @@ export class ScreenerReadService {
      * the two surfaces that show the same number.
      */
     const preference = await getScreeningPreference(ctx);
-    const resolved = resolveCutline({
-      baselineAt: preference.screeningBaselineAt,
-      dormancyDays: preference.dormancyDays,
-      scope: preference.screeningScope,
-      now: ctx.now(),
-    });
-    // A reading install: the gate as the organizer filed it ({@link ScreenerDeps.readerQueueIsTheGate}).
-    const cutline = this.deps.readerQueueIsTheGate === true && !(await this.organizesAny(ctx))
-      ? { ...resolved, allTime: true } : resolved;
+    // EACH MAILBOX BY ITS ORGANIZER'S WINDOW (RULING-026): the one resolver `GET /consent` reads too.
+    const cutline = cutlinesOf(await effectiveScreeningWindows(ctx), ctx.now());
     const windowed = await this.heldSenderPage(ctx, { after, limit: limit + 1, cutline });
     const unfiltered = windowed.slice(0, limit);
 
@@ -1639,7 +1650,7 @@ export class ScreenerReadService {
        * query before it existed, which is what every caller that reads no `account_settings`
        * gets. See below for why it sits in the OUTER query.
        */
-      cutline?: ResolvedCutline;
+      cutline?: CutlineSet;
     },
   ): Promise<ScreenerRow[]> {
     const held = this.heldSenderReps(ctx);
@@ -1678,26 +1689,18 @@ export class ScreenerReadService {
     return rows.map(toScreenerRow);
   }
 
-  /** Does this install organize any of the account's mailboxes? One indexed read, first page only. */
-  private async organizesAny(ctx: ServiceContext): Promise<boolean> {
-    // scoped-by: eq(mailboxes.accountId, ctx.accountId)
-    const [row] = await ctx.db.select({ id: mailboxes.id }).from(mailboxes)
-      .where(and(eq(mailboxes.accountId, ctx.accountId), eq(mailboxes.organizerRole, "organizer"))).limit(1);
-    return row !== undefined;
-  }
-
   /**
    * THE PAGE'S OWN FILTERS — representative, cutline, decided, own — shared with the count below,
    * so `total` and a walk of every page are one predicate and cannot drift apart.
    */
   private waitingFilters(
-    ctx: ServiceContext, held: ReturnType<ScreenerReadService["heldSenderReps"]>, cutline?: ResolvedCutline,
+    ctx: ServiceContext, held: ReturnType<ScreenerReadService["heldSenderReps"]>, cutline?: CutlineSet,
   ): Array<SQL | undefined> {
     const { reps, d } = held;
     const sender = sql`lower(${reps.fromAddress})`;
     // A held claim that keeps its sender waiting (`heldClaimWaitsSql`): dated by who wrote the fact,
     // never by its Date, and skipped for a person's consent only where the gate would not hold it now.
-    const claim = cutline ? senderHasHeldClaimSql(d, ctx.accountId, sender, cutline.cutoff, SCREENING_AUTH_VERDICTS) : undefined;
+    const claim = cutline ? senderHasHeldClaimSql(d, ctx.accountId, sender, cutline, SCREENING_AUTH_VERDICTS) : undefined;
     return [
       eq(reps.rank, 1),
       cutline ? sql`(${senderIsActiveSql(d, ctx.accountId, sender, cutline)} or ${claim})` : undefined,
@@ -1716,7 +1719,7 @@ export class ScreenerReadService {
    * pages) already took. Counted inside the same account-scoped `reps` subquery, and the in-flight
    * test is a subquery too, so no id list leaves the store however many decisions are queued.
    */
-  protected async heldSenderTotal(ctx: ServiceContext, opts: { cutline?: ResolvedCutline }): Promise<number> {
+  protected async heldSenderTotal(ctx: ServiceContext, opts: { cutline?: CutlineSet }): Promise<number> {
     const held = this.heldSenderReps(ctx);
     const { reps, d } = held;
     const sender = sql`lower(${reps.fromAddress})`;
@@ -1863,7 +1866,12 @@ export class ScreenerService extends ScreenerReadService {
   async suggest(
     ctx: ServiceContext,
     body: ScreenerSuggestBody,
-    opts: { idempotency?: ScreenIdempotency | null } = {},
+    opts: {
+      idempotency?: ScreenIdempotency | null;
+      /** Where a refund this press owes is written down, per request like the drafting route's;
+       *  composed wherever {@link ScreenerSuggestDeps.credits} is. Absent on an unmetered host. */
+      obligations?: RefundObligationPort;
+    } = {},
   ): Promise<ScreenerSuggestResult> {
     /* THE INVOCATION'S CLOCK STARTS HERE — the first statement of the method, before the
        preference read, the held-rows query and the stored-suggestion snapshot. Anchoring it after
@@ -2137,15 +2145,28 @@ export class ScreenerService extends ScreenerReadService {
       let declined = false;
       /** The model call's usage, carried by the release below — a model fault's line included. */
       const usage = usageLines(this.usageHost, ctx.accountId, "screener");
-      /** Give the claim back ONCE — `released` set before the await, so a fault is not retried. */
+      /**
+       * Give the claim back ONCE — `released` set before the await, so a fault is not retried. A
+       * refund goes through `reverseCharge`, as the worker's pass and the drafting route do: the
+       * debt is written first, a write that throws is named and the refund still TRIED, a
+       * `settled` receipt closes only a written debt, and a settle that throws is named.
+       * `drafter_failed` is the closed set's word for a spend whose model call produced nothing
+       * kept (a decline, or a store that faulted).
+       */
       const releaseClaim = async (): Promise<void> => {
         if (!gate || !claimed || released) return;
         released = true;
         const meta = { messageId: r.messageId };
-        const receipt = await gate.release(ctx.accountId, chargedAttempt === null
-          ? { action: "screener", attemptKey, refund: false, meta, ...usage.field() }
-          : { action: "screener", attemptKey, refund: true, attempt: chargedAttempt, meta, ...usage.field() });
-        if (declined && chargedAttempt !== null && receipt === "settled") charged -= price ?? 0;
+        const refunding = chargedAttempt;
+        if (refunding === null) {
+          await gate.release(ctx.accountId, { action: "screener", attemptKey, refund: false, meta, ...usage.field() });
+          return;
+        }
+        const { receipt } = await reverseCharge(gate, opts.obligations, {
+          accountId: ctx.accountId, action: "screener", attemptKey, attempt: refunding, reason: "drafter_failed", meta,
+          ...usage.field(),
+        }, (f) => saySuggestRefund(f, ctx.accountId, refunding));
+        if (declined && receipt === "settled") charged -= price ?? 0;
       };
       try {
         if (gate) {

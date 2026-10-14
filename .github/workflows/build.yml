@@ -78,8 +78,9 @@ name: build
 # render. Nothing this file smoked at the time could have seen it.
 #
 # Signing is macOS-only and conditional. The macOS job signs with a Developer ID
-# and notarizes WHEN this repository holds the Apple secrets, and produces the
-# same ad-hoc artifact as before when it does not — one decision, taken once, in
+# and notarizes WHEN a run on a release tag reads the Apple secrets, and produces
+# the same ad-hoc artifact as before on every other run and when the secrets do
+# not exist — one decision, taken once, in
 # "Import the Developer ID certificate, if there is one". Windows and Linux are
 # not signed at all: no Authenticode certificate, no Linux signing. The README's
 # per-platform notes describe the artifacts a release has actually shipped, which
@@ -117,7 +118,11 @@ name: build
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
+  # When `main` takes pull requests through a merge queue, its required checks (the engine and the
+  # engine-bearing UI) must report on the queue's merge group, or the queue waits until it gives up.
+  merge_group:
   workflow_dispatch:
 
 permissions:
@@ -133,15 +138,22 @@ permissions:
 env:
   OHMAIL_BUILD_SHA: ${{ github.sha }}
 
+# Only a pull request's superseded run is cancelled. A run on main, on a tag or on a merge group has a
+# group of its own — the commit — so it is never cancelled, nor dropped while pending behind another:
+# a release's installers come from those runs.
 concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: true
+  group: build-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   macos:
     name: macOS · smoke · engine · universal app · dmg
     runs-on: macos-15
     timeout-minutes: 60
+    # THE RELEASE ENVIRONMENT, ON A RELEASE TAG ONLY. A run on a `v*` tag takes it, and an Apple
+    # secret kept there is readable by that run and nothing else; every other run takes no
+    # environment, reads no Apple secret and produces the ad-hoc build below.
+    environment: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || '' }}
     defaults:
       run:
         shell: bash
@@ -261,9 +273,10 @@ jobs:
       # re-deciding what "configured" means.
       - name: Import the Developer ID certificate, if there is one
         env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          # Read on a release tag only: on any other ref these are empty and the build is ad-hoc.
+          APPLE_CERTIFICATE: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          KEYCHAIN_PASSWORD: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.KEYCHAIN_PASSWORD || '' }}
         run: |
           set -euo pipefail
           if [ -z "${APPLE_CERTIFICATE:-}" ]; then
@@ -334,9 +347,9 @@ jobs:
       # and it lives in the job-scoped RUNNER_TEMP for the life of the job.
       - name: Stage the notarization key, if there is one
         env:
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY_P8_B64: ${{ secrets.APPLE_API_KEY_P8_B64 }}
+          APPLE_API_KEY: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.APPLE_API_KEY || '' }}
+          APPLE_API_ISSUER: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.APPLE_API_ISSUER || '' }}
+          APPLE_API_KEY_P8_B64: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.APPLE_API_KEY_P8_B64 || '' }}
         run: |
           set -euo pipefail
           if [ "${SIGNED:-0}" != "1" ]; then

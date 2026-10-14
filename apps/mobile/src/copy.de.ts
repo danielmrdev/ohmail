@@ -179,6 +179,14 @@ export const DE: Deck = {
      Telefon nichts schiefgegangen, das Postfach konnte nur nicht gefragt werden. */
   settingsStartHereUnreadable:
     "Dieses Telefon konnte nicht lesen, ob ein anderer Computer dieses Postfach organisiert. Nichts hat sich geändert. Versuche es noch einmal.",
+  settingsStartHeldConsented: (name: string) =>
+    `${name} organisiert dieses Postfach. Dieses Telefon liest es, und deine Zustimmung bleibt gespeichert: Sobald ${name} es freigibt, bietet dieses Telefon das Postfach an, und ein Tippen übernimmt es.`,
+  settingsStartHeldReturns: (name: string) =>
+    `${name} organisiert dieses Postfach. Dieses Telefon liest es und übernimmt es von selbst wieder, sobald ${name} es freigibt, solange ohmail darauf offen ist.`,
+  settingsStartHeldReturnsUnknown:
+    "Eine andere Installation organisiert dieses Postfach. Dieses Telefon liest es und übernimmt es von selbst wieder, sobald sie es freigibt, solange ohmail darauf offen ist.",
+  settingsStartHeldConsentedUnknown:
+    "Eine andere Installation organisiert dieses Postfach. Dieses Telefon liest es, und deine Zustimmung bleibt gespeichert: Sobald sie es freigibt, bietet dieses Telefon das Postfach an, und ein Tippen übernimmt es.",
   /* Die Sätze der Desktop-Zeile, Wort für Wort (`sync.blocked_meta_*`). */
   phoneStateMetaFolderFull:
     "Wird nicht synchronisiert — der Ordner ohmail/_meta auf diesem Server enthält mehr Nachrichten, als ohmail lesen kann. Verschiebe dort abgelegte Mails in einen anderen Ordner und lass die Nachrichten von ohmail stehen (ihr Betreff beginnt mit „ohmail“). ohmail macht dann von selbst weiter.",
@@ -509,6 +517,15 @@ export const DE: Deck = {
     `${n} ${n === 1 ? "Erstabsender wartet" : "Erstabsender warten"}`,
   metaWaitingOnDevice: (n: number) =>
     `${n} ${n === 1 ? "Erstabsender wartet" : "Erstabsender warten"}, auf diesem Telefon gezählt`,
+  screeningUnread: (holder: string) =>
+    `Alle im Screener-Ordner werden angezeigt – die Screening-Einstellungen von ${holder} wurden noch nicht gelesen.`,
+  screeningUnreadNoName:
+    "Alle im Screener-Ordner werden angezeigt – die Screening-Einstellungen des organisierenden Geräts wurden noch nicht gelesen.",
+  screeningUnstated: (holder: string) =>
+    `Auf ${holder} läuft eine ältere ohmail-Version, die ihr Screening-Zeitfenster nicht teilt – alle im Screener-Ordner werden angezeigt.`,
+  screeningUnstatedNoName:
+    "Auf dem organisierenden Gerät läuft eine ältere ohmail-Version, die ihr Screening-Zeitfenster nicht teilt – alle im Screener-Ordner werden angezeigt.",
+  metaWithReason: (count: string, reason: string) => `${count}. ${reason}`,
   metaItems: (n: number) => `${n} ${n === 1 ? "Eintrag" : "Einträge"}`,
   mailRowAria: (from: string, subject: string, time: string, unread: boolean) =>
     `${from}. ${subject.trim() === "" ? "" : `${subject}. `}${time}.${unread ? " Ungelesen." : ""}`,
@@ -694,7 +711,7 @@ export const DE: Deck = {
     `${n === 1 ? "1 Nachricht" : `${n} Nachrichten`} aus diesem Ordner auf diesem Telefon.`,
   folderEmptyTitle: "Von diesem Ordner ist keine Post auf diesem Telefon.",
   folderEmptyHint:
-    "Dieses Telefon spiegelt die neuere Post deines Servers. Der Ordner selbst liegt auf deinem Mailserver und kann dort ältere Post enthalten.",
+    "Dieses Telefon spiegelt die neuere Post deines Servers, ältere Post aus diesem Ordner erscheint hier nicht.",
 
   history: "Historie",
   historyNavSub: "Alles, was dir gehört, neueste zuerst",
@@ -994,6 +1011,13 @@ export const DE: Deck = {
   groupResurfaced: "Wieder aufgetaucht",
   newSinceResurfaced: (n: number) => `${n} neu`,
   liveSaveFailed: "Diese Änderung ließ sich nicht speichern. Versuch es nochmal.",
+  readerPressRefused: (name: string) =>
+    `Nichts hat sich geändert — dieses Telefon liest dieses Postfach nur. ${name} organisiert es, und Stapel und Tags werden dort gesetzt.`,
+  readerPressRefusedUnknown:
+    "Nichts hat sich geändert — dieses Telefon liest dieses Postfach nur. Stapel und Tags werden dort gesetzt, wo es organisiert wird.",
+  readerPressReadOnly: "Als gelesen markiert. Sonst hat sich nichts geändert — dieses Telefon liest dieses Postfach nur.",
+  readerPressRefusedNobody:
+    "Nichts hat sich geändert — dieses Telefon liest dieses Postfach nur. Im Moment organisiert es nichts.",
   liveDecided: (dest: string, target: string) =>
     `${dest} — künftige Post von ${target} wird automatisch dorthin einsortiert.`,
   liveAlsoUnsubscribing: (said: string, how: UnsubToast) =>
@@ -1026,9 +1050,13 @@ export const DE: Deck = {
   senderSentThere: (name: string) =>
     `Was du hier entscheidest, wird an ${name} geschickt und dort innerhalb weniger Minuten ausgeführt.`,
   readingAtConnect: (name: string) =>
-    `Dieses Telefon liest dieses Postfach. ${name} organisiert es, und was du hier entscheidest, wird dorthin geschickt.`,
+    `Dieses Telefon liest dieses Postfach. ${name} organisiert es, und deine Screener-Entscheidungen und Verschiebungen hier werden dorthin geschickt.`,
   readingAtConnectUnknown:
-    "Dieses Telefon liest dieses Postfach. Eine andere Installation organisiert es, und was du hier entscheidest, wird dorthin geschickt.",
+    "Dieses Telefon liest dieses Postfach. Eine andere Installation organisiert es, und deine Screener-Entscheidungen und Verschiebungen hier werden dorthin geschickt.",
+  readingAtConnectKept: (name: string) =>
+    `Dieses Telefon liest dieses Postfach. ${name} organisiert es. Deine Zustimmung bleibt gespeichert: Sobald ${name} es freigibt, bietet dieses Telefon das Postfach an, und ein Tippen übernimmt es.`,
+  readingAtConnectKeptUnknown:
+    "Dieses Telefon liest dieses Postfach. Eine andere Installation organisiert es. Deine Zustimmung bleibt gespeichert: Sobald sie es freigibt, bietet dieses Telefon das Postfach an, und ein Tippen übernimmt es.",
   liveVerdictKept: (count: number, place: string, kept: number, keptPlace: string, term: string) =>
     `${count === 1 ? "1 liegt" : `${count} liegen`} in ${place} · ${kept === 1 ? "1 bleibt" : `${kept} bleiben`} nach deiner Regel »${term}« in ${keptPlace}.`,
   liveVerdictKeptDomain: (count: number, place: string, kept: number, keptPlace: string, domain: string, term: string) =>

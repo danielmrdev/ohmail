@@ -26,13 +26,13 @@
 #
 # Worth writing down because the argument for `git merge-base` is persuasive and wrong. It goes:
 # the recorded base sha is the base branch as it stood when the pull request was last updated,
-# `main` here advances by MACHINE-GENERATED commits that carry no sign-off, so a raw range will
-# sweep one in and tell a contributor to sign somebody else's commit.
+# `main` here advances by commits somebody else made — a publish, another contributor's merge —
+# so a raw range will sweep one in and tell a contributor to sign somebody else's commit.
 #
 # It does not, and the reason is what `A..B` means: `B --not A` lists commits reachable from B.
 # A commit that is only on the base branch is not reachable from the pull request's head, so it
-# was never a candidate. Built the case and ran it — base advanced by an unsigned generated
-# commit, branch signed — and both spellings return the same one commit.
+# was never a candidate. Built the case and ran it — base advanced by an unsigned commit,
+# branch signed — and both spellings return the same one commit.
 #
 # Where they DO differ, `merge-base` is the worse of the two: if a contributor merges the base
 # branch into their branch, those base commits become head-reachable, `base..head` still excludes

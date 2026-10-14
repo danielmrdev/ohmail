@@ -34,4 +34,6 @@ dependencies {
   // coroutines come transitively at the version it was built against; naming our own here
   // would be the two-OkHttps trap from host-pinning's gradle, one artifact over.
   implementation "androidx.window:window:1.3.0"
+  // The native stack's screens report their frame in dp only when their pixels move (`relayoutRoot`).
+  compileOnly project(":react-native-screens")
 }

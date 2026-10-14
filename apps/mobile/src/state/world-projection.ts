@@ -41,6 +41,7 @@ import {
   phoneOrganizer,
   presentedOptions,
   presentedWorld,
+  screeningDegradeOf,
   sendingMailboxId,
   soleMessageMailbox,
   storeRowOf,
@@ -56,6 +57,17 @@ import {
   type WorldView,
 } from "./live";
 import { routingReader } from "./held-routing";
+
+/** The Screener's meta: the count, and beside a folder-whole one the sentence that says why (RULING-026). */
+export function screenerMetaOf(source: string, waiting: number, posture: ScreeningPosture): string {
+  const count = source === "server" ? Copy.metaWaiting(waiting) : Copy.metaWaitingOnDevice(waiting);
+  const d = screeningDegradeOf(posture);
+  if (d === null) return count;
+  const reason = d.state === "unread"
+    ? (d.holderName === null ? Copy.screeningUnreadNoName : Copy.screeningUnread(d.holderName))
+    : (d.holderName === null ? Copy.screeningUnstatedNoName : Copy.screeningUnstated(d.holderName));
+  return Copy.metaWithReason(count, reason);
+}
 import type { World } from "./world";
 
 type OhmailEngineLike = Parameters<typeof liveMessage>[0];
@@ -166,7 +178,7 @@ export function createProjector(): { project(inp: ProjectionInputs): Projected; 
       return {
         ...s,
         relayed: inp.relayed,
-        meta: s.source === "server" ? Copy.metaWaiting(s.waiting.length) : Copy.metaWaitingOnDevice(s.waiting.length),
+        meta: screenerMetaOf(s.source, s.waiting.length, posture),
       };
     });
     const piles = () => kept("piles", [pres, v], () => livePiles(pres, v));

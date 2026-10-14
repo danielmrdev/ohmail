@@ -219,6 +219,14 @@ export function logPostureDerived(p: { width: number; height: number; folds: num
   }));
 }
 
+/** The surface asked to read the text size again (iOS): the size category it read, beside the window's scale. */
+export function logTextScaleRefresh(r: { category: string; surfaces: number }, fontScale: number): void {
+  engineLogSink()(JSON.stringify({
+    service: "app", event: "text_scale_refresh",
+    category: String(r.category).slice(0, 64), surfaces: Number(r.surfaces) || 0, fontScale,
+  }));
+}
+
 /**
  * THE WORLD'S COST, ONCE A MINUTE — how many list derivations the phone ran, the worst one and the
  * p95 of the last hundred, and how many engine notifications there were — and the app's own open and

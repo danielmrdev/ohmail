@@ -215,20 +215,19 @@ export async function standaloneServerSettings(): Promise<PhoneServerSettings | 
 }
 
 /**
- * WHO HOLDS A MAILBOX THIS PHONE HAS STOOD DOWN FROM — the two facts the claim carries, together.
+ * WHO HOLDS A MAILBOX THIS PHONE DOES NOT ORGANIZE — a stand-down this phone remembers, or a holder
+ * the engine's last look saw. The look is the producer a never-consented reader has: its look
+ * writes `reason: null` by design, so a holder read only off the reason was never seen there.
  *
- * One member and not two loose ones: `name` without a reason is not a holder, and a reason without
- * a name is a holder this build cannot name. Pairing them makes the state "named a holder, but
- * nobody holds it" unrepresentable.
- *
- * `standDownReason` is the engine's own word, verbatim (`organized_elsewhere:<kind>`) — this app
- * re-spells no engine value, and `holderKind` in `ui/standalone-form.ts` is the one reader of it.
+ * `standDownReason` is the engine's own word, verbatim (`organized_elsewhere:<kind>`), or `null`
+ * where nothing stood down and the look alone names the holder — the kind is then unknown. This
+ * app re-spells no engine value, and `holderKind` in `ui/standalone-form.ts` is its one reader.
  */
 export interface StandDownHolder {
   /** The holder's display name, or `""` where the claim named none. NEVER an address. */
   readonly name: string;
-  /** The engine's stand-down reason, unmodified. Non-null by construction: see the field above. */
-  readonly standDownReason: string;
+  /** The engine's stand-down reason, unmodified; `null` where only the look names the holder. */
+  readonly standDownReason: string | null;
   /** What the engine's last look saw: `none` is a holder that let go, `null` a look not taken. */
   readonly holderState: "held" | "stopped" | "none" | null;
 }
@@ -320,19 +319,12 @@ export function standaloneHere(): StandaloneHere | null {
   /** `null` until the engine has said — see the field. */
   let firstSync: string | null = null;
   /**
-   * WHO HOLDS THE MAILBOX WHEN THIS INSTALL DOES NOT — the engine's own peek at the claim.
+   * WHO HOLDS THE MAILBOX WHEN THIS INSTALL DOES NOT; `null` is "nobody, or not read yet".
    *
-   * `null` is "nobody, or not read yet". Without it the panel could only say `Nothing organizes
-   * this mailbox`, which is also what it says when the mailbox is free — so a phone standing down
-   * correctly told a person nothing was organizing their mail.
-   *
-   * TWO PRODUCERS AND ONE READER. The gate writes it at a stand-down; the door writes it when it
-   * REFUSES a press over a live foreign claim, which is the state a mailbox this phone handed back
-   * and another install then took — nothing runs the gate there, so without the second producer a
-   * refused press left "Nothing organizes this mailbox" and a live Start verb standing over a
-   * mailbox the door had just said was held. Both write the same field on the same state, so this
-   * app still has one answer to "who holds this mailbox"; the engine's own word wins where it has
-   * one.
+   * THREE PRODUCERS AND ONE READER. The gate writes it at a stand-down; the door when it REFUSES
+   * a press over a live foreign claim; and the reader's look every poll, which is the only one a
+   * never-consented phone has. All three write the same fields, so this app has one answer to
+   * "who holds this mailbox"; the engine's own word wins where it has one.
    */
   let heldBy: StandDownHolder | null = null;
   let metaBlocked: StandaloneHere["metaBlocked"] = null;
@@ -356,14 +348,12 @@ export function standaloneHere(): StandaloneHere | null {
         .find((at) => at !== null) ?? null;
       releaseRefusal = entries.some(([, state]) => state.releaseRefusal === "sibling_lapse") ? "sibling_lapse" : null;
       /**
-       * THE REASON IS THE DISCRIMINATOR AND THE NAME IS NOT. A name is absent in two different
-       * states — a claim that named nothing, and EVERY RELAUNCH, where the engine reassembles the
-       * stand-down off its own row and the row remembers no holder — so reading the name called
-       * both of those a free mailbox (the desktop's `reader-holder.ts` defect, here). `reason` is
-       * written at the stand-down and nowhere else, so a non-null reason IS "somebody else has it".
-       *
-       * Only where this install is NOT organizing: over our own claim the engine reports US, and
-       * rendering that as "another machine has it" is the false state in the other direction.
+       * THE LOOK'S OWN WORD, OR A REMEMBERED STAND-DOWN — never the name, which every relaunch
+       * lacks. A look reading `held` or `stopped` is a holder with `reason: null`, which is what a
+       * never-consented reader's look writes; read off the reason alone, that phone said "Nothing
+       * organizes this mailbox" beside Start while a laptop organized. A reason with no look yet
+       * keeps its stand-down. Only where this install is NOT organizing: over our own claim the
+       * engine reports US, and "another machine has it" is the false state the other way.
        */
       /* THE GATE'S OWN REFUSAL, read whether or not the engine still says organizing: a holder whose
          poll gate refuses keeps `organizing` (Stop reads it) while nothing is filed. The desktop's
@@ -371,10 +361,11 @@ export function standaloneHere(): StandaloneHere | null {
       const blocked = entries.map(([, s]) => s.unreadableReason).find((r) => r === "meta_folder_full" || r === "meta_undeletable");
       metaBlocked = blocked === "meta_folder_full" || blocked === "meta_undeletable" ? blocked : null;
       if (!organizing) {
-        const stood = entries.map(([, state]) => state).find((state) => state.reason !== null);
+        const stood = entries.map(([, state]) => state).find((state) => state.reason !== null
+          || state.holderState === "held" || state.holderState === "stopped");
         heldBy = stood === undefined
           ? null
-          : { name: stood.heldBy ?? "", standDownReason: stood.reason!, holderState: stood.holderState ?? null };
+          : { name: stood.heldBy ?? "", standDownReason: stood.reason, holderState: stood.holderState ?? null };
       }
     }
     /**
@@ -471,16 +462,19 @@ export const organizeRefusal = (): Refusal | null => organizeRefused;
  * press was refused to, said once where the person lands: the door promised
  * organizing and this phone reads instead. `name` is `""` where the claim named nobody.
  */
-let readingAtConnect: { name: string } | null = null;
+let readingAtConnect: { name: string; consentRecorded?: boolean } | null = null;
 
-/** Record it, or clear it: a dismissal, or a connect that was not refused to a holder. */
-export function sayReadingAtConnect(holder: { name: string } | null): void {
+/**
+ * Record it, or clear it: a dismissal, or a connect that was not refused to a holder.
+ * `consentRecorded`: the door kept the person's agreement without a claim.
+ */
+export function sayReadingAtConnect(holder: { name: string; consentRecorded?: boolean } | null): void {
   readingAtConnect = holder;
   notifyOrganizerState();
 }
 
 /** The standing connect notice, or `null`. Read by the Ohbox. */
-export const readingAtConnectSaid = (): { name: string } | null => readingAtConnect;
+export const readingAtConnectSaid = (): { name: string; consentRecorded?: boolean } | null => readingAtConnect;
 
 /**
  * The person's hand-back from Settings, on this door — and it is REMEMBERED. This was
@@ -555,6 +549,14 @@ export type PressOutcome =
    * where every other holder in this app is read from.
    */
   | "held"
+  /**
+   * HELD, AND THE PERSON'S CONSENT WAS KEPT. The door refused the claim and recorded the consent
+   * without one, so the press owes both facts: who holds it, and that their next Start takes it
+   * once that install lets go. `held` alone stays silent; the card names the holder.
+   */
+  | "held_consented"
+  /** HELD, over a mailbox this install organized: the claim watch takes it back by itself. */
+  | "held_returns"
   /** The gate cannot read `ohmail/_meta` for a reason fixed on the server; the press says which. */
   | "meta_folder_full" | "meta_undeletable"
   | "refused";
@@ -676,7 +678,7 @@ async function startHere(press: () => Promise<ClaimHereOutcome> = claimHereStand
      {@link PressOutcome}. The door records the holder on the engine's own organizer state as it
      refuses, so `standaloneHere().heldBy` names it on this very render and the panel's claim is
      `theirs`: the holder sentence, and no Start verb over a mailbox the door just said is held. */
-  if (outcome === "held") return "held";
+  if (outcome === "held" || outcome === "held_consented" || outcome === "held_returns") return outcome;
   /* CARRIED, not folded. The door says `unreadable` exactly where it could not check, and the
      panel owes that its own sentence — see {@link PressOutcome}. */
   if (outcome === "unreadable") return "unreadable";
@@ -699,7 +701,8 @@ export type ConsentAnswer = "authorized" | "already" | "held" | "refused";
  * THE DOOR'S CONTINUE, AS THE START IT IS. The request is the app's own (`consent`, which states the
  * screen's rule to the door); the transition is the Start verb's, so every surface reads Starting
  * until the claim lands, never "Nothing organizes this mailbox" for a poll interval. The gate is
- * asked at once, as the engine's own claim asks it. `held` claims nothing; the consent is not recorded.
+ * asked at once, as the engine's own claim asks it. `held` claims nothing; the door may keep the
+ * person's consent without a claim, which the connect notice says (`consentRecorded`).
  */
 export async function pressConsentHere(consent: () => Promise<ConsentAnswer>): Promise<PressOutcome> {
   if (inFlight !== null) await inFlight;
@@ -1003,7 +1006,8 @@ export function pokeOrganizerState(): void {
     here === null
       ? null
       : [here.id, here.address, here.organizing, here.releaseRequestedAt,
-        here.heldBy?.name ?? null, here.heldBy?.standDownReason ?? null, here.metaBlocked],
+        here.heldBy?.name ?? null, here.heldBy?.standDownReason ?? null, here.heldBy?.holderState ?? null,
+        here.metaBlocked],
     instruction,
     live !== null,
     live?.organizing.backgrounded() ?? false,

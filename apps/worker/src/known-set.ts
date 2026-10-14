@@ -321,6 +321,8 @@ export const KNOWN_SET_NEUTRAL: ReadonlySet<string> = new Set([
   // `removeFolderRow` — mailbox_folders + one change row: the folder's INSTANCES were already
   // dropped by `tombstoneFolderMessages` (dirty, above the projection) before any row removal.
   "removeFolderRow",
+  // A new `mailbox_folders` row's folder `create`: a read of that table and one change row.
+  "announceNewFolders",
   // the thread-join heal's serialization lock (erasure vs. backfill): one
   // pg_advisory_xact_lock, no row written anywhere — a lock cannot move a projection. It
   // landed UNCLASSIFIED and the guard suite sat red in HEAD for a day, the third time the

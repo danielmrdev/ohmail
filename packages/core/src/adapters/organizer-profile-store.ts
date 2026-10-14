@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import {
-  awayResponders, contacts, mailboxes as mailboxesTbl, notifyRules as notifyRulesTbl,
+  accountSettings, awayResponders, contacts, mailboxes as mailboxesTbl, notifyRules as notifyRulesTbl,
   rules as rulesTbl, tags as tagsTbl,
   fenceErased, lockAccountRuleKeys, recordChanges, recordProfileImportResolution, rerouteOwnHeldBag,
   resolveImportAsk, ruleDelta,
@@ -8,11 +8,13 @@ import {
 } from "@trafficflow/db";
 import { dialect } from "@trafficflow/db/dialect";
 import { ruleMatchKey } from "../rule-order.js";
+import { DEFAULT_DORMANCY_DAYS } from "../rules.js";
 import { AWAY_AUDIENCES, AWAY_THROTTLES, nextEnabledAt, type AwayAudience, type AwayThrottle } from "../away-eligibility.js";
 import { awayScopeFitsAudience, isAwayPile, type AwayPile } from "../away-scope.js";
 import {
   PROFILE_LIST_MAX, applicableProfileRule, arrivesDecided, oversizedProfileList, profileFingerprint, profileScreenerAddress,
   type ApplicableProfileRule, type OrganizerProfileDoc, type OrganizerProfilePayload, type ProfileReadResult,
+  type ProfileScreening,
 } from "./organizer-profile.js";
 
 /**
@@ -51,14 +53,14 @@ export async function serializeOrganizerProfileCounted(
    * republish then reads as the person having cleared their signature.
    */
   mailboxId: string,
-): Promise<{ payload: OrganizerProfilePayload; leftOut: ProfileLeftOut }> {
+): Promise<{ payload: OrganizerProfilePayload; leftOut: ProfileLeftOut; screening: ProfileScreening }> {
   // ONE SNAPSHOT, not five. Under READ COMMITTED each statement sees its own snapshot, so a
   // screener decide committing between the contacts read and the rules read would serialize a
   // TORN configuration — the contact without its promoted rule — and the document would say
   // something no store ever held (self-healing one flush later, but "a burst is one write" is
   // the contract, and a torn read is how it becomes two). REPEATABLE READ pins all five reads
   // to one snapshot; PGlite is real Postgres, so the same statement works on both stores.
-  const [contactRows, ruleRows, notifyRows, awayRows, tagRows, mailboxRows] = await db.transaction(async (tx) => {
+  const [contactRows, ruleRows, notifyRows, awayRows, tagRows, mailboxRows, screening] = await db.transaction(async (tx) => {
     return [
       // Each list is the newest PROFILE_LIST_MAX of its kind, so the import on another machine
       // takes what this one publishes; automatic (promoted) rules are the first to stay behind.
@@ -101,6 +103,9 @@ export async function serializeOrganizerProfileCounted(
         signatureHtml: mailboxesTbl.signatureHtml,
       }).from(mailboxesTbl)
         .where(and(eq(mailboxesTbl.id, mailboxId), eq(mailboxesTbl.accountId, accountId))),
+      // THE SEVENTH READ, the window the envelope carries: the same snapshot, so a document never
+      // publishes a window from a different instant than its payload.
+      await readOrganizerScreening(tx as unknown as Tx, accountId),
     ] as const;
   }, { isolationLevel: "repeatable read", accessMode: "read only" });
 
@@ -152,7 +157,26 @@ export async function serializeOrganizerProfileCounted(
        about what the store actually holds. */
     ...(mailboxRows[0]?.signatureHtml ? { signatureHtml: mailboxRows[0].signatureHtml } : {}),
   };
-  return { payload, leftOut };
+  return { payload, leftOut, screening };
+}
+
+/**
+ * THE ORGANIZER'S SCREENING WINDOW, as the envelope publishes it — `account_settings`, resolved:
+ * `dormancyDays` through core's default (a reader must never supply its own), a missing row is the
+ * default sliding window. One row serves every mailbox the install organizes.
+ */
+export async function readOrganizerScreening(db: Tx, accountId: string): Promise<ProfileScreening> {
+  const [row] = await db.select({
+    baselineAt: accountSettings.screeningBaselineAt,
+    dormancyDays: accountSettings.dormancyDays,
+    scope: accountSettings.screeningScope,
+  }).from(accountSettings).where(eq(accountSettings.accountId, accountId)).limit(1);
+  const days = row?.dormancyDays;
+  return {
+    baselineAt: row?.baselineAt == null ? null : new Date(row.baselineAt).toISOString(),
+    dormancyDays: typeof days === "number" && Number.isInteger(days) && days >= 1 && days <= 365 ? days : DEFAULT_DORMANCY_DAYS,
+    scope: row?.scope === "all_time" ? "all_time" : "window",
+  };
 }
 
 /**

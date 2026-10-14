@@ -74,9 +74,10 @@ export interface ClassifierCircuit {
    * `undefined` while open. Resolve it ONCE per cycle and pass the result in — never hold a wrapper across
    * the open transition, because a present-but-open classifier lets `pipeline.ts`'s `&&` chain reach the
    * spend, charge, and only then fail: one orphaned charge per message per cycle for the whole outage.
-   * `mailboxId` names whose charge record a success clears, the SAME id passed to {@link meter}. Omitted
-   * by a caller that took no metered port (the account-scoped auto-suggest pass); a wrapper with no mailbox
-   * clears nobody's record, which is what it means for a caller that has none of its own.
+   * `mailboxId` names whose charge record a success clears, the SAME id passed to {@link meter}. The
+   * auto-suggest pass omits it (it takes no metered port): its success clears nobody's record and its
+   * refusal or decline refunds nobody's. A candidate's mailbox there would let its success clear that
+   * mailbox's open ingest charge, which a later trip could then not refund.
    */
   port(mailboxId?: string): ClassifierPort | undefined;
   /**
@@ -122,12 +123,12 @@ export function makeClassifierCircuit(
   /**
    * Refund the charges the abandonment of the AI branch has just orphaned.
    *
-   * `only` names one mailbox; absent means every one of them. A refusal is one mailbox's
-   * message and a trip is the whole provider, so the two callers below want different scopes.
+   * `"every"` is the trip's scope, the whole provider; a refusal or a decline names its mailbox.
+   * The scope is stated, never an absent id: an absent one used to read as every mailbox.
    */
-  function refundOpenCharges(reason: string, only?: string): void {
+  function refundOpenCharges(reason: string, scope: "every" | { mailboxId: string }): void {
     for (const [mailboxId, charge] of openCharges) {
-      if (only !== undefined && mailboxId !== only) continue;
+      if (scope !== "every" && mailboxId !== scope.mailboxId) continue;
       // Never awaited: this runs inside a classify failure path whose job is to rethrow, and a
       // reversal is best-effort by design (an un-refunded charge is recoverable while a delayed
       // rethrow is not). Exactly-once is enforced in the database, not by this call site.
@@ -138,6 +139,15 @@ export function makeClassifierCircuit(
       log?.warn("classify_charge_refunded", { mailboxId, attempt: charge.attempt, reason });
       openCharges.delete(mailboxId);
     }
+  }
+
+  /**
+   * One message's refusal or decline: THIS wrapper's mailbox charge, and nothing when it has none.
+   * A wrapper with no mailbox (the auto-suggest pass) spends through the bare gate, never
+   * {@link ClassifierCircuit.meter}, so no open charge here is its own to return.
+   */
+  function refundOwnCharge(reason: string, mailboxId: string | undefined): void {
+    if (mailboxId !== undefined) refundOpenCharges(reason, { mailboxId });
   }
 
   function trip(): void {
@@ -154,7 +164,7 @@ export function makeClassifierCircuit(
     });
     // The AI branch is now abandoned for every message in flight, so the charges those messages
     // made bought nothing and never will. This is the ONLY moment at which that becomes true.
-    refundOpenCharges("classifier_circuit_open");
+    refundOpenCharges("classifier_circuit_open", "every");
     cooldownMs = Math.min(cooldownMs * 2, maxCooldown);
   }
 
@@ -226,7 +236,7 @@ export function makeClassifierCircuit(
         // THIS mailbox's charge, not everybody's. The screen is deterministic in the bytes of
         // ONE message, so it says nothing about any other mailbox's call — and another
         // mailbox's classification may still be in flight and about to be delivered.
-        refundOpenCharges("classifier_sensitive_refusal", mailboxId);
+        refundOwnCharge("classifier_sensitive_refusal", mailboxId);
         throw err;
       }
       // A DECLINE IS THE PROVIDER ANSWERING, NOT FAILING — the refusal's door, beside it. A safety
@@ -238,7 +248,7 @@ export function makeClassifierCircuit(
         log?.info("classifier_declined", {
           mailboxId, stopReason: err.stopReason, refusalCategory: err.refusalCategory, consecutiveFaults,
         });
-        refundOpenCharges("classifier_declined", mailboxId);
+        refundOwnCharge("classifier_declined", mailboxId);
         throw err;
       }
       consecutiveFaults++;

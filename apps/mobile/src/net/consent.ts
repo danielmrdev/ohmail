@@ -27,6 +27,12 @@ export interface ScreeningAnswer {
   dormancyDays: number | null;
   baselineAt: string | null;
   scope: "window" | "all_time";
+  /**
+   * EACH MAILBOX'S WINDOW, and whose (`screeningByMailbox`, RULING-026), AS THE WIRE SENT IT: the
+   * one reader of it is the engine package's, behind `state/live.ts`. Present, it decides the
+   * partition per mailbox and the three fields above go unread; absent, an older server.
+   */
+  byMailbox?: unknown;
 }
 
 /** The fields this app reads off `GET /consent` today. */
@@ -127,6 +133,7 @@ function screeningOf(body: Record<string, unknown>): ScreeningAnswer | null {
     dormancyDays: typeof days === "number" && Number.isFinite(days) && days > 0 ? days : null,
     baselineAt: typeof base === "string" && base !== "" ? base : null,
     scope: body.screeningScope === "all_time" ? "all_time" : "window",
+    ...(body.screeningByMailbox === undefined || body.screeningByMailbox === null ? {} : { byMailbox: body.screeningByMailbox }),
   };
 }
 

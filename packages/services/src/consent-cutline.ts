@@ -3,9 +3,11 @@ import { DEFAULT_DORMANCY_DAYS, LEGACY_NEWS_FOLDER, SCREENING_AUTH_VERDICTS, typ
 import type { ServiceContext } from "./context.js";
 import { dialect, type Dialect } from "@trafficflow/db/dialect";
 import {
-  activeSenderExpr, anyOf, cutlineInstant, destinationIsDecisionSql, heldClaimWaitsSql, resolveCutline,
-  ruleMatchKeySql, senderHasHeldClaimSql, senderIsDecidedSql, senderIsOwnSql,
+  activeSenderExpr, anyOf, cutlineArms, cutlineInstant, destinationIsDecisionSql, heldClaimWaitsSql, perMailboxSql,
+  resolveCutline, ruleMatchKeySql, senderHasHeldClaimSql, senderIsDecidedSql, senderIsOwnSql, type CutlineSet,
+  type ResolvedCutline,
 } from "@trafficflow/db";
+import { cutlinesOf, type EffectiveScreeningWindow } from "./screening-window.js";
 
 /**
  * The cutline, server-side — how many senders are still owed a decision. The client computes this
@@ -93,6 +95,12 @@ export interface CutlineOptions {
    * `resolveScreeningCutoff`, pinned together by `consent-cutline.pg.test.ts`.
    */
   scope?: ScreeningScope | string | null;
+  /**
+   * EACH MAILBOX'S WINDOW ({@link effectiveScreeningWindows}, RULING-026). When given it decides
+   * the cutline per mailbox and the three account fields above are not read: a reader's own row is
+   * inert on a mailbox it does not organize.
+   */
+  windows?: ReadonlyMap<string, EffectiveScreeningWindow>;
 }
 
 /**
@@ -111,13 +119,17 @@ export async function cutlineCounts(
    * whose mail sits in the Screener folder while this function counted the ones still worth a
    * decision — an order of magnitude apart on a mailbox with years of history. The rule now has
    * one implementation and three readers: this count, the queue's page, the auto-suggest set. */
-  const resolved = resolveCutline({
+  const set: CutlineSet = opts.windows !== undefined ? cutlinesOf(opts.windows, ctx.now()) : resolveCutline({
     baselineAt: opts.baselineAt ?? null,
     dormancyDays: opts.dormancyDays ?? null,
     scope: opts.scope ?? null,
     now: ctx.now(),
   });
-  const cutoff = resolved.cutoff;
+  const split = cutlineArms(set);
+  /* ONE CUTLINE: the statement as it always was. SEVERAL: one group per (sender, mailbox), each
+     weighed by its mailbox's cutline, then one row per sender — active in ANY mailbox. */
+  const resolved: ResolvedCutline = "one" in split ? split.one : (split.arms[0]?.[1] ?? resolveCutline({ now: ctx.now(), scope: "all_time" }));
+  const perMailbox = "arms" in split ? split.arms : null;
   const baselined = resolved.baselined;
   /**
    * ALL TIME ⇒ NO DORMANCY (mail 0083). See {@link CutlineOptions.scope}.
@@ -146,6 +158,15 @@ export async function cutlineCounts(
   // `anyOf`, the ACTIVE test and the INSTANT come from `@trafficflow/db#screener-cutline`, which
   // owns the rule for all three readers. They were closures here while this was the only one.
   const at = cutlineInstant({ date: sql`m.date`, arrivedAt: sql`m.created_at` });
+  const inWindow = (c: ResolvedCutline): SQL => sql`m.unread and ${at} is not null and ${at} >= ${d.ts(c.cutoff)}`;
+  const anyUnreadInWindow = perMailbox === null ? anyOf(inWindow(resolved))
+    : anyOf(perMailboxSql(d, perMailbox, sql`m.mailbox_id`, inWindow));
+  const activeOf = (c: ResolvedCutline): SQL => activeSenderExpr(d, c, {
+    anyUnread: sql`i.any_unread`,
+    anyUnreadInWindow: sql`i.any_unread_in_window`,
+    newest: sql`i.newest`,
+  });
+  const active = perMailbox === null ? activeOf(resolved) : perMailboxSql(d, perMailbox, sql`i.mbx`, activeOf);
   const rows = await d.exec(ctx.db, sql`
     with
     -- The destination test comes from destinationIsDecisionSql, never a local comparison: this
@@ -163,7 +184,7 @@ export async function cutlineCounts(
          and kind = 'domain' and ${destinationIsDecisionSql(sql`destination`)}
     ),
     inbound as (
-      select lower(m.from_address) addr,
+      select lower(m.from_address) addr,${perMailbox === null ? sql`` : sql` m.mailbox_id mbx,`}
              ${anyOf(sql`m.unread`)} any_unread,
              -- The BASELINED unread term: unread AND inside the window, weighed by cutlineInstant
              -- -- the Date header, else the arrival -- so a message the sender left undated is
@@ -171,7 +192,7 @@ export async function cutlineCounts(
              -- test stays for the shared expression's own reason. (NO BACKTICKS anywhere in this
              -- template literal: one of them ends the tagged template and the file stops
              -- compiling, with the error pointing at a line some distance away.)
-             ${anyOf(sql`m.unread and ${at} is not null and ${at} >= ${d.ts(cutoff)}`)}
+             ${anyUnreadInWindow}
                as any_unread_in_window,
              max(${at}) newest,
              -- Does this sender have ANY mail still sitting where no decision has been made?
@@ -190,7 +211,7 @@ export async function cutlineCounts(
                by: sql`m.sender_check_by`, date: sql`m.date`, arrivedAt: sql`m.arrived_at`,
                recordedAt: sql`m.created_at`, mailboxId: sql`m.mailbox_id`,
                sender: sql`lower(m.from_address)`, auth: sql`m.auth_verdict`, brand: sql`m.sender_check_brand`,
-             }, cutoff, SCREENING_AUTH_VERDICTS))}
+             }, set, SCREENING_AUTH_VERDICTS))}
                as held_claim
         from messages m
         join folder_state fs on fs.message_id = m.id
@@ -198,7 +219,7 @@ export async function cutlineCounts(
          and fs.desired_folder in ${folders}
          -- The account itself, by the one predicate the queue page and the suggest set ask too.
          and not ${senderIsOwnSql(d, ctx.accountId, sql`lower(m.from_address)`)}
-       group by 1
+       group by 1${perMailbox === null ? sql`` : sql`, 2`}
     ),
     classified as (
       select i.addr, i.undecided_residence,
@@ -215,20 +236,23 @@ export async function cutlineCounts(
                   and exists (select 1 from decided_domain dd
                                where dd.m = ${d.substr(sql`i.addr`, sql`${d.strpos(sql`i.addr`, sql`'@'`)} + 1`)}))
               or ${senderIsDecidedSql(d, ctx.accountId, sql`i.addr`)})
-              and not ${senderHasHeldClaimSql(d, ctx.accountId, sql`i.addr`, cutoff, SCREENING_AUTH_VERDICTS)}) as decided,
-             (${activeSenderExpr(d, resolved, {
-               anyUnread: sql`i.any_unread`,
-               anyUnreadInWindow: sql`i.any_unread_in_window`,
-               newest: sql`i.newest`,
-             })} or i.held_claim) as active
+              and not ${senderHasHeldClaimSql(d, ctx.accountId, sql`i.addr`, set, SCREENING_AUTH_VERDICTS)}) as decided,
+             (${active} or i.held_claim) as active
         from inbound i
-    )
+    )${perMailbox === null ? sql`` : sql`,
+    per_sender as (
+      select addr,
+             max(case when decided then 1 else 0 end) = 1 as decided,
+             max(case when undecided_residence then 1 else 0 end) = 1 as undecided_residence,
+             max(case when active then 1 else 0 end) = 1 as active
+        from classified group by addr
+    )`}
     select count(*) filter (where decided)                        as decided,
            count(*) filter (where not decided and undecided_residence and active)
                                                                   as active_undecided,
            count(*) filter (where not decided and undecided_residence and not active)
                                                                   as dormant_undecided
-      from classified
+      from ${perMailbox === null ? sql`classified` : sql`per_sender`}
   `);
 
   // The driver split this used to carry is gone: `d.exec` returns rows POSITIONALLY on both

@@ -2169,12 +2169,30 @@ export function unscreenedTotalOf(reader: EntityReader): number {
  * {@link storedRuleDestination} back, so reading never rewrites a rule.
  */
 export function rulesList(reader: EntityReader): RuleDTO[] {
-  return reader.list<RuleDTO>("rule").map(atItsPlace).sort((a, b) => {
+  return newestFirst(reader.list<RuleDTO>("rule"));
+}
+
+function newestFirst(rows: readonly RuleDTO[]): RuleDTO[] {
+  return rows.map(atItsPlace).sort((a, b) => {
     const ta = a.createdAt ? Date.parse(a.createdAt) : 0;
     const tb = b.createdAt ? Date.parse(b.createdAt) : 0;
     if (ta !== tb) return tb - ta;
     return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
   });
+}
+
+/**
+ * THE RULES AS THE SERVER STILL RUNS THEM: {@link rulesList}, with each rule a verb
+ * on this client's queue hides or moves read from the mirror instead (`queuedRuleWrites`). A revoke
+ * the server refused left the rule filing mail while the page said "No rules match".
+ */
+export function rulesAsRun(
+  reader: EntityReader, queued: ReadonlyArray<{ ruleId: string; rule: RuleDTO | undefined }>,
+): RuleDTO[] {
+  if (queued.length === 0) return rulesList(reader);
+  const byId = new Map(reader.list<RuleDTO>("rule").map((r) => [r.id, r]));
+  for (const q of queued) if (q.rule !== undefined) byId.set(q.ruleId, q.rule);
+  return newestFirst([...byId.values()]);
 }
 
 /** The stored spelling of each copy {@link rulesList} re-spelled; a rule already canonical is handed out as itself. */

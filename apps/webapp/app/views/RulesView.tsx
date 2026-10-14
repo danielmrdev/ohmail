@@ -32,7 +32,8 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { useTranslations } from "next-intl";
 import { Button, Icon, ListGroupLabel, SettingsNote, SettingsSection, Switch, TextField, useToast, type ToastOptions } from "@ohmail/ui";
 import { FOLDER_OF_VIEW, PROFILE_RULES_SENT_MAX, pressVerdict, tallyVerdicts } from "@ohmail/client-engine";
-import type { Folder, PressAnswer, RuleDTO, WaitingOnOrganizerView } from "@ohmail/client-engine";
+import type { Folder, PressAnswer, QueuedRuleWrite, RuleDTO, WaitingOnOrganizerView } from "@ohmail/client-engine";
+import { browserOffline, queuedSentence } from "../shell/queued-sentence";
 import { canonicalDestination } from "@trafficflow/core/folder-name";
 import { usePileNames } from "../shell/decision-copy";
 import { placeLabel } from "../shell/format";
@@ -239,12 +240,15 @@ export interface RulesViewProps {
   waiting?: readonly WaitingOnOrganizerView[];
   /** A mailbox's address by id, for a request about a rule this page no longer lists. */
   mailboxLabel?: (mailboxId: string) => string | null;
+  /** The rule verbs on this browser's queue (`engine.queuedRuleWrites()`); `rules` shows each rule as it runs. */
+  queued?: readonly QueuedRuleWrite[];
 }
 
-export function RulesView({ rules: allRules, onRevoke, onRetarget, pastMail, posture, waiting = [], mailboxLabel }: RulesViewProps) {
+export function RulesView({ rules: allRules, onRevoke, onRetarget, pastMail, posture, waiting = [], mailboxLabel, queued = [] }: RulesViewProps) {
   /* ONE ROW PER KEY, the twin the router runs; the rest are counted on it and go with it. */
   const { shown: rules, copies, others } = useMemo(() => actingRules(allRules), [allRules]);
   const { onRow, apart } = useMemo(() => waitingByRow(waiting, rules, allRules), [waiting, rules, allRules]);
+  const queuedOn = useMemo(() => new Map(queued.map((q) => [q.ruleId, q])), [queued]);
   const t = useTranslations("rules");
   const piles = usePileNames();
   /** A place in the sheet's words where it has one ("Screened out"), else the place label. */
@@ -367,23 +371,29 @@ export function RulesView({ rules: allRules, onRevoke, onRetarget, pastMail, pos
    * success. The engine keeps a retryable failure on its offline queue with the overlay standing, so the row is
    * correctly gone from the screen — but the server has not been told yet, and "revoked" is a claim about the server.
    */
-  const report = (res: RuleOutcome, ok: string, queued: string, failed: string, undo?: ToastOptions): void => {
+  const report = (
+    res: RuleOutcome, ok: string, said: { queued: string; failing: string; unsent: string }, failed: string,
+    undo?: ToastOptions,
+  ): void => {
     const v = pressVerdict(res);
     // A newer press for this rule replaced this one: it owns the sentence.
     if (v.kind === "silent") return;
     if (v.kind === "refused") { setRefusal({ lead: failed, why: whyOf(v.refusal) }); return; }
     if (v.kind === "queued") {
-      /* THE TWO WAITS ARE DIFFERENT SENTENCES. `retry` is this browser's own queue, which the
-         next connection drains. `organizer` is a request recorded for the install that organizes
-         this mailbox — the rule is STILL FILING MAIL until that install's next pass, and saying
-         "revoked" over it is telling somebody a rule is gone while it runs. */
-      toast(v.wait === "retry" ? queued
+      /* THE WAITS ARE DIFFERENT SENTENCES (`queuedSentence`). An `organizer` request leaves the
+         rule STILL FILING MAIL until that install's next pass. A server failure stays on the pane,
+         as a refusal does: the rule is still in place. */
+      const which = queuedSentence(v, browserOffline());
+      if (which === "failing") { setRefusal({ lead: said.failing, why: null }); return; }
+      toast(which === "queued" ? said.queued : which === "unsent" ? said.unsent
         : v.holder ? t("toastRuleOrganizer", { name: v.holder })
         : t("toastRuleOrganizerUnknown"));
       return;
     }
     toast(ok, undo);
   };
+  const revokeSaid = { queued: t("toastRevokeQueued"), failing: t("toastRevokeFailing"), unsent: t("toastRevokeUnsent") };
+  const retargetSaid = { queued: t("toastRetargetQueued"), failing: t("toastRetargetFailing"), unsent: t("toastRetargetUnsent") };
 
   /**
    * A CHANGE SAYS WHAT IT DOES TO THE MAIL ALREADY FILED. The answer is always sent:
@@ -408,11 +418,11 @@ export function RulesView({ rules: allRules, onRevoke, onRetarget, pastMail, pos
       onAction: () => {
         void onRetarget(rule.id, from, applyRetro).then((r) =>
           report(r, t(applyRetro ? "toastRetargetUndoneRetro" : "toastRetargetUndone", { place: back }),
-            t("toastRetargetQueued"), t("toastRetargetFailed")));
+            retargetSaid, t("toastRetargetFailed")));
       },
     };
     void onRetarget(rule.id, folder, applyRetro).then((r) =>
-      report(r, said, t("toastRetargetQueued"), t("toastRetargetFailed"), undo));
+      report(r, said, retargetSaid, t("toastRetargetFailed"), undo));
   };
 
   /**
@@ -431,11 +441,13 @@ export function RulesView({ rules: allRules, onRevoke, onRetarget, pastMail, pos
       const tally = tallyVerdicts(vs);
       const why = whyOf(tally.firstRefusal);
       const waiting = vs.filter((v) => v.kind === "queued" && v.wait === "organizer").length;
+      const failing = vs.filter((v) => v.kind === "queued" && v.failed === true).length;
       if (tally.refused === 0 && tally.applied === total) toast(t("bulkToastRevoked", { count: total }));
+      else if (tally.refused === 0 && failing > 0) setRefusal({ lead: t("bulkToastFailing", { count: failing }), why: null });
       else if (tally.refused === 0 && waiting > 0) {
         toast(tally.holder ? t("toastRuleOrganizer", { name: tally.holder }) : t("toastRuleOrganizerUnknown"));
       }
-      else if (tally.refused === 0) toast(t("bulkToastQueued"));
+      else if (tally.refused === 0) toast(browserOffline() ? t("bulkToastQueued") : t("bulkToastUnsent"));
       else if (tally.applied > 0) setRefusal({ lead: t("bulkToastPartial", { ok: tally.applied, count: total }), why });
       else setRefusal({ lead: t("bulkToastFailed"), why });
     });
@@ -475,7 +487,7 @@ export function RulesView({ rules: allRules, onRevoke, onRetarget, pastMail, pos
   const lift = (rule: RuleDTO): void => {
     setRefusal(null);
     void onRetarget(rule.id, canonicalDestination(rule.destination) as Folder, false).then((r) =>
-      report(r, t("toastLifted"), t("toastRetargetQueued"), t("toastRetargetFailed")));
+      report(r, t("toastLifted"), retargetSaid, t("toastRetargetFailed")));
   };
   const leftBehind = Math.max(0, allRules.length - PROFILE_RULES_SENT_MAX);
   const boundNote = leftBehind > 0
@@ -520,7 +532,9 @@ export function RulesView({ rules: allRules, onRevoke, onRetarget, pastMail, pos
 
   const showSearch = rules.length >= 2;
   const showFacets = groups.length >= 2;
-  const showBulk = filtered.length >= 2;
+  /* A rule whose verb is still queued here is not revoked again by the bulk press. */
+  const bulkable = filtered.filter((r) => !queuedOn.has(r.id));
+  const showBulk = bulkable.length >= 2;
 
   /** One rule's row and its confirm. `index` is its slot; `size`/`position` place it in its group. */
   const ruleRow = (rule: RuleDTO, index: number, size: number, position: number) => {
@@ -531,6 +545,12 @@ export function RulesView({ rules: allRules, onRevoke, onRetarget, pastMail, pos
       : t("metaPaused", { origin, date: ruleDate(rule.createdAt) });
     const openHere = open !== null && "ruleId" in open && open.ruleId === rule.id;
     const waits = waitingLine(onRow.get(rule.id));
+    // A verb on this browser's queue: the row is the rule as it runs, and its controls wait with it.
+    const q = queuedOn.get(rule.id);
+    const queuedLine = q === undefined ? null
+      : t(q.verb === "revoke"
+        ? (q.serverFailed ? "queuedRevokeFailing" : "queuedRevokeUnsent")
+        : (q.serverFailed ? "queuedRetargetFailing" : "queuedRetargetUnsent"));
     const rank = outrankOf(rule, allRules);
     const twins = copies.get(rule.id) ?? 0;
     const behind = others.get(rule.id) ?? [];
@@ -545,7 +565,7 @@ export function RulesView({ rules: allRules, onRevoke, onRetarget, pastMail, pos
     return (
       <Fragment key={rule.id}>
         <div
-          className={`rules-item${openHere ? " editing" : ""}${waits || rank || twins > 0 || inert ? " noted" : ""}`}
+          className={`rules-item${openHere ? " editing" : ""}${waits || queuedLine || rank || twins > 0 || inert ? " noted" : ""}`}
           data-rule-id={rule.id}
           data-index={index}
           role="listitem"
@@ -564,7 +584,7 @@ export function RulesView({ rules: allRules, onRevoke, onRetarget, pastMail, pos
             ) : null}
             {/* The way back sits under the sentence it answers, not beside Change and Revoke. */}
             {rank?.kind === "outranked" ? (
-              <Button variant="ghost" className="rules-lift" disabled={lockedWhy !== null} onClick={() => lift(rule)}>
+              <Button variant="ghost" className="rules-lift" disabled={lockedWhy !== null || q !== undefined} onClick={() => lift(rule)}>
                 {t("liftAction")}
               </Button>
             ) : null}
@@ -575,11 +595,14 @@ export function RulesView({ rules: allRules, onRevoke, onRetarget, pastMail, pos
             ) : null}
             {twinNote ? <span className="meta rules-copies">{twinNote}</span> : null}
             {waits ? <span className="meta rules-waits" role="status">{waits}</span> : null}
+            {queuedLine ? (
+              <span className="meta rules-waits" role="status" data-queued={q!.serverFailed ? "failing" : "unsent"}>{queuedLine}</span>
+            ) : null}
           </span>
           <span className="acts">
             <Button
               variant="ghost"
-              disabled={lockedWhy !== null}
+              disabled={lockedWhy !== null || q !== undefined}
               aria-describedby={lockedWhy ? "rules-locked-why" : undefined}
               aria-expanded={openHere && open.mode === "retarget"}
               onClick={() => {
@@ -595,7 +618,7 @@ export function RulesView({ rules: allRules, onRevoke, onRetarget, pastMail, pos
             </Button>
             <Button
               variant="ghost"
-              disabled={lockedWhy !== null}
+              disabled={lockedWhy !== null || q !== undefined}
               aria-describedby={lockedWhy ? "rules-locked-why" : undefined}
               aria-expanded={openHere && open.mode === "revoke"}
               onClick={() =>
@@ -622,7 +645,7 @@ export function RulesView({ rules: allRules, onRevoke, onRetarget, pastMail, pos
                   setOpen(null);
                   setRefusal(null);
                   void onRevoke(rule.id).then((r) =>
-                    report(r, t("toastRevoked"), t("toastRevokeQueued"), t("toastRevokeFailed")),
+                    report(r, t("toastRevoked"), revokeSaid, t("toastRevokeFailed")),
                   );
                 }}
               >
@@ -744,7 +767,7 @@ export function RulesView({ rules: allRules, onRevoke, onRetarget, pastMail, pos
               aria-describedby={lockedWhy ? "rules-locked-why" : undefined}
               onClick={() => setOpen(open?.mode === "bulk" ? null : { mode: "bulk" })}
             >
-              {t("bulkRevoke", { count: filtered.length })}
+              {t("bulkRevoke", { count: bulkable.length })}
             </Button>
           ) : null}
         </div>
@@ -758,10 +781,10 @@ export function RulesView({ rules: allRules, onRevoke, onRetarget, pastMail, pos
           would make the sentence something the product says AFTER the act. */}
       {open?.mode === "bulk" ? (
         <div className="rules-confirm" ref={bulkRef}>
-          <span>{t("bulkRevokeExplain", { count: filtered.length })}</span>
+          <span>{t("bulkRevokeExplain", { count: bulkable.length })}</span>
           <span className="acts">
-            <Button variant="primary" onClick={() => runBulk(filtered.map((r) => r.id))}>
-              {t("bulkRevokeConfirm", { count: filtered.length })}
+            <Button variant="primary" onClick={() => runBulk(bulkable.map((r) => r.id))}>
+              {t("bulkRevokeConfirm", { count: bulkable.length })}
             </Button>
             <Button onClick={() => setOpen(null)}>{t("cancel")}</Button>
           </span>
