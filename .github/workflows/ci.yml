@@ -108,6 +108,10 @@ jobs:
       - name: Install Chromium for the layout tests
         run: npx playwright install --with-deps chromium
 
+      # tsc -b over the project graph: the tests that load a package's built output read this.
+      - name: The project build
+        run: npm run build
+
       # The engine and the self-host bundles, built as the release and the images build them; the
       # tests that read a bundle read these.
       - name: Build the engine and the host bundles
@@ -237,6 +241,9 @@ jobs:
       - name: Apply the patches this repository carries
         run: node scripts/apply-patches.mjs apply
 
+      - name: The project build
+        run: npm run build
+
       - name: Wait for GreenMail IMAP
         run: |
           for i in $(seq 1 60); do
@@ -300,6 +307,9 @@ jobs:
 
       - name: Apply the patches this repository carries
         run: node scripts/apply-patches.mjs apply
+
+      - name: The project build
+        run: npm run build
 
       - name: Wait for GreenMail IMAP
         run: |
@@ -418,3 +428,70 @@ jobs:
 
       - name: next build
         run: cd apps/webapp && npx --offline next build
+
+  # The required check's name is this job's name, "typecheck": it is read by the repository's ruleset.
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install the locked dependency tree
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Apply the patches this repository carries
+        run: node scripts/apply-patches.mjs apply
+
+      # tsc -b over the project graph tsconfig.json references.
+      - name: The project build
+        run: npm run build
+
+      # The web app's own program, over every .ts it can see, its tests included: the root's type
+      # packages cover the drivers its tests reach. No test directory is dropped here.
+      - name: The web app and its tests
+        run: ./node_modules/.bin/tsc --noEmit -p apps/webapp/tsconfig.json
+
+  # The desktop tests that import the desktop's own vite config, on the desktop's own install: that
+  # config needs @vitejs/plugin-react, which only apps/desktop's lock carries.
+  desktop:
+    name: suite · desktop
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install the locked dependency tree
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: The desktop app's own dependency tree
+        run: cd apps/desktop && npm ci --ignore-scripts --no-audit --no-fund
+
+      # After both installs: it patches every installed copy, the desktop tree's among them.
+      - name: Apply the patches this repository carries
+        run: node scripts/apply-patches.mjs apply
+
+      # The files read from their import, so a new one moves here on its own; none dials a database.
+      - name: The desktop files
+        run: |
+          set -euo pipefail
+          list=$(node test/support/ci-shards.mjs --desktop)
+          mapfile -t files <<< "$list"
+          echo "the desktop job runs ${#files[@]} file(s)"
+          mkdir -p build
+          npx vitest run --reporter=default --reporter=json --outputFile=build/ci-desktop.json "${files[@]}"
+
+      - name: Every desktop file ran
+        if: always()
+        run: node test/support/ci-shards.mjs --verify-report desktop build/ci-desktop.json

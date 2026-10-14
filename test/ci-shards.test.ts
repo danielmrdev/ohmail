@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -23,13 +24,23 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const WORKFLOW = ["public/ohmail/github/workflows/ci.yml", ".github/workflows/ci.yml"].find((p) => existsSync(join(ROOT, p)))!;
 const workflowText = readFileSync(join(ROOT, WORKFLOW), "utf8");
 const composeText = readFileSync(join(ROOT, "docker-compose.yml"), "utf8");
+const dockerignoreText = readFileSync(join(ROOT, "apps/webapp/Dockerfile.dockerignore"), "utf8");
+/** Every directory name a checkout holds under apps/ and packages/ (git's tracked set: a fresh checkout's). */
+const TRACKED_DIRS = new Set(execFileSync("git", ["ls-files", "-z", "--", "apps", "packages"], { cwd: ROOT, encoding: "utf8", maxBuffer: 1 << 26 })
+  .split("\0").filter(Boolean).flatMap((p) => p.split("/").slice(0, -1)));
+
+/** The directory names the web image's context drops (`**\/<name>` in its dockerignore) that a checkout holds. */
+function imageDrops(dockerignore: string, dirs: Set<string> = TRACKED_DIRS): string[] {
+  return [...new Set(dockerignore.split("\n").map((l) => /^\*\*\/([\w.-]+)$/.exec(l.trim())?.[1])
+    .filter((n): n is string => !!n && dirs.has(n)))].sort();
+}
 
 type Step = { name?: string; run?: string; uses?: string; env?: Record<string, unknown> };
 type Job = { name?: string; permissions?: unknown; env?: Record<string, unknown>; steps: Step[]; services?: Record<string, { image: string; env?: Record<string, string>; ports?: string[]; options?: string }> };
 type Workflow = { on: Record<string, unknown>; permissions?: unknown; jobs: Record<string, Job> };
 
-/** Every refusal the workflow earns, read from its text against the compose file's. */
-function workflowProblems(text: string, compose: string): string[] {
+/** Every refusal the workflow earns, read from its text against the compose file's and the web image's dockerignore. */
+function workflowProblems(text: string, compose: string, imageDrop: string[] = imageDrops(dockerignoreText)): string[] {
   const wf = yaml.load(text) as Workflow;
   const services = (yaml.load(compose) as { services: Record<string, { image: string; shm_size?: string; environment?: Record<string, string>; ports?: string[]; volumes?: string[] }> }).services;
   const problems: string[] = [];
@@ -44,20 +55,43 @@ function workflowProblems(text: string, compose: string): string[] {
   for (const [id, job] of Object.entries(wf.jobs)) {
     for (const st of job.steps) if (/Wait for GreenMail/.test(st.name ?? "") && !(st.run ?? "").includes('"* OK"')) problems.push(`GREETING ${id} waits for an open port, not GreenMail's greeting`);
   }
-  /* next build type-checks every .ts it can see; the web image's context drops every test directory, so
-     a job that builds the web app drops them first or it builds a tree no image ever builds. */
-  const DROP = "-type d -name test -prune -exec rm -rf {} +";
+  /* next build type-checks every .ts it can see, and the web image's context drops what its dockerignore
+     names: a job that builds the web app drops exactly those a checkout holds, first, or it builds a tree
+     no image ever builds. */
+  const drops = (r: string) => [...r.matchAll(/-type d -name (\S+) -prune -exec rm -rf \{\} \+/g)].map((m) => m[1]!);
   for (const id of ["webapp-build", "proxy-e2e"]) {
     const runs = (wf.jobs[id]?.steps ?? []).map((st) => st.run ?? "");
-    const build = runs.findIndex((r) => /next build|proxy\.e2e\.test\.ts/.test(r) && !r.includes(DROP) && !r.startsWith("cp "));
-    const drop = runs.findIndex((r) => r.includes(DROP));
+    const build = runs.findIndex((r) => /next build|proxy\.e2e\.test\.ts/.test(r) && !drops(r).length && !r.startsWith("cp "));
+    const drop = runs.findIndex((r) => drops(r).length > 0);
     if (drop < 0 || build < 0 || drop > build) problems.push(`IMAGE_TREE ${id} builds the web app over test directories the image never sees`);
+    const got = [...new Set(runs.flatMap(drops))].sort();
+    if (drop >= 0 && got.join(",") !== imageDrop.join(",")) problems.push(`IMAGE_TREE ${id} drops [${got.join(", ")}], the web image's context drops [${imageDrop.join(", ")}]`);
   }
+  /* The suite's tests load packages' built output, so every job running the suite builds first (tsc -b). */
+  for (const id of ["suite", "alone", "sqlite"]) {
+    const runs = (wf.jobs[id]?.steps ?? []).map((st) => st.run ?? "");
+    const buildAt = runs.findIndex((r) => /^npm run build$/m.test(r));
+    const vitestAt = runs.findIndex((r) => /\bvitest run\b/.test(r));
+    if (buildAt < 0 || vitestAt < 0 || buildAt > vitestAt) problems.push(`BUILD ${id} runs vitest before npm run build`);
+  }
+  /* The required `typecheck` check: the project build, and the web app's own program over its tests too. */
+  const typecheckRuns = (Object.values(wf.jobs).find((j) => j.name === "typecheck")?.steps ?? []).map((st) => st.run ?? "");
+  if (!typecheckRuns.some((r) => /^npm run build$/m.test(r))) problems.push("TYPECHECK the typecheck job does not run npm run build");
+  if (!typecheckRuns.some((r) => r.includes("tsc --noEmit -p apps/webapp/tsconfig.json"))) problems.push("TYPECHECK the typecheck job does not compile the web app's program");
+  if (typecheckRuns.some((r) => drops(r).length)) problems.push("TYPECHECK the typecheck job drops test directories, and the web app's program reads its tests");
+  /* The desktop job runs the desktop's own files on the desktop's own install, and reads its report back. */
+  const desktopRuns = (wf.jobs.desktop?.steps ?? []).map((st) => st.run ?? "");
+  const installAt = desktopRuns.findIndex((r) => r.includes("cd apps/desktop && npm ci"));
+  const deskVitestAt = desktopRuns.findIndex((r) => /\bvitest run\b/.test(r));
+  if (installAt < 0 || deskVitestAt < 0 || installAt > deskVitestAt) problems.push("DESKTOP the desktop job runs vitest before it installs apps/desktop's own tree");
+  if (!desktopRuns.some((r) => r.includes("node test/support/ci-shards.mjs --desktop"))) problems.push("DESKTOP the desktop job does not take its files from the shard map");
+  if (!desktopRuns.some((r) => r.includes("node test/support/ci-shards.mjs --verify-report desktop"))) problems.push("DESKTOP the desktop job does not read its report back");
   if (text.includes("OHMAIL_FREEZE")) problems.push("FREEZE the workflow names OHMAIL_FREEZE — the shared box is never a CI database");
   for (const [id, job] of Object.entries(wf.jobs)) {
     const runs = job.steps.map((s) => s.run ?? "");
     const vitestAt = runs.findIndex((r) => /\bvitest run\b/.test(r));
-    if (vitestAt < 0) continue;
+    /* The desktop job's files dial no database (test/ci-shards-desktop.test.ts holds that), so it starts none. */
+    if (vitestAt < 0 || id === "desktop") continue;
     const step = job.steps[vitestAt];
     if (String(job.env?.TF_REQUIRE_PG ?? step.env?.TF_REQUIRE_PG) !== "1") problems.push(`REQUIRE_PG ${id} runs vitest without TF_REQUIRE_PG "1"`);
     const laneAt = runs.findIndex((r) => r.includes("scripts/lane-db.sh"));
@@ -94,7 +128,7 @@ describe("the suite workflow", () => {
     expect(workflowProblems(workflowText, composeText)).toEqual([]);
     // The census has subjects: the jobs it judged really run vitest, and the services are really there.
     const vitestJobs = Object.entries(wf.jobs).filter(([, j]) => j.steps.some((s) => /\bvitest run\b/.test(s.run ?? ""))).map(([id]) => id);
-    expect(vitestJobs.sort()).toEqual(["alone", "proxy-e2e", "sqlite", "suite"]);
+    expect(vitestJobs.sort()).toEqual(["alone", "desktop", "proxy-e2e", "sqlite", "suite"]);
     expect(Object.keys(wf.jobs.suite.services ?? {}).sort()).toEqual(["greenmail", "postgres"]);
   });
 
@@ -145,6 +179,33 @@ describe("the suite workflow", () => {
     expect(workflowProblems(overTests, composeText)).toEqual(["IMAGE_TREE webapp-build builds the web app over test directories the image never sees"]);
   });
 
+  it("reads the web image's drop set from its dockerignore, and refuses a job dropping another", () => {
+    expect(imageDrops(dockerignoreText)).toEqual(["test"]);
+    // A planted dockerignore that also drops a directory the checkout holds asks the jobs for it.
+    expect(imageDrops(`${dockerignoreText}\n**/fixtures\n`)).toEqual(["fixtures", "test"]);
+    expect(workflowProblems(workflowText, composeText, ["fixtures", "test"])).toEqual([
+      "IMAGE_TREE webapp-build drops [test], the web image's context drops [fixtures, test]",
+      "IMAGE_TREE proxy-e2e drops [test], the web image's context drops [fixtures, test]",
+    ]);
+    // A name no checkout holds is no drop a job owes.
+    expect(imageDrops(`${dockerignoreText}\n**/no-such-directory-anywhere\n`)).toEqual(["test"]);
+  });
+
+  it("refuses a suite job without the build, a typecheck that drops tests or skips a half, and a desktop job off its own install", () => {
+    const noBuild = workflowText.replace("      # tsc -b over the project graph: the tests that load a package's built output read this.\n      - name: The project build\n        run: npm run build\n\n", "");
+    expect(noBuild).not.toBe(workflowText);
+    expect(workflowProblems(noBuild, composeText)).toEqual(["BUILD suite runs vitest before npm run build"]);
+    const dropping = workflowText.replace("        run: ./node_modules/.bin/tsc --noEmit -p apps/webapp/tsconfig.json",
+      "        run: |\n          find apps packages -path '*/node_modules' -prune -o -type d -name test -prune -exec rm -rf {} +\n          ./node_modules/.bin/tsc --noEmit -p apps/webapp/tsconfig.json");
+    expect(dropping).not.toBe(workflowText);
+    expect(workflowProblems(dropping, composeText)).toEqual(["TYPECHECK the typecheck job drops test directories, and the web app's program reads its tests"]);
+    const noWeb = workflowText.replace("        run: ./node_modules/.bin/tsc --noEmit -p apps/webapp/tsconfig.json", "        run: echo skipped");
+    expect(workflowProblems(noWeb, composeText)).toEqual(["TYPECHECK the typecheck job does not compile the web app's program"]);
+    const rootOnly = workflowText.replace("        run: cd apps/desktop && npm ci --ignore-scripts --no-audit --no-fund", "        run: echo root tree only");
+    expect(rootOnly).not.toBe(workflowText);
+    expect(workflowProblems(rootOnly, composeText)).toEqual(["DESKTOP the desktop job runs vitest before it installs apps/desktop's own tree"]);
+  });
+
   it("runs on pull requests, nightly and by hand — never on push, never on a merge queue", () => {
     expect(Object.keys(wf.on).sort()).toEqual(["pull_request", "schedule", "workflow_dispatch"]);
   });
@@ -155,7 +216,9 @@ describe("the suite workflow", () => {
       expect(names).not.toContain(taken);
     }
     expect(wf.jobs.suite.name).toBe("suite (${{ matrix.shard }})");
-    for (const n of names) expect(n.startsWith("suite")).toBe(true);
+    // The repository's ruleset requires this check by its name: exactly "typecheck", chosen once.
+    expect(wf.jobs.typecheck.name).toBe("typecheck");
+    for (const [id, j] of Object.entries(wf.jobs)) if (id !== "typecheck") expect(j.name!.startsWith("suite"), id).toBe(true);
   });
 
   it("hands every shard's files to vitest through the map, and reads the report back", () => {
