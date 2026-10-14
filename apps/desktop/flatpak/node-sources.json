@@ -2956,10 +2956,24 @@
     },
     {
         "type": "file",
+        "url": "https://registry.npmjs.org/@types/mailparser/-/mailparser-3.4.6.tgz",
+        "sha512": "c1557772720acf14df7da3c7f2246775d5f5cda85b601d59128031ca1a01a374c1081b8aea767c33c2583bf461b02bae0553b0fc310dfedfc435baeec25c67e9",
+        "dest-filename": "7772720acf14df7da3c7f2246775d5f5cda85b601d59128031ca1a01a374c1081b8aea767c33c2583bf461b02bae0553b0fc310dfedfc435baeec25c67e9",
+        "dest": "flatpak-node/npm-cache/_cacache/content-v2/sha512/c1/55"
+    },
+    {
+        "type": "file",
         "url": "https://registry.npmjs.org/@types/node/-/node-22.20.1.tgz",
         "sha512": "10036a38217d405cab6bee297f151c5fd493289a422e331b39b573963209a260164a7b9220402fcb3114e7719a6a36d724481d87488470f2fe0c6be951de24d5",
         "dest-filename": "6a38217d405cab6bee297f151c5fd493289a422e331b39b573963209a260164a7b9220402fcb3114e7719a6a36d724481d87488470f2fe0c6be951de24d5",
         "dest": "flatpak-node/npm-cache/_cacache/content-v2/sha512/10/03"
+    },
+    {
+        "type": "file",
+        "url": "https://registry.npmjs.org/@types/nodemailer/-/nodemailer-6.4.24.tgz",
+        "sha512": "5b0e2ed2b4fdc1035787826241a230c7741675c3855f33a3400db373e8ed1583664224f898852a7038a7e756c315d9332ae6c59d009934aec520794f290feaf7",
+        "dest-filename": "2ed2b4fdc1035787826241a230c7741675c3855f33a3400db373e8ed1583664224f898852a7038a7e756c315d9332ae6c59d009934aec520794f290feaf7",
+        "dest": "flatpak-node/npm-cache/_cacache/content-v2/sha512/5b/0e"
     },
     {
         "type": "file",
@@ -2981,6 +2995,13 @@
         "sha512": "3177e6a9a54f115824053fda6346860a44565ad072898417a37c5d43caf9473b85acf8919fc19aaf6b5075749443618a5776e45dc91e93cf55f3040163643f03",
         "dest-filename": "e6a9a54f115824053fda6346860a44565ad072898417a37c5d43caf9473b85acf8919fc19aaf6b5075749443618a5776e45dc91e93cf55f3040163643f03",
         "dest": "flatpak-node/npm-cache/_cacache/content-v2/sha512/31/77"
+    },
+    {
+        "type": "file",
+        "url": "https://registry.npmjs.org/@types/sanitize-html/-/sanitize-html-2.16.1.tgz",
+        "sha512": "9fdc23b3c6c2393c8dff29f00fcb3f9d3713ade207075bdfdf5be12cc1aa50f3476b078a0b8fdf025e038fe8549424ca6209b83f793cddf9a215fce467ab2030",
+        "dest-filename": "23b3c6c2393c8dff29f00fcb3f9d3713ade207075bdfdf5be12cc1aa50f3476b078a0b8fdf025e038fe8549424ca6209b83f793cddf9a215fce467ab2030",
+        "dest": "flatpak-node/npm-cache/_cacache/content-v2/sha512/9f/dc"
     },
     {
         "type": "file",
@@ -11118,6 +11139,12 @@
     },
     {
         "type": "inline",
+        "contents": "940ad3b0f5f07aa67da4e05d479d672807712bac\t{\"key\": \"make-fetch-happen:request-cache:https://registry.npmjs.org/@types/sanitize-html/-/sanitize-html-2.16.1.tgz\", \"integrity\": \"sha512-n9wjs8bCOTyN/ynwD8s/nTcTreIHB1vf31vhLMGqUPNHaweKC4/fAl4Dj+hUlCTKYgm4P3k83fmiFfzkZ6sgMA==\", \"time\": 0, \"size\": 2882, \"metadata\": {\"url\": \"https://registry.npmjs.org/@types/sanitize-html/-/sanitize-html-2.16.1.tgz\", \"reqHeaders\": {}, \"resHeaders\": {}}}",
+        "dest-filename": "ab816360645267377511dd8bb1983a2a48f4d5992f45b23bb44053208472",
+        "dest": "flatpak-node/npm-cache/_cacache/index-v5/ef/b1"
+    },
+    {
+        "type": "inline",
         "contents": "94523fbd3f83689586d2617e884f38dca91d79a1\t{\"key\": \"make-fetch-happen:request-cache:https://registry.npmjs.org/@esbuild/android-arm64/-/android-arm64-0.21.5.tgz\", \"integrity\": \"sha512-c0uX9VAUBQ7dTDCjq+wdyGLowMdtR/GoC2U5IYk/7D1H1JYC0qseD7+11iMP2mRLN9RcCMRcjC4YMclCzGwS/A==\", \"time\": 0, \"size\": 3982493, \"metadata\": {\"url\": \"https://registry.npmjs.org/@esbuild/android-arm64/-/android-arm64-0.21.5.tgz\", \"reqHeaders\": {}, \"resHeaders\": {}}}",
         "dest-filename": "c35f135ee87267b7c80b09e75f31c4cae6d867637ad18932c4469c5e1735",
         "dest": "flatpak-node/npm-cache/_cacache/index-v5/12/1b"
@@ -12021,6 +12048,12 @@
         "contents": "b268197d2f3e89c8b5804815f70d1efae9854010\t{\"key\": \"make-fetch-happen:request-cache:https://registry.npmjs.org/regjsgen/-/regjsgen-0.8.0.tgz\", \"integrity\": \"sha512-RvwtGe3d7LvWiDQXeQw8p5asZUmfU1G/l6WbUXeHta7Y2PEIvBTwH6E2EfmYUK8pxcxEdEmaomqyp0vZZ7C+3Q==\", \"time\": 0, \"size\": 4693, \"metadata\": {\"url\": \"https://registry.npmjs.org/regjsgen/-/regjsgen-0.8.0.tgz\", \"reqHeaders\": {}, \"resHeaders\": {}}}",
         "dest-filename": "f12080cd83f6954c6f6c1d925e8d359cd8615464695493319f9acdbbdd95",
         "dest": "flatpak-node/npm-cache/_cacache/index-v5/fa/3e"
+    },
+    {
+        "type": "inline",
+        "contents": "b304be609ac955543053033cfe736c089f3b175f\t{\"key\": \"make-fetch-happen:request-cache:https://registry.npmjs.org/@types/mailparser/-/mailparser-3.4.6.tgz\", \"integrity\": \"sha512-wVV3cnIKzxTffaPH8iRnddX1zahbYB1ZEoAxyhoBo3TBCBuK6nZ8M8JYO/RhsCuuBVOw/DEN/t/ENbruwlxn6Q==\", \"time\": 0, \"size\": 3788, \"metadata\": {\"url\": \"https://registry.npmjs.org/@types/mailparser/-/mailparser-3.4.6.tgz\", \"reqHeaders\": {}, \"resHeaders\": {}}}",
+        "dest-filename": "281933e11be4d98d0bb51073c1f0443f5035682c17a59acbe3f0ead36119",
+        "dest": "flatpak-node/npm-cache/_cacache/index-v5/01/52"
     },
     {
         "type": "inline",
@@ -13317,6 +13350,12 @@
         "contents": "ebf00fe6baba74c1749a63f340adb8d1a9b0dae0\t{\"key\": \"make-fetch-happen:request-cache:https://registry.npmjs.org/mime/-/mime-1.6.0.tgz\", \"integrity\": \"sha512-x0Vn8spI+wuJ1O6S7gnbaQg8Pxh4NNHb7KSINmEWKiPE4RKOplvijn+NkmYmmRgP68mc70j2EbeTFRsrswaQeg==\", \"time\": 0, \"size\": 15686, \"metadata\": {\"url\": \"https://registry.npmjs.org/mime/-/mime-1.6.0.tgz\", \"reqHeaders\": {}, \"resHeaders\": {}}}",
         "dest-filename": "9f49d5822f17d335f0e7c29f9594c6e46b365dab8a67831cc10e56ad9684",
         "dest": "flatpak-node/npm-cache/_cacache/index-v5/5c/ca"
+    },
+    {
+        "type": "inline",
+        "contents": "ec79efe6fec6842a82b17bd6e7875849fe2940e6\t{\"key\": \"make-fetch-happen:request-cache:https://registry.npmjs.org/@types/nodemailer/-/nodemailer-6.4.24.tgz\", \"integrity\": \"sha512-Ww4u0rT9wQNXh4JiQaIwx3QWdcOFXzOjQA2zc+jtFYNmQiT4mIUqcDin51bDFdkzKubFnQCZNK7FIHlPKQ/q9w==\", \"time\": 0, \"size\": 20823, \"metadata\": {\"url\": \"https://registry.npmjs.org/@types/nodemailer/-/nodemailer-6.4.24.tgz\", \"reqHeaders\": {}, \"resHeaders\": {}}}",
+        "dest-filename": "762368773a50606203106588737b564bbf6f7600d18e7b4cfa9aa46fed25",
+        "dest": "flatpak-node/npm-cache/_cacache/index-v5/ba/9a"
     },
     {
         "type": "inline",
