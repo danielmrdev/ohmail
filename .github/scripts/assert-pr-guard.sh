@@ -5,9 +5,10 @@
 #
 # A pull request whose head is a `publish/<utc>-<sha12>` branch of THIS repository is a publish: a
 # batch of changes from the development repository, admitted as it is. Any other pull request is
-# refused when it (a) changes `.github/` or `scripts/`, the workflows and the tools they run, or
-# (b) carries a `Monorepo-Commit:` line in a commit message, its title or its description. That line
-# is written by the publishing tool alone, and the merge message is the description.
+# refused when it (a) changes `.github/`, `scripts/` or `.gate/`: the workflows, the tools they run and
+# the push gate's baseline, or (b) carries a `Monorepo-Commit:` line in a commit message, its title or
+# its description. That line is written by the publishing tool alone, and the merge message is the
+# description.
 #
 # It reads git objects and JSON and compares strings; nothing from the pull request is run.
 set -euo pipefail
@@ -34,10 +35,10 @@ fi
 refusals=0
 # (a) the change, as the pull request shows it: the merge base to the head.
 mb=$(git merge-base "$base" "$head") || fail "no merge base between $base and $head"
-machinery=$(git diff --name-only --no-renames "$mb" "$head" -- .github scripts) || fail "the change $mb..$head could not be listed"
+machinery=$(git diff --name-only --no-renames "$mb" "$head" -- .github scripts .gate) || fail "the change $mb..$head could not be listed"
 if [ -n "$machinery" ]; then
   refusals=$((refusals + 1))
-  say "guard: ✗ this pull request changes the workflows or the tools they run:"
+  say "guard: ✗ this pull request changes the workflows, the tools they run or the push gate's baseline:"
   while IFS= read -r p; do say "    $p"; done <<< "$machinery"
   say "  Those files change with a publish from the development repository. Please leave them out,"
   say "  and describe the change you need in an issue or in this pull request; a maintainer carries it."
@@ -68,4 +69,4 @@ if [ "$refusals" -gt 0 ]; then
   say "guard: REFUSED — $head_repo:${head_ref:-?}, $refusals reason(s) above"
   exit 1
 fi
-say "guard: ADMITTED — $head_repo:${head_ref:-?} changes neither .github/ nor scripts/ and carries no Monorepo-Commit: line"
+say "guard: ADMITTED — $head_repo:${head_ref:-?} changes none of .github/, scripts/ and .gate/, and carries no Monorepo-Commit: line"

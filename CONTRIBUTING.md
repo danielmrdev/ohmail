@@ -47,12 +47,13 @@ happened, what you expected. If it is visual, a screenshot beats a description.
   engine job typechecks and bundles the engine source on its own. All must pass;
   the smoke is what catches a view that lays out but draws nothing, and the
   artifact inspection is what catches a build that grew a network call.
-- The workflows under `.github/` and the tools under `scripts/` they run change
-  through our development repository and arrive with our published batches. The
-  **guard** check fails a pull request from anywhere else that changes them, or
-  that carries a `Monorepo-Commit:` line in a commit, its title or its
-  description: that line is our publishing tool's. If you need a change there,
-  describe it in an issue or in your pull request and we will carry it.
+- The workflows under `.github/`, the tools under `scripts/` they run and the
+  push gate's baseline under `.gate/` change through our development repository
+  and arrive with our published batches. The **guard** check fails a pull
+  request from anywhere else that changes them, or that carries a
+  `Monorepo-Commit:` line in a commit, its title or its description: that line
+  is our publishing tool's. If you need a change there, describe it in an issue
+  or in your pull request and we will carry it.
 - Keep the existing invariants: colours and shadows come from `packages/tokens`,
   never hand-written in a view; no message is ever replaced by a "N more"
   placeholder. The test suite enforces both, and it is meant to.

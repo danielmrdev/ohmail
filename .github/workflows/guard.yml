@@ -3,10 +3,11 @@ name: guard
 # The workflows, the tools they run and the publish line arrive only with a publish.
 #
 # A pull request from anywhere but this repository's `publish/*` branches is refused when it changes
-# `.github/` or `scripts/`, or carries a `Monorepo-Commit:` line in a commit message, its title or its
-# description. The workflows and their tools change through the development repository and reach
-# `main` with a publish; the `Monorepo-Commit:` line is the publishing tool's, which resumes from it,
-# and the merge message is the pull request's description. The rule is .github/scripts/assert-pr-guard.sh.
+# `.github/`, `scripts/` or `.gate/`, or carries a `Monorepo-Commit:` line in a commit message, its title
+# or its description. The workflows, their tools and the push gate's baseline change through the
+# development repository and reach `main` with a publish; the `Monorepo-Commit:` line is the publishing
+# tool's, which resumes from it, and the merge message is the pull request's description. The rule is
+# .github/scripts/assert-pr-guard.sh.
 #
 # `pull_request_target`, for the reason dco.yml gives: the checker comes from the BASE, the commits
 # under review are fetched as objects and read with git, and nothing out of them runs. The title and
