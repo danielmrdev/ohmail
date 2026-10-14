@@ -32,10 +32,8 @@ name: dco
 #
 # ── PULL REQUESTS AND MERGE GROUPS ONLY, NEVER PUSH ──────────────────────────────────────────
 #
-# Nothing reaches `main` by a push: every change is a pull request, the batches published from
-# the development repository included. Those are replayed
-# with their original authors and dates and with messages written for a public reader, and each
-# replayed commit carries its author's sign-off, so this check reads them like anyone's. A push
+# Nothing reaches `main` by a push: every change is a pull request, the maintainers' included,
+# and every commit in one carries its author's sign-off, so this check reads them all alike. A push
 # trigger would only re-read what the pull request and its merge group already checked.
 #
 # `merge_group` is included so that a queued merge is checked against the same rule as the pull
