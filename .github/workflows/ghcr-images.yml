@@ -166,7 +166,33 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: imjasonh/setup-crane@31b88efe9de28ae0ffa220711af4b60be9435f6e # v0.4
+      # crane runs holding this job's packages: write token, so it is a NAMED release whose tarball
+      # is checked against a committed SHA-256 before it is unpacked: a release asset can be
+      # replaced, and an action that installs "latest" pins nothing (the bundletool rule in
+      # android.yml). The sum is upstream's checksums.txt line for this asset, and the release's
+      # signed SLSA provenance names the same digest. This step holds no secret; the next one does.
+      - name: Install crane, a named release checked against its committed SHA-256
+        env:
+          CRANE_VERSION: v0.22.1
+          CRANE_SHA256: 0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0
+        run: |
+          set -euo pipefail
+          [ "$(uname -s)" = Linux ] && [ "$(uname -m)" = x86_64 ] \
+            || { echo "the pinned crane is the Linux x86_64 build; this runner is $(uname -s) $(uname -m)" >&2; exit 1; }
+          curl -sSfL --retry 3 -o "$RUNNER_TEMP/crane.tar.gz" \
+            "https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz"
+          echo "${CRANE_SHA256}  $RUNNER_TEMP/crane.tar.gz" | sha256sum -c --strict - \
+            || { echo "crane ${CRANE_VERSION} does not hash to the pinned ${CRANE_SHA256}" >&2; exit 1; }
+          mkdir -p "$RUNNER_TEMP/crane"
+          tar -xzf "$RUNNER_TEMP/crane.tar.gz" -C "$RUNNER_TEMP/crane" crane
+          echo "$RUNNER_TEMP/crane" >> "$GITHUB_PATH"
+
+      - name: Log crane in to GHCR with the job token, on stdin
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | crane auth login ghcr.io --username dummy --password-stdin
 
       - name: Mirror every third-party image the lock names
         run: bash .github/scripts/mirror-images.sh
