@@ -298,7 +298,7 @@ export interface GuardLists {
   readonly shared: readonly string[];
   /** Banned in the corpus only: product code names these on purpose. */
   readonly corpusOnly: readonly string[];
-  /** The entries an exemption names, by role (`namespace`, `forge`, `org`). None in public mode. */
+  /** Entries by role: an exemption's term (`namespace`, `forge`, `org`), a name's parts (`given`, `surname`). */
   readonly roles: Readonly<Record<string, readonly string[]>>;
 }
 
@@ -317,7 +317,7 @@ export const PUBLIC_GUARD: GuardLists = {
 };
 
 const CLASS_TAGS: readonly string[] = ["identity", "brand", "coined", "vendor"];
-const ROLE_TAGS: readonly string[] = ["namespace", "forge", "org"];
+const ROLE_TAGS: readonly string[] = ["namespace", "forge", "org", "given", "surname"];
 
 /**
  * The private list's rows (`term<TAB>list<TAB>tags`, `#` for a comment) as lists. A refusal names
