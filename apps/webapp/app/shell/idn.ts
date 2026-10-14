@@ -143,7 +143,7 @@ function decodeLabel(encoded: string): string | null {
 }
 
 /**
- * A DOMAIN, AS A HUMAN SHOULD READ IT. `xn--gtsch-jua.ch` → `götsch.ch`.
+ * A DOMAIN, AS A HUMAN SHOULD READ IT. `xn--bcher-kva.example` → `bücher.example`.
  *
  * Labels without the ACE prefix pass through untouched, and a domain in which nothing decodes is
  * returned as the very same string — so an ASCII domain is byte-identical, not merely equal.
