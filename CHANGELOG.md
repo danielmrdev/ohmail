@@ -81,6 +81,14 @@ the rule kept filing. It is removed now. When the server refuses a revoke or a c
 keeps the rule on screen and says so, instead of saying you are offline. The Screener, the sender
 sheets and subject rules say the same when the server refuses the rule they make.
 
+### Hand the mailbox back lets go within seconds
+<!-- changes: fix-026-hand-back-rings-the-pass.md -->
+
+Handing a mailbox back no longer waits for the organizer's next scheduled pass. On a server and in the
+desktop app the organizer lets go within seconds, so another device can organize the mailbox straight away.
+When a stop could not save a device's settings to the mailbox, the line saying so now stays until that device
+organizes the mailbox again.
+
 ### Still to come
 
 Signed installers — a real Apple Developer ID and an Authenticode certificate. See
