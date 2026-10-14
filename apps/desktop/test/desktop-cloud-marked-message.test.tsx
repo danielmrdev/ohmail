@@ -43,7 +43,7 @@ const act = (React as unknown as { act: (cb: () => Promise<void> | void) => Prom
 
 const CLOUD_MAILBOX = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const OWN = "me@ohmail.test";
-const PHISH = "karten.reaktivierung@gmail.com";
+const PHISH = "kartenservice@gmail.com";
 const MAILBOXES: readonly MailboxDTO[] = [hostedMailbox(CLOUD_MAILBOX, OWN)];
 const EMPTY: SnapshotResponse = { asOfSeq: 99, changes: [], nextCursor: null, window: { days: 90, minRows: 500 } };
 const iso = (): string => new Date().toISOString();
