@@ -276,20 +276,21 @@ export function FocusFollows(): null {
     };
     let restoreTimer: ReturnType<typeof setTimeout> | null = null;
     const observer = new MutationObserver(() => {
-      if (returning > 0 || !focusIsLost() || restoreTimer !== null) return;
-      /* WebKit can deliver mutations between blurring one control and focusing the next.
-         Let that move finish: a transient page-root focus must not steal a text-field click. */
+      if (returning > 0 || !focusIsLost()) return;
+      const lost = lastFocus;
+      if (lost?.el != null && !lost.el.isConnected) {
+        lastFocus = null;
+        land(lost, false);
+        return;
+      }
+      if (restoreTimer !== null) return;
+      /* A PAGE MODAL HOLDS FOCUS. A step that disabled or swapped its own button left focus on
+         the page root with no removal to answer, and ↵ there reached the mail behind setup.
+         WebKit can deliver mutations between blurring one control and focusing the next, so the
+         check waits one task: a transient page-root focus must not steal a text-field click. */
       restoreTimer = setTimeout(() => {
         restoreTimer = null;
         if (returning > 0 || !focusIsLost()) return;
-        const lost = lastFocus;
-        if (lost?.el != null && !lost.el.isConnected) {
-          lastFocus = null;
-          land(lost, false);
-          return;
-        }
-        /* A PAGE MODAL HOLDS FOCUS. A step that disabled or swapped its own button left focus on
-           the page root with no removal to answer, and ↵ there reached the mail behind setup. */
         const modal = pageModal(document);
         if (modal !== null) enterInto(modal);
       }, 0);
