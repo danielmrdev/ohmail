@@ -1,0 +1,5 @@
+0152_search_gin_pending_bounded — NOT CARRIED AS A STEP: THE DEVICE STORE HAS NO GIN INDEX.
+
+The shared entry bounds the pending list of `message_search`'s three GIN indexes at 256 kB and
+flushes them once. The SQLite twin of `message_search` carries no vectors and its full text lives
+in FTS5 tables kept by triggers, so there is no index whose storage could change.

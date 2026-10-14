@@ -1,0 +1,16 @@
+0123_news_pile_check — NOT CARRIED AS A STEP, FOR `0105.noop`'S REASON VERBATIM.
+
+The shared entry widens the closed set on `away_responders.piles` by one more member,
+`ohmail/News`, the way Postgres allows: DROP CONSTRAINT then ADD CONSTRAINT, with the legacy
+`ohmail/Reads` kept beside it because rows written before the 0.22 rename carry that spelling.
+SQLite carries no CHECK for this column at all — it stores `piles` as a JSON text column, and the
+closed set is refused at the write door instead (`request-apply.ts`, which reads `AWAY_PILES`
+itself), so the sqlite widening IS the constant's new member and there is no table to rebuild.
+
+The two sides carry different member counts on purpose. Postgres keeps BOTH spellings in the
+CHECK, because rows written before the rename hold the legacy one and the constraint is checked
+against what is stored. The device door carries ONE: `request-apply.ts` canonicalizes the spelling
+BEFORE it asks the set, so a pre-0.22 install's ask is admitted and stored canonical.
+
+WHAT CHANGES THE DAY THIS JOURNAL SHIPS is what `0102.noop` and `0104.noop` already say, and the
+same answer serves this one.

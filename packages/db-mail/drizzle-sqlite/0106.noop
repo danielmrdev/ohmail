@@ -1,0 +1,13 @@
+0106_screening_baseline_backfill — NOT CARRIED AS A STEP, BECAUSE THERE ARE NO ROWS TO CORRECT.
+
+The shared entry backfills `account_settings.screening_baseline_at` for accounts that consented
+while the baseline was stamped only alongside a window. Those rows exist because the shared
+journal has been running in production since mail 0056.
+
+This journal has never shipped, so no store in the world holds a row written by the old door. A
+device store is created by the baseline and then by the doors as they are today, which stamp the
+baseline at consent whether or not a window came with it — the state this backfill repairs is
+unreachable here.
+
+WHAT CHANGES THE DAY THIS JOURNAL SHIPS: nothing about this entry. A correction of historical rows
+is only owed by a journal that wrote them.

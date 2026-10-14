@@ -1,0 +1,13 @@
+0102_sync_blocked_reason_read_limited — NOT CARRIED AS A STEP, AND NEVER WILL BE.
+
+The shared entry widens the closed set on `mailboxes.sync_blocked_reason` by one member,
+'read_limited', the way Postgres allows: DROP CONSTRAINT then ADD CONSTRAINT. SQLite has neither.
+
+This store carries no CHECK for that column. The set is WIDENABLE — measured from this journal's
+own history, which has now widened it twice — and a widenable set is refused at the write door
+(`packages/db/src/closed-sets.ts`), the same refusal on both dialects. Carrying the CHECK here
+would have made this widening, and every later one, a fifty-column table rebuild on every device
+from the day the baseline ships.
+
+So there is no step, and there will not be one for the next member either.
+`closed-set-parity.test.ts` reddens if a CHECK for this column reappears on this store.

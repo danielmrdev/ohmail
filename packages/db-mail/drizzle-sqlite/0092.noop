@@ -1,0 +1,14 @@
+0092_organizer_install_id — FOLDED INTO THE BASELINE, NOT ADDED AS A STEP.
+
+The shared entry adds `mailboxes.organized_by_install_id`. This journal's baseline post-dates the
+fork at 0090 and is written by hand against the twin, so a column that arrives before any device
+has ever run `0001_baseline.sql` belongs IN that file rather than as a second statement after it —
+there is no installed store to migrate.
+
+The column is in `0001_baseline.sql` beside `organized_by_name`, and `schema-mail-sqlite.ts`
+declares it beside the same neighbour, so `schema-twin-parity.test.ts` and
+`sqlite-baseline.test.ts` both compare it. Before this, the twin was one column short of the server
+and the parity test said so by name.
+
+The moment 0.18 ships, this stops being available: an entry that has run somewhere is a fact about
+somebody's store and gets its own numbered file, however small.

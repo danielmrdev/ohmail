@@ -1,0 +1,12 @@
+0100_reader_window_peer_restamp — NOT CARRIED AS A STEP, AND THE REASON IS THE STORE'S AGE.
+
+The shared entry re-stamps `folder_state.last_set_by` from 'external' to 'peer' for rows whose
+message was created before 2026-09-09 and which carry no 'move' in the change log. It is a one-off
+correction to rows a server accumulated before the reader-window rule existed.
+
+A device store is created by `0001_baseline.sql` and reaches this journal already holding the rule,
+so there is no row of that age for the statement to touch: applying it would be a no-op with a
+join, and carrying it would state that this store once had the defect. It did not.
+
+Nothing about the phone's behaviour differs. If a device store is ever seeded from a server dump
+taken before that date, the seeding path owes the same correction — not this journal.

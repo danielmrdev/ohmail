@@ -1,0 +1,6 @@
+0134_withheld_too_large — NOT CARRIED AS A STEP: THE DEVICE COLUMN HAS NO CHECK.
+
+The shared entry widens the `message_bodies_withheld_reason` CHECK by one member, `too_large`.
+The SQLite twin of `message_bodies.withheld_reason` is a plain `text` column with no CHECK
+(`0001_baseline.sql`), so a device store already holds the new member and there is nothing to
+rebuild or change.

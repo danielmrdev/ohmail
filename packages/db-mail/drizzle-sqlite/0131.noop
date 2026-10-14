@@ -1,0 +1,8 @@
+0131_uid_bigint — NOT CARRIED AS A STEP: THE DEVICE COLUMNS ALREADY HOLD EVERY UID.
+
+The shared entry widens four `uid` columns (message_instances, message_failures, junk_rescues,
+mailbox_profile_mirror) from `integer` to `bigint`, because a Postgres `integer` is 32-bit signed
+and an IMAP UID is unsigned 32-bit. A SQLite INTEGER is a 64-bit signed value whatever the column
+declares, so the device twins already store every UID a server can issue, and
+`schema-twin-parity.test.ts` rules `PgBigInt53 → SQLiteInteger` for the twin declarations. There
+is no table to rebuild and no value to change.

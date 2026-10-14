@@ -1,0 +1,28 @@
+0091_request_refusal_closed — NOT CARRIED AS A STEP, AND THE DIFFERENCE IS REAL.
+
+The shared entry adds a CHECK to `organizer_requests.refused_reason`, closing it to the eight
+members of REQUEST_REFUSAL_REASONS and NULL. This journal does not carry it, and the honest reason
+is not "the write path is already closed" — the shared entry's own header rejects that argument, in
+the same words, because an argument about the write path stops being true the day somebody adds a
+second write path.
+
+The reason is that the constraint cannot be carried on one side alone. The Postgres twin
+(`schema-mail.ts`) does not DECLARE this CHECK — it exists in the migration and nowhere else — and
+`schema-twin-parity.test.ts` compares the two twins' CHECK names. Declaring it here and not there
+fails parity; declaring it in both is an edit to the shared server schema, which this journal is
+not the place to make.
+
+WHAT IS THEREFORE TRUE ON A DEVICE: an out-of-vocabulary refusal reason would be refused by the
+server's database and stored by this one. Nothing writes such a value — the reason is parsed from a
+payload verified under the account's key and anything outside the vocabulary is mapped to NULL
+before it reaches SQL — so this is a difference in what the STORE would refuse, not in what the
+program does.
+
+NOT OWED ANY MORE, and the earlier advice here was the opposite of the rule. This file used to
+say the constraint should be declared on both twins and added to `0001_baseline.sql`. Mail 0094
+then widened it, which makes it a WIDENABLE set: SQLite cannot drop a CHECK, so carrying it here
+would have frozen a table rebuild into the first shipped baseline for one more refusal reason.
+
+A widenable set is refused at the write door instead — the payload's reason is parsed under the
+account's key and anything outside the vocabulary is mapped to NULL before it reaches SQL, which
+is that door. `closed-set-parity.test.ts` is what keeps the two halves honest.

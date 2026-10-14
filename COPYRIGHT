@@ -72,13 +72,19 @@ licence:
                   manifest pins. Its licence notice heads the file; the
                   licence text ships in that package (pdfjs-dist/LICENSE).
 
+  Omarchy themes  packages/tokens/omarchy/fixtures/raw/*.colors.toml and
+                  packages/tokens/omarchy/fixtures/shell.example.toml are
+                  Omarchy's stock theme and shell files, as an Omarchy 4.0.2
+                  install ships them. Copyright (c) David Heinemeier
+                  Hansson, MIT, with the notice below.
+
   AppImage GTK    apps/desktop/src-tauri/linux/linuxdeploy-plugin-gtk.sh is
   plugin          linuxdeploy-plugin-gtk, with each change marked `ohmail:`
                   at the line it touches. Copyright 2018-2019 TheAssassin
                   and the linuxdeploy contributors, MIT, with the notice
                   below.
 
-The MIT notice it carries, after its copyright line:
+The MIT notice both of those carry, after their copyright lines:
 
   Permission is hereby granted, free of charge, to any person obtaining a
   copy of this software and associated documentation files (the
