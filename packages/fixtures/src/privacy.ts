@@ -31,9 +31,9 @@
  * retailer (a real furniture label). Every one of them read plausibly coined.
  * Hence: no entry without a verdict, and no `near-collision` without a name.
  *
- * The banned terms live here and NOWHERE else in the fixture corpus, so a
- * privacy grep over `packages/fixtures` has exactly one expected hit: this
- * meta-reference. `test/shape.test.ts` walks every renderable string of
+ * The banned terms' real entries do NOT live here: they are in the private
+ * test set, read at run time, and this file holds the guard's rules plus a
+ * synthetic public set. `test/shape.test.ts` walks every renderable string of
  * `getFixtures()` against the list, at every depth (including held mail),
  * audits these review notes as corpus too, and asserts that every display
  * name the UI can render is registered below — so a new sender cannot be
@@ -61,7 +61,7 @@ export interface FictionalName {
  * Every person and brand name the demo can put on screen.
  *
  * Notes deliberately do NOT spell out the real brands that were removed —
- * those strings are in `bannedTerms`, the notes are audited as corpus, and a
+ * those strings are on the guard's private list, the notes are audited as corpus, and a
  * real brand named in a comment is still a real brand in this repository.
  */
 export const fictionalNames: FictionalName[] = [
@@ -233,10 +233,15 @@ export const fictionalNames: FictionalName[] = [
 ];
 
 /**
- * Substrings that must never appear anywhere in the FIXTURE CORPUS: the real
- * identity of the person behind this project, the real company, and every real
- * brand this audit has turned up — including the nine this registry once
- * certified as coined.
+ * THE BANNED TERMS — what must never appear anywhere in the FIXTURE CORPUS: the real identity of
+ * the person and the company behind this project, and every real brand this audit has turned up,
+ * including the nine this registry once certified as coined.
+ *
+ * THE REAL ENTRIES ARE NOT IN THIS FILE. A guard list that publishes the names it guards against is
+ * itself the leak, so they live in the repository's private test set, which is never published,
+ * and every reader hands that list's text to {@link guardFrom} at run time. A checkout without it —
+ * any public one — runs the same rules on {@link PUBLIC_GUARD} and says PUBLIC MODE: invented
+ * markers that occur nowhere, which every reader plants to prove its scan still catches a hit.
  *
  * SCOPE — stated precisely, because an overstated scope is how the last grep
  * got waved through. This list governs the DEMO WORLD and nothing else:
@@ -245,7 +250,7 @@ export const fictionalNames: FictionalName[] = [
  * repo-wide grep, and there are two reasons a wider one would not come back
  * clean:
  *
- *  1. `NAMESPACE_EXEMPTION` below — the product's IMAP folder namespace still
+ *  1. `NAMESPACE_EXEMPTION` below — the backend workspace package scope still
  *     carries the pre-rebrand company name. Documented, with a tracked fix.
  *  2. Product code outside the fixtures names real vendors on purpose: the
  *     marketing copy has to name the mail providers ohmail works with, and the
@@ -255,48 +260,9 @@ export const fictionalNames: FictionalName[] = [
  * So read a green run of this guard as what it is — a certified demo world —
  * and not as a claim about every file that happens to sit next to it.
  */
-export const bannedTerms: string[] = [
-  // real personal / company identity
-  "gilles",
-  "goetsch",
-  "trafficflow",
-  "steiner",
-  // real brands previously present or adjacent enough to guard
-  "alpenglow",
-  "trailhead",
-  "ikea",
-  "swisscom",
-  "sbb",
-  "migros",
-  "coop",
-  "nespresso",
-  "starbucks",
-  "salesforce",
-  "hetzner",
-  "github",
-  "notion",
-  "icloud",
-  "gmail",
-  "outlook",
-  "protonmail",
-  "fastmail",
-  "superhuman",
-  "hey.com",
-  // real brands this registry itself once shipped as "coined" — banned so the
-  // same nine names cannot walk back in behind a plausible-looking note
-  "hejmo",
-  "falto",
-  "northlight",
-  "skyfort",
-  "skyf0rt",
-  "atelier nord",
-  "atelier-nord",
-  "morgenpost",
-  "looseleaf",
-  "velowerk",
-  "bergwind",
-  "quartierpost",
-];
+
+/** Which entries a guard runs on: the private list, or the synthetic public set. */
+export type GuardMode = "private" | "public";
 
 /**
  * ══ BANNED IN THE DEMO WORLD, LEGAL IN PRODUCT CODE ══════════════════════════════════════
@@ -306,7 +272,7 @@ export const bannedTerms: string[] = [
  * anonymised" — and until now the line existed only in prose, so the corpus had no way to ban a
  * term that product code must be free to write. This is that half, machine-readable.
  *
- * WHY IT IS A SECOND LIST AND NOT TWO MORE ENTRIES ABOVE. `bannedTerms` has three consumers and
+ * WHY IT IS A SECOND LIST AND NOT MORE ENTRIES ON THE SHARED ONE. `shared` has three consumers and
  * only one of them is the demo world. The other two run it over PRODUCT code — the phone app's
  * own sources, and the IMAP folder paths the client creates — where naming the service a feature
  * talks to is the whole point of the sentence. Measured: adding a mail vendor's name to the shared
@@ -316,33 +282,96 @@ export const bannedTerms: string[] = [
  * grows is how a guard stops meaning anything. The demo world has no such claim: nothing in it is
  * about a real calendar server, and a calendar part that says so is a real brand in the corpus.
  *
- * WHAT PUT IT HERE. Two `PRODID` values — `-//Google Inc//Google Calendar 70.9054//EN` and
- * `Microsoft Exchange Server 2010` — sat inside the two calendar invitations' `text/calendar`
+ * WHAT PUT IT HERE. Two `PRODID` values — one naming a calendar vendor's product, one a mail
+ * server's — sat inside the two calendar invitations' `text/calendar`
  * bodies. Nothing on screen shows a PRODID, which is exactly why they survived every review of
- * what the demo DISPLAYS, and `bannedTerms` held neither term, so the guard was green for the
+ * what the demo DISPLAYS, and the shared list held neither term, so the guard was green for the
  * whole time they were there. Both now read `-//ohmail demo//EN`. The dialect trap lines each
  * fixture exists for — the nameless part, `METHOD:COUNTER`, `X-MS-OLDSTART`, the Windows zone
  * name — are untouched: they are wire facts, not brands.
  *
- * `outlook` is on the shared list already and stays there.
+ * A third vendor term of the same kind is on the shared list already and stays there.
  */
-export const corpusOnlyBannedTerms: string[] = [
-  "google",
-  "microsoft",
-];
+export interface GuardLists {
+  readonly mode: GuardMode;
+  /** Banned in the corpus AND in the two product scans: the phone app's sources, the folder paths. */
+  readonly shared: readonly string[];
+  /** Banned in the corpus only: product code names these on purpose. */
+  readonly corpusOnly: readonly string[];
+  /** The entries an exemption names, by role (`namespace`, `forge`, `org`). None in public mode. */
+  readonly roles: Readonly<Record<string, readonly string[]>>;
+}
 
 /**
- * The one documented contradiction of `bannedTerms`, kept honest on purpose.
+ * THE PUBLIC SET — invented markers, one per shape the real list holds: a bare word, two words, a
+ * domain, a word with a digit. None names anything real and none occurs in the corpus, the phone
+ * app or the folder paths, so every scan runs clean on them, and every reader also PLANTS them,
+ * which is how a public checkout proves its guard still bites. No exemption roles: the exemptions
+ * name real terms, and a public checkout has none to exempt.
+ */
+export const PUBLIC_GUARD: GuardLists = {
+  mode: "public",
+  shared: Object.freeze(["zqmarrow", "zqvane works", "zqlumen", "zqfield.invalid", "zq4post"]),
+  corpusOnly: Object.freeze(["zqcalvendor", "zqserverhaus"]),
+  roles: Object.freeze({}),
+};
+
+const CLASS_TAGS: readonly string[] = ["identity", "brand", "coined", "vendor"];
+const ROLE_TAGS: readonly string[] = ["namespace", "forge", "org"];
+
+/**
+ * The private list's rows (`term<TAB>list<TAB>tags`, `#` for a comment) as lists. A refusal names
+ * the LINE and never quotes it: refusals are printed, and a printed entry is the leak this guard
+ * exists to stop. `list` is `shared` or `corpus`; `tags` are one class and any roles.
+ */
+export function parseGuardList(text: string): GuardLists {
+  const shared: string[] = [];
+  const corpusOnly: string[] = [];
+  const roles: Record<string, string[]> = {};
+  const seen = new Set<string>();
+  text.split("\n").forEach((raw, i) => {
+    const line = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
+    if (line.trim() === "" || line.startsWith("#")) return;
+    const where = `private guard list, line ${i + 1}`;
+    const cells = line.split("\t");
+    if (cells.length !== 3) throw new Error(`${where}: not term<TAB>list<TAB>tags`);
+    const [term = "", list = "", tagCell = ""] = cells;
+    if (term === "" || term !== term.trim() || term !== term.toLowerCase()) {
+      throw new Error(`${where}: a term is lower case, with no space around it`);
+    }
+    if (seen.has(term)) throw new Error(`${where}: a term listed twice`);
+    seen.add(term);
+    const tags = tagCell.split(",");
+    const classes = tags.filter((t) => CLASS_TAGS.includes(t));
+    if (classes.length !== 1 || tags.some((t) => !CLASS_TAGS.includes(t) && !ROLE_TAGS.includes(t))) {
+      throw new Error(`${where}: tags are one of ${CLASS_TAGS.join("/")} plus any of ${ROLE_TAGS.join("/")}`);
+    }
+    if (list === "shared") shared.push(term);
+    else if (list === "corpus") corpusOnly.push(term);
+    else throw new Error(`${where}: the list is shared or corpus`);
+    for (const role of tags.filter((t) => ROLE_TAGS.includes(t))) (roles[role] ??= []).push(term);
+  });
+  if (shared.length === 0) throw new Error("private guard list: no shared entry, so the guard would ban nothing");
+  return { mode: "private", shared, corpusOnly, roles };
+}
+
+/** The lists a reader runs on: the private list when its text was read, else {@link PUBLIC_GUARD}. */
+export function guardFrom(privateText: string | null): GuardLists {
+  return privateText === null ? PUBLIC_GUARD : parseGuardList(privateText);
+}
+
+/**
+ * The one documented contradiction of the shared list, kept honest on purpose.
  *
  * The IMAP folder namespace used to be the contradiction: the product created
- * `TrafficFlow/…` folders inside real customer mailboxes. That is **fixed** —
+ * folders under the pre-rebrand company name inside real customer mailboxes. That is **fixed** —
  * on 2026-07-31, while zero real mailboxes were connected, the five strings
  * became `ohmail/Screener`, `ohmail/Reads`, `ohmail/Receipts`,
  * `ohmail/Screened`, `ohmail/Quarantine`. Nothing a user can see carries the
  * pre-rebrand name any more.
  *
- * What survives is the backend workspace scope — `@trafficflow/{api,core,db,
- * services}` and `@trafficflow/worker`. Nothing is published to npm and the
+ * What survives is the backend workspace scope — the package scope of api, core, db,
+ * services and worker. Nothing is published to npm and the
  * specifiers are resolved away at build time, so the term appears in no
  * shipped bundle, no HTTP payload and no mailbox: it is cosmetic
  * inconsistency inside the repository, not a leak. It stays on the ban list so
@@ -355,8 +384,9 @@ export const corpusOnlyBannedTerms: string[] = [
  * the namespaced path.
  */
 export const NAMESPACE_EXEMPTION = {
-  term: "trafficflow",
-  where: "backend workspace package scope @trafficflow/{api,core,db,services,worker}",
+  /** The term is the private list's row carrying this role; a public checkout has none to exempt. */
+  role: "namespace",
+  where: "backend workspace package scope of the api, core, db, services and worker packages",
   why: "never published, resolved away at build time — absent from every bundle, payload and mailbox",
   until: "folded into a future workspace-scope rename; the user-visible folder namespace is already ohmail/…",
   uiRule: "never render a raw folder string; map via VIEW_OF_FOLDER, fall back to folderLeaf()",
