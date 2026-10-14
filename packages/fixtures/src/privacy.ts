@@ -224,11 +224,11 @@ export const fictionalNames: FictionalName[] = [
   },
 
   // Rail / mailbox shorthands and non-sender labels the UI renders.
-  { name: "lichtgrat.studio", verdict: "coined", note: "domain of the coined studio; not a registered domain we could find" },
+  { name: "lichtgrat.example", verdict: "coined", note: "domain of the coined studio, on the reserved .example name: nobody can register it" },
   {
-    name: "milabrunner.ch",
+    name: "milabrunner.example",
     verdict: "coined",
-    note: "personal domain of the invented persona; not a registered domain we could find",
+    note: "personal domain of the invented persona, on the reserved .example name: nobody can register it",
   },
 ];
 

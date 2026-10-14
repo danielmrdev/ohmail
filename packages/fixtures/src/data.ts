@@ -27,15 +27,15 @@ import type {
 /* ------------------------------------------------------------ identity */
 
 export const account: AccountFixture = {
-  email: "mila@lichtgrat.studio",
+  email: "mila@lichtgrat.example",
   displayName: "Mila",
 };
 
 export const mailboxes: MailboxFixture[] = [
   {
     id: "lichtgrat",
-    name: "lichtgrat.studio",
-    address: "mila@lichtgrat.studio",
+    name: "lichtgrat.example",
+    address: "mila@lichtgrat.example",
     provider: "Work",
     protocol: "IMAP",
     railHint: "IMAP",
@@ -43,8 +43,8 @@ export const mailboxes: MailboxFixture[] = [
   },
   {
     id: "milabrunner",
-    name: "milabrunner.ch",
-    address: "hello@milabrunner.ch",
+    name: "milabrunner.example",
+    address: "hello@milabrunner.example",
     provider: "Personal",
     protocol: "IMAP",
     railHint: "IMAP",
@@ -53,7 +53,7 @@ export const mailboxes: MailboxFixture[] = [
   {
     id: "wolkenmail",
     name: "Wolkenmail",
-    address: "mila.demo@wolkenmail.ch",
+    address: "mila.demo@wolkenmail.example",
     provider: "Wolkenmail",
     protocol: "IMAP",
     railHint: "IMAP",
@@ -98,7 +98,7 @@ export const ohbox: MessageFixture[] = [
   {
     id: "giulia",
     folder: "ohbox",
-    from: { name: "Giulia Ferrari", address: "giulia@terracotta-milano.it" },
+    from: { name: "Giulia Ferrari", address: "giulia@terracotta-milano.example" },
     subject: "Re: Glaze order #2214 🎉",
     time: "09:12",
     threadCount: 4,
@@ -107,25 +107,25 @@ export const ohbox: MessageFixture[] = [
       "Buongiorno Mila, buone notizie — la spedizione arriva già il 4 agosto…",
     body: "Buongiorno Mila,\n\nbuone notizie — la vostra spedizione di smalti arriva già il 4 agosto, dieci giorni prima del previsto! Verde salvia e bianco opaco sono entrambi in cartone.\n\nMi confermate che la consegna resta all’atelier?\n\nA presto,\nGiulia Ferrari\nTerracotta Milano",
     rationale:
-      "Ohbox — rule: sender giulia@terracotta-milano.it → Ohbox (learned from you · 14×)",
+      "Ohbox — rule: sender giulia@terracotta-milano.example → Ohbox (learned from you · 14×)",
     trackerNote: "1 spy pixel blocked (open-tracker)",
   },
   {
     id: "petra",
     folder: "ohbox",
-    from: { name: "Petra Wyss", address: "petra@makersfest.ch" },
+    from: { name: "Petra Wyss", address: "petra@makersfest.example" },
     subject: "Your talk is in! 🎈",
     time: "08:47",
     unread: true,
     attachment: { filename: "Speaker_Info.pdf", size: "1.2 MB" },
     snippet: "Great news — “Wabi-sabi for web people” made the final program…",
     body: "Hi Mila\n\nGreat news — “Wabi-sabi for web people” made the final program! You’re on Saturday at 11:00 in the main hall; yours was one of the most requested sessions.\n\nSpeaker details attached — and yes, there is a speaker dinner on Friday.\n\nSee you in September!\nPetra",
-    rationale: "Ohbox — rule: domain makersfest.ch → Ohbox",
+    rationale: "Ohbox — rule: domain makersfest.example → Ohbox",
   },
   {
     id: "techcheck",
     folder: "ohbox",
-    from: { name: "Petra Wyss", address: "petra@makersfest.ch" },
+    from: { name: "Petra Wyss", address: "petra@makersfest.example" },
     subject: "Invitation: Tech check — main hall",
     time: "08:39",
     /* READ, deliberately: the demo's Ohbox opens with exactly THREE unread rows — giulia
@@ -150,24 +150,24 @@ export const ohbox: MessageFixture[] = [
         "BEGIN:VEVENT",
         "DTSTART;TZID=Europe/Zurich:20260911T160000",
         "DTEND;TZID=Europe/Zurich:20260911T163000",
-        "ORGANIZER;CN=Petra Wyss:mailto:petra@makersfest.ch",
-        "ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;CN=Mila Brunner:mailto:mila@lichtgrat.studio",
-        "ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN=Petra Wyss:mailto:petra@makersfest.ch",
+        "ORGANIZER;CN=Petra Wyss:mailto:petra@makersfest.example",
+        "ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;CN=Mila Brunner:mailto:mila@lichtgrat.example",
+        "ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN=Petra Wyss:mailto:petra@makersfest.example",
         "SUMMARY:Tech check — main hall",
         "LOCATION:Makersfest\\, Halle 2\\, Zürich",
-        "UID:techcheck-2026@makersfest.ch",
+        "UID:techcheck-2026@makersfest.example",
         "END:VEVENT",
         "END:VCALENDAR",
       ].join("\r\n"),
     },
     snippet: "Petra Wyss invited you: Friday, September 11 · 16:00, main hall.",
     body: "Hi Mila\n\nQuick tech check before your talk — mics, slides, the clicker. Fifteen minutes on stage, the Friday before the weekend.\n\nThe invite is attached; just accept if the slot works.\n\nPetra",
-    rationale: "Ohbox — rule: domain makersfest.ch → Ohbox",
+    rationale: "Ohbox — rule: domain makersfest.example → Ohbox",
   },
   {
     id: "glazecall",
     folder: "ohbox",
-    from: { name: "Nadja Lehner", address: "nadja@erdton-atelier.ch" },
+    from: { name: "Nadja Lehner", address: "nadja@erdton-atelier.example" },
     subject: "New time proposed: Glaze evening — planning call",
     time: "08:35",
     /* read — see techcheck's note: the demo keeps three unread rows */
@@ -199,15 +199,15 @@ export const ohbox: MessageFixture[] = [
         "END:DAYLIGHT",
         "END:VTIMEZONE",
         "BEGIN:VEVENT",
-        "ORGANIZER;CN=Mila Brunner:mailto:mila@lichtgrat.studio",
-        "ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;CN=Nadja Lehner:mailto:nadja@erdton-atelier.ch",
+        "ORGANIZER;CN=Mila Brunner:mailto:mila@lichtgrat.example",
+        "ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;CN=Nadja Lehner:mailto:nadja@erdton-atelier.example",
         "SUMMARY:Glaze evening — planning call",
         "DTSTART;TZID=W. Europe Standard Time:20260730T150000",
         "DTEND;TZID=W. Europe Standard Time:20260730T153000",
         "X-MS-OLDSTART:20260730T080000Z",
         "X-MS-OLDEND:20260730T083000Z",
         "LOCATION:Phone",
-        "UID:planning-call-2026@erdton-atelier.ch",
+        "UID:planning-call-2026@erdton-atelier.example",
         "END:VEVENT",
         "END:VCALENDAR",
       ].join("\r\n"),
@@ -238,19 +238,19 @@ export const ohbox: MessageFixture[] = [
   {
     id: "ben",
     folder: "ohbox",
-    from: { name: "Ben Arnold", address: "ben@lichtgrat.studio" },
+    from: { name: "Ben Arnold", address: "ben@lichtgrat.example" },
     subject: "Kiln’s fixed + Friday pizza 🍕",
     time: "07:58",
     unread: true,
     snippet:
       "Good news twice: the kiln heats evenly again, and Friday we fire the wood oven…",
     body: "Good news twice: the kiln heats evenly again — the new element arrived early — and Friday we fire the wood oven after work. Bring nothing but appetite.\n\n— Ben",
-    rationale: "Ohbox — rule: teammate @lichtgrat.studio → Ohbox",
+    rationale: "Ohbox — rule: teammate @lichtgrat.example → Ohbox",
   },
   {
     id: "anna",
     folder: "ohbox",
-    from: { name: "Anna Odermatt", address: "anna@gartenlokal-rosa.ch" },
+    from: { name: "Anna Odermatt", address: "anna@gartenlokal-rosa.example" },
     subject: "Re: the new menu cards — wow!",
     time: "yesterday",
     unread: false,
@@ -260,7 +260,7 @@ export const ohbox: MessageFixture[] = [
   {
     id: "reto",
     folder: "ohbox",
-    from: { name: "Reto Frei", address: "reto@alpmail.ch" },
+    from: { name: "Reto Frei", address: "reto@alpmail.example" },
     subject: "Fotos vom Grat 🏔",
     time: "yesterday",
     unread: false,
@@ -270,7 +270,7 @@ export const ohbox: MessageFixture[] = [
   {
     id: "flurina",
     folder: "ohbox",
-    from: { name: "Flurina Caduff", address: "flurina@haldenlicht.ch" },
+    from: { name: "Flurina Caduff", address: "flurina@haldenlicht.example" },
     subject: "Saturday’s workshop is full! 🙌",
     time: "yesterday",
     unread: false,
@@ -280,7 +280,7 @@ export const ohbox: MessageFixture[] = [
   {
     id: "tim",
     folder: "ohbox",
-    from: { name: "Tim Berger", address: "tim@gassenblatt.ch" },
+    from: { name: "Tim Berger", address: "tim@gassenblatt.example" },
     subject: "Got us tickets for the 22nd! 🎶",
     time: "Mon",
     unread: false,
@@ -290,7 +290,7 @@ export const ohbox: MessageFixture[] = [
   {
     id: "carla",
     folder: "ohbox",
-    from: { name: "Carla Meier", address: "carla@sommerfest-lind.ch" },
+    from: { name: "Carla Meier", address: "carla@sommerfest-lind.example" },
     subject: "The posters were a hit — danke!",
     time: "Mon",
     unread: false,
@@ -319,7 +319,7 @@ export const ohbox: MessageFixture[] = [
   {
     id: "nadja",
     folder: "ohbox",
-    from: { name: "Nadja Lehner", address: "nadja@erdton-atelier.ch" },
+    from: { name: "Nadja Lehner", address: "nadja@erdton-atelier.example" },
     subject: "Would you teach the September glaze evening?",
     time: "Mon",
     unread: false,
@@ -330,7 +330,7 @@ export const ohbox: MessageFixture[] = [
   {
     id: "jonas",
     folder: "ohbox",
-    from: { name: "Jonas Halter", address: "jonas@lichtgrat.studio" },
+    from: { name: "Jonas Halter", address: "jonas@lichtgrat.example" },
     /* THE ONE MESSAGE HERE WITH AN AUDIENCE, and it is deliberate: a question put to the whole
        studio is what "reply to all" is for. It is also the shape that makes the action bar's
        widest row — Reply, Reply all, Forward, the horizons, Tag, filing, the read switch and
@@ -338,16 +338,16 @@ export const ohbox: MessageFixture[] = [
        is read in the narrowest column the product has (Answer later, in the split view). Every
        other fixture is 1:1 and stands the row without a Reply-all group. */
     to: [
-      { name: "Mila Brunner", address: "mila@lichtgrat.studio" },
-      { name: "Rahel Beck", address: "rahel@lichtgrat.studio" },
+      { name: "Mila Brunner", address: "mila@lichtgrat.example" },
+      { name: "Rahel Beck", address: "rahel@lichtgrat.example" },
     ],
-    cc: [{ name: "Tobias Frei", address: "tobias@lichtgrat.studio" }],
+    cc: [{ name: "Tobias Frei", address: "tobias@lichtgrat.example" }],
     subject: "Open studio in October — which weekend?",
     time: "Fri",
     unread: false,
     snippet: "The 11th or the 18th. I'll do the rest, I just need the date.",
     body: "Mila — the open studio. If it's happening in October it's the 11th or the 18th, and the printer wants the date on Wednesday.\n\nThe 11th is quieter in town. The 18th shares the weekend with the market, so more people walk past and all of them are slower. I lean 18th.\n\nAlso: seconds table again? It outsold the good shelf last year, which I have decided not to take personally.\n\nJonas",
-    rationale: "Ohbox — rule: teammate @lichtgrat.studio → Ohbox",
+    rationale: "Ohbox — rule: teammate @lichtgrat.example → Ohbox",
   },
 ];
 
@@ -357,7 +357,7 @@ export const reads: MessageFixture[] = [
   {
     id: "f1",
     folder: "reads",
-    from: { name: "Skylark Notes", address: "mara@skylarknotes.com" },
+    from: { name: "Skylark Notes", address: "mara@skylarknotes.example" },
     subject: "#118 — the joy of small tools",
     snippet: "Plus: a lamp, a ladle, and one very good pencil.",
     time: "07:02",
@@ -411,7 +411,7 @@ export const reads: MessageFixture[] = [
   {
     id: "f6",
     folder: "reads",
-    from: { name: "Frühbrief Briefing", address: "briefing@fruehbrief.ch" },
+    from: { name: "Frühbrief Briefing", address: "briefing@fruehbrief.example" },
     subject: "Morgen-Briefing: Sommerfest-Wochenende",
     snippet: "Was heute schön wird — in fünf Minuten.",
     time: "04:30",
@@ -461,7 +461,7 @@ export const reads: MessageFixture[] = [
   {
     id: "f11",
     folder: "reads",
-    from: { name: "Pixel & Thread", address: "letter@pixelthread.studio" },
+    from: { name: "Pixel & Thread", address: "letter@pixelthread.example" },
     subject: "Weaving color into everything",
     snippet: "A dye garden, a palette tool, and one brave kitchen.",
     time: "Sun",
@@ -481,7 +481,7 @@ export const reads: MessageFixture[] = [
   {
     id: "f13",
     folder: "reads",
-    from: { name: "Skylark Notes", address: "mara@skylarknotes.com" },
+    from: { name: "Skylark Notes", address: "mara@skylarknotes.example" },
     subject: "#117 — the tools we keep",
     snippet: "On objects that age well.",
     time: "Thu",
@@ -555,7 +555,7 @@ export const receipts: MessageFixture[] = [
   {
     id: "erdton",
     folder: "receipts",
-    from: { name: "Atelier Erdton", address: "billing@erdton-atelier.ch" },
+    from: { name: "Atelier Erdton", address: "billing@erdton-atelier.example" },
     subject: "Invoice #078 — Pottery Workshop",
     amount: "CHF 240.00",
     snippet: "Workshop «Glaze & Fire», 2 seats — thanks for booking with us!",
@@ -620,7 +620,7 @@ export const receiptsGroups: ReceiptsGroupFixture[] = [
 export const waiting: WaitingSenderFixture[] = [
   {
     id: "lena",
-    from: { name: "Lena Kaufmann", address: "lena@atelier-eichspan.ch" },
+    from: { name: "Lena Kaufmann", address: "lena@atelier-eichspan.example" },
     initial: "L",
     time: "08:40",
     scope: "sender",
@@ -666,7 +666,7 @@ export const waiting: WaitingSenderFixture[] = [
   },
   {
     id: "jackpot",
-    from: { name: "JackpotJodel Promo", address: "win@jackpotjodel-alerts.info" },
+    from: { name: "JackpotJodel Promo", address: "win@jackpotjodel-alerts.example" },
     initial: "J",
     time: "06:58",
     scope: "domain",
@@ -858,7 +858,7 @@ export const triage: TriageFixture = {
   ],
   setAside: [{ title: "Alpenbahn", subtitle: "Itinerary Winterthur→Lugano, 12 Aug" }],
   resurface: [
-    { title: "Domain renewal lichtgrat.studio", resurfaceAt: "Fri 09:00" },
+    { title: "Domain renewal lichtgrat.example", resurfaceAt: "Fri 09:00" },
   ],
 };
 
@@ -902,7 +902,7 @@ export const search: SearchDemoFixture = {
 /* ------------------------------------------------------------- compose */
 
 export const composeDraft: ComposeDraftFixture = {
-  to: { name: "Giulia Ferrari", address: "giulia@terracotta-milano.it" },
+  to: { name: "Giulia Ferrari", address: "giulia@terracotta-milano.example" },
   subject: "Re: Glaze order #2214 🎉",
   tagLabel: "AI draft — not sent",
   body: "Buongiorno Giulia, che bella notizia — il 4 agosto va benissimo! La consegna resta all’atelier, come sempre. Verde salvia e bianco opaco: confermati. A presto, Mila",

@@ -295,7 +295,7 @@ describe("connecting on the standalone door opens guided setup", () => {
  */
 function twoAttempts(): { organized: string[] } {
   const organized: string[] = [];
-  const ids: Record<string, string> = { "typo@home.arpa": "mbx-typo", "mila@home.arpa": "mbx-mila" };
+  const ids: Record<string, string> = { "box1@home.arpa": "mbx-typo", "box2@home.arpa": "mbx-mila" };
   let status: Record<string, unknown> = { state: "not_configured", mode: null };
   const row = (id: string, address: string, createdAt: string) => ({
     id, address, status: "connected", errorCode: null, disabledReason: null, syncBlockedReason: null,
@@ -336,8 +336,8 @@ function twoAttempts(): { organized: string[] } {
         if (org && method === "POST") { organized.push(org[1]!); return encode(200, "{}"); }
         if (url.startsWith("/mailboxes")) {
           return encode(200, JSON.stringify({ items: [
-            row("mbx-typo", "typo@home.arpa", "2026-09-29T08:00:00.000Z"),
-            row("mbx-mila", "mila@home.arpa", "2026-09-29T08:01:00.000Z"),
+            row("mbx-typo", "box1@home.arpa", "2026-09-29T08:00:00.000Z"),
+            row("mbx-mila", "box2@home.arpa", "2026-09-29T08:01:00.000Z"),
           ] }));
         }
         if (url === "/health") return encode(200, '{"signedIn":true}');
@@ -358,12 +358,12 @@ describe("the setup after a retried first door", () => {
     const el = await render();
     await openDoor(el, "On this computer");
     await press(el, "Any other IMAP mailbox");
-    await type(el, "door-address", "typo@home.arpa");
+    await type(el, "door-address", "box1@home.arpa");
     await type(el, "door-password", "a-mailbox-password");
     await type(el, "door-imap-host", "imap.home.arpa");
     await press(el, "Open this mailbox");
     expect(el.textContent, "control: the first attempt was refused").toContain("refused that password");
-    await type(el, "door-address", "mila@home.arpa");
+    await type(el, "door-address", "box2@home.arpa");
     await press(el, "Open this mailbox");
     await press(el, "Continue");
     await press(el, "Agree and start organizing");

@@ -177,7 +177,7 @@ describe("the browser path is one confirm, not a code", () => {
     await click(buttonSaying(el, "Sign in with browser"));
     const label = el.querySelector('label[for="cloud-address"]')?.textContent ?? "";
     expect(label).toMatch(/^The ohmail mailbox this .+ will hold$/);
-    await type(el, "cloud-address", "mila@ohmail.app");
+    await type(el, "cloud-address", "mila@lichtgrat.example");
     await click(buttonSaying(el, "Open ohmail.app"));
     const order = asked.map((a) => (a.command === "engine_request" ? String(a.payload!.url) : a.command));
     expect(order.indexOf("engine_configure")).toBeGreaterThanOrEqual(0);
@@ -386,7 +386,7 @@ describe("a press the gate re-routes keeps its wait", () => {
     const { el, render } = await shared();
     await render("overlay", "configure");
     await click(buttonSaying(el, "Sign in with browser"));
-    await type(el, "cloud-address", "mila@ohmail.app");
+    await type(el, "cloud-address", "mila@lichtgrat.example");
     await click(buttonSaying(el, "Open ohmail.app"));
     await render("pre-auth", "signIn");
     await act(async () => { release(); });

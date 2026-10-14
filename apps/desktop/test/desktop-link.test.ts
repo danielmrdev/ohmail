@@ -202,7 +202,7 @@ function bridged(): { url: string; body: string }[] {
 async function browserPath(el: HTMLElement): Promise<void> {
   await click(buttonSaying(el, "Sign in with browser"));
   await click(buttonSaying(el, "Type a code instead"));
-  await type(el, "cloud-address", "mila@ohmail.app");
+  await type(el, "cloud-address", "mila@lichtgrat.example");
 }
 
 describe("the hosted door's browser path", () => {
