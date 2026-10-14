@@ -1,19 +1,177 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import { afterAll, describe, expect, it } from "vitest";
 import {
   ALONE_MARKER, SHARDS, aloneFiles, checkMap, dovecotPinned, hashShard, readMap, shardFiles, testFiles, verifyReport,
   type ShardMap,
 } from "./support/ci-shards.mjs";
 
+const yaml = createRequire(import.meta.url)("js-yaml") as { load(text: string): unknown };
+
 /**
- * THE SUITE'S SHARD MAP. Every test file runs exactly once: in the shard the map names, in the shard its
- * path hashes to when the map does not name it, or alone. Each refusal below is also driven against a
- * planted tree, so none is green for want of a subject.
+ * THE SUITE WORKFLOW AND ITS SHARD MAP. Every test file runs exactly once: in the shard the map names,
+ * in the shard its path hashes to when the map does not name it, or alone. And every job that runs the
+ * suite does it against a database of its own: TF_REQUIRE_PG set (unset, every pg file skips green),
+ * the lane database made first (absent, every pg file refuses at collection), the shared box never
+ * named. Each refusal below is also driven against a mutated copy, so none is green for want of a subject.
  */
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+/** Authored under public/ohmail in the development tree, published to .github. */
+const WORKFLOW = ["public/ohmail/github/workflows/ci.yml", ".github/workflows/ci.yml"].find((p) => existsSync(join(ROOT, p)))!;
+const workflowText = readFileSync(join(ROOT, WORKFLOW), "utf8");
+const composeText = readFileSync(join(ROOT, "docker-compose.yml"), "utf8");
+
+type Step = { name?: string; run?: string; uses?: string; env?: Record<string, unknown> };
+type Job = { name?: string; permissions?: unknown; env?: Record<string, unknown>; steps: Step[]; services?: Record<string, { image: string; env?: Record<string, string>; ports?: string[]; options?: string }> };
+type Workflow = { on: Record<string, unknown>; permissions?: unknown; jobs: Record<string, Job> };
+
+/** Every refusal the workflow earns, read from its text against the compose file's. */
+function workflowProblems(text: string, compose: string): string[] {
+  const wf = yaml.load(text) as Workflow;
+  const services = (yaml.load(compose) as { services: Record<string, { image: string; shm_size?: string; environment?: Record<string, string>; ports?: string[]; volumes?: string[] }> }).services;
+  const problems: string[] = [];
+  /* Read-only, set once: no job widens it, and nothing here reads a secret, so a fork's pull request runs it. */
+  if (JSON.stringify(wf.permissions) !== JSON.stringify({ contents: "read" })) problems.push(`PERMISSIONS the workflow grants ${JSON.stringify(wf.permissions)}, not contents: read`);
+  for (const [id, job] of Object.entries(wf.jobs)) if (job.permissions !== undefined) problems.push(`PERMISSIONS ${id} sets its own permissions`);
+  /* Every action at a full commit, its tag in a comment: a tag can be moved, a commit cannot. */
+  for (const line of text.split("\n").filter((l) => /^\s*(-\s+)?uses:/.test(l))) {
+    if (!/uses: [\w.-]+\/[\w.-]+@[0-9a-f]{40} # v\d[\w.]*$/.test(line)) problems.push(`PIN ${line.trim()} is not a full commit with its tag in a comment`);
+  }
+  /* GreenMail's port opens before its IMAP server answers, so the wait reads the greeting, never the port alone. */
+  for (const [id, job] of Object.entries(wf.jobs)) {
+    for (const st of job.steps) if (/Wait for GreenMail/.test(st.name ?? "") && !(st.run ?? "").includes('"* OK"')) problems.push(`GREETING ${id} waits for an open port, not GreenMail's greeting`);
+  }
+  /* next build type-checks every .ts it can see; the web image's context drops every test directory, so
+     a job that builds the web app drops them first or it builds a tree no image ever builds. */
+  const DROP = "-type d -name test -prune -exec rm -rf {} +";
+  for (const id of ["webapp-build", "proxy-e2e"]) {
+    const runs = (wf.jobs[id]?.steps ?? []).map((st) => st.run ?? "");
+    const build = runs.findIndex((r) => /next build|proxy\.e2e\.test\.ts/.test(r) && !r.includes(DROP) && !r.startsWith("cp "));
+    const drop = runs.findIndex((r) => r.includes(DROP));
+    if (drop < 0 || build < 0 || drop > build) problems.push(`IMAGE_TREE ${id} builds the web app over test directories the image never sees`);
+  }
+  if (text.includes("OHMAIL_FREEZE")) problems.push("FREEZE the workflow names OHMAIL_FREEZE — the shared box is never a CI database");
+  for (const [id, job] of Object.entries(wf.jobs)) {
+    const runs = job.steps.map((s) => s.run ?? "");
+    const vitestAt = runs.findIndex((r) => /\bvitest run\b/.test(r));
+    if (vitestAt < 0) continue;
+    const step = job.steps[vitestAt];
+    if (String(job.env?.TF_REQUIRE_PG ?? step.env?.TF_REQUIRE_PG) !== "1") problems.push(`REQUIRE_PG ${id} runs vitest without TF_REQUIRE_PG "1"`);
+    const laneAt = runs.findIndex((r) => r.includes("scripts/lane-db.sh"));
+    if (laneAt < 0 || laneAt > vitestAt) problems.push(`LANE_DB ${id} runs vitest before it makes its own database with scripts/lane-db.sh`);
+  }
+  const hostPort = (p: string) => p.split(":").slice(-2).join(":");
+  for (const [id, job] of Object.entries(wf.jobs)) {
+    for (const [name, svc] of Object.entries(job.services ?? {})) {
+      const twin = services[name === "postgres" ? "db" : name];
+      if (!twin) { problems.push(`SERVICE ${id}.${name} has no twin in docker-compose.yml`); continue; }
+      if (svc.image !== twin.image) problems.push(`IMAGE ${id}.${name} is ${svc.image}, docker-compose.yml runs ${twin.image}`);
+      const want = (twin.ports ?? []).map((p) => hostPort(p.replace(/\s+#.*$/, ""))).sort();
+      if (JSON.stringify([...(svc.ports ?? [])].sort()) !== JSON.stringify(want)) problems.push(`PORTS ${id}.${name} maps ${svc.ports}, docker-compose.yml ${want}`);
+      for (const [k, v] of Object.entries(twin.environment ?? {})) {
+        if (svc.env?.[k] !== v) problems.push(`ENV ${id}.${name} ${k} differs from docker-compose.yml`);
+      }
+      if (twin.shm_size && !(svc.options ?? "").includes(`--shm-size=${twin.shm_size}`)) problems.push(`SHM ${id}.${name} lacks --shm-size=${twin.shm_size}`);
+    }
+  }
+  /* MinIO and Dovecot start by `docker run` (a service cannot be given a command or a checkout file). */
+  const runText = Object.values(wf.jobs).flatMap((j) => j.steps.map((s) => s.run ?? "")).join("\n");
+  for (const [name, port] of [["minio", "3902:9000"], ["dovecot", "3144:143"]] as const) {
+    if (!runText.includes(services[name].image)) problems.push(`IMAGE ${name} is not started at docker-compose.yml's ${services[name].image}`);
+    if (!runText.includes(`-p 127.0.0.1:${port}`)) problems.push(`PORTS ${name} is not published at 127.0.0.1:${port}`);
+  }
+  if (!runText.includes("/test/dovecot/dovecot.conf:/etc/dovecot/dovecot.conf:ro")) problems.push("DOVECOT_CONF the checkout's dovecot.conf is not mounted");
+  return problems;
+}
+
+describe("the suite workflow", () => {
+  const wf = yaml.load(workflowText) as Workflow;
+
+  it("is admitted whole: every vitest job requires Postgres, makes its database first, and runs compose's services", () => {
+    expect(workflowProblems(workflowText, composeText)).toEqual([]);
+    // The census has subjects: the jobs it judged really run vitest, and the services are really there.
+    const vitestJobs = Object.entries(wf.jobs).filter(([, j]) => j.steps.some((s) => /\bvitest run\b/.test(s.run ?? ""))).map(([id]) => id);
+    expect(vitestJobs.sort()).toEqual(["alone", "proxy-e2e", "sqlite", "suite"]);
+    expect(Object.keys(wf.jobs.suite.services ?? {}).sort()).toEqual(["greenmail", "postgres"]);
+  });
+
+  it("refuses a vitest job without TF_REQUIRE_PG, a lane database made after the run, and the shared box", () => {
+    const noRequire = workflowText.replace(/(\n {4}env:\n(?: {6}.*\n)*?) {6}TF_REQUIRE_PG: "1"\n/, "$1");
+    expect(noRequire).not.toBe(workflowText);
+    expect(workflowProblems(noRequire, composeText)).toEqual([expect.stringMatching(/^REQUIRE_PG suite /)]);
+
+    const laneAfter = workflowText.replace("bash scripts/lane-db.sh \"$GITHUB_WORKSPACE\"\n\n      - name: Test shard",
+      "echo no database yet\n\n      - name: Test shard").replace("--verify-report \"$SHARD\"", "--verify-report \"$SHARD\" && bash scripts/lane-db.sh \"$GITHUB_WORKSPACE\"");
+    expect(laneAfter).not.toBe(workflowText);
+    expect(workflowProblems(laneAfter, composeText)).toEqual([expect.stringMatching(/^LANE_DB suite /)]);
+
+    const freeze = workflowText.replace('      TF_REQUIRE_PG: "1"\n', '      TF_REQUIRE_PG: "1"\n      OHMAIL_FREEZE: "1"\n');
+    expect(workflowProblems(freeze, composeText)).toEqual([expect.stringMatching(/^FREEZE /)]);
+  });
+
+  it("refuses a service image or port that is not docker-compose.yml's", () => {
+    const tag = workflowText.replace("image: postgres:16\n", "image: postgres:17\n");
+    expect(tag).not.toBe(workflowText);
+    expect(workflowProblems(tag, composeText)).toEqual([expect.stringMatching(/^IMAGE suite\.postgres is postgres:17/)]);
+    const port = workflowText.replace('ports: ["3143:3143", "3025:3025"]', 'ports: ["3144:3143", "3025:3025"]');
+    expect(workflowProblems(port, composeText)).toEqual([expect.stringMatching(/^PORTS suite\.greenmail /)]);
+    const minio = workflowText.replace("-p 127.0.0.1:3902:9000", "-p 127.0.0.1:9000:9000");
+    expect(workflowProblems(minio, composeText)).toEqual([expect.stringMatching(/^PORTS minio /)]);
+  });
+
+  it("refuses a workflow that grants more than contents: read, a job that sets its own, and an action not pinned to a commit", () => {
+    const write = workflowText.replace("permissions:\n  contents: read\n", "permissions:\n  contents: write\n");
+    expect(write).not.toBe(workflowText);
+    expect(workflowProblems(write, composeText)).toEqual([expect.stringMatching(/^PERMISSIONS the workflow grants/)]);
+    const widened = workflowText.replace("    name: suite · sqlite\n", "    name: suite · sqlite\n    permissions:\n      contents: write\n");
+    expect(widened).not.toBe(workflowText);
+    expect(workflowProblems(widened, composeText)).toEqual(["PERMISSIONS sqlite sets its own permissions"]);
+    const tag = workflowText.replace(/actions\/setup-node@[0-9a-f]{40} # v7/, "actions/setup-node@v7");
+    expect(tag).not.toBe(workflowText);
+    expect(workflowProblems(tag, composeText)).toEqual([expect.stringMatching(/^PIN - uses: actions\/setup-node@v7 /)]);
+    const bare = workflowText.replace(/(actions\/checkout@[0-9a-f]{40}) # v7/, "$1");
+    expect(workflowProblems(bare, composeText)).toEqual([expect.stringMatching(/^PIN /)]);
+  });
+
+  it("refuses a GreenMail wait that reads only an open port, and a web build over the test directories", () => {
+    const portOnly = workflowText.replace(/if \(exec 3<>\/dev\/tcp\/127\.0\.0\.1\/3143 && read -r -t 5 greeting <&3 && \[\[ "\$greeting" == "\* OK"\* \]\]\) 2>\/dev\/null; then/, "if (exec 3<>/dev/tcp/127.0.0.1/3143) 2>/dev/null; then");
+    expect(portOnly).not.toBe(workflowText);
+    expect(workflowProblems(portOnly, composeText)).toEqual([expect.stringMatching(/^GREETING suite /)]);
+    const overTests = workflowText.replace("      - name: The tree the web image builds\n        run: find apps packages -path '*/node_modules' -prune -o -type d -name test -prune -exec rm -rf {} +\n\n", "");
+    expect(overTests).not.toBe(workflowText);
+    expect(workflowProblems(overTests, composeText)).toEqual(["IMAGE_TREE webapp-build builds the web app over test directories the image never sees"]);
+  });
+
+  it("runs on pull requests, nightly and by hand — never on push, never on a merge queue", () => {
+    expect(Object.keys(wf.on).sort()).toEqual(["pull_request", "schedule", "workflow_dispatch"]);
+  });
+
+  it("names its checks so they never collide with the checks the public repository already requires", () => {
+    const names = Object.values(wf.jobs).map((j) => j.name ?? "");
+    for (const taken of ["every commit is signed off", "engine · typecheck · build", "engine-bearing UI · scan · smoke"]) {
+      expect(names).not.toContain(taken);
+    }
+    expect(wf.jobs.suite.name).toBe("suite (${{ matrix.shard }})");
+    for (const n of names) expect(n.startsWith("suite")).toBe(true);
+  });
+
+  it("hands every shard's files to vitest through the map, and reads the report back", () => {
+    const run = wf.jobs.suite.steps.map((s) => s.run ?? "").join("\n");
+    expect(run).toContain("node test/support/ci-shards.mjs --shard \"$SHARD\"");
+    expect(run).toContain("node test/support/ci-shards.mjs --verify-report \"$SHARD\"");
+    expect(run).toContain("node test/support/ci-shards.mjs --needs-dovecot \"$SHARD\"");
+  });
+
+  it("plans the alone jobs from the marker and refuses a list the shard map's own walk disagrees with", () => {
+    const plan = wf.jobs.plan.steps.map((s) => s.run ?? "").join("\n");
+    expect(plan).toContain(`git grep -l '${ALONE_MARKER}' -- ':(glob)apps/*/test/**' ':(glob)packages/*/test/**'`);
+    expect(plan).toContain("node test/support/ci-shards.mjs --alone");
+    expect(plan).toContain("node test/support/ci-shards.mjs --check");
+  });
+});
 
 describe("the shard map of this tree", () => {
   const map = readMap(ROOT);

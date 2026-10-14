@@ -1,0 +1,420 @@
+name: ci
+
+# The test suite, on every pull request, nightly and by hand.
+#
+# The suite runs serially in measured shards (test/support/ci-shards.json). Each shard gets its own
+# Postgres, GreenMail and MinIO and makes its own database with scripts/lane-db.sh, so the
+# *.pg.test.ts files run against a real server. TF_REQUIRE_PG=1 turns a missing database into a failure
+# instead of a skip. A file marked `@postpush: alone` runs in a job of its own on a database made from
+# empty, because it reads state its own seeding does not own. A new test file needs no edit here: a
+# file the shard map does not name runs in the shard its path hashes to.
+
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 2 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CI: "true"
+
+jobs:
+  plan:
+    name: suite · plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+      alone: ${{ steps.plan.outputs.alone }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+
+      - name: The shards, and the files that run alone
+        id: plan
+        run: |
+          set -euo pipefail
+          node test/support/ci-shards.mjs --check
+          echo "shards=$(node test/support/ci-shards.mjs --indexes)" >> "$GITHUB_OUTPUT"
+          # The glob form: a bare 'apps/*/test' pathspec matches no file under it, and an empty list
+          # here would skip these files everywhere. The shard map's own walk must agree with it.
+          rc=0
+          files=$(git grep -l '@postpush: alone' -- ':(glob)apps/*/test/**' ':(glob)packages/*/test/**') || rc=$?
+          if [ "$rc" -gt 1 ]; then echo "git grep failed rc $rc" >&2; exit "$rc"; fi
+          alone=$(printf '%s' "$files" | node -e 'const t=require("fs").readFileSync(0,"utf8");process.stdout.write(JSON.stringify(t.split("\n").filter(Boolean).sort()))')
+          walk=$(node test/support/ci-shards.mjs --alone)
+          if [ "$alone" != "$walk" ]; then echo "::error::git grep and the shard map disagree on the files that run alone"; exit 1; fi
+          echo "alone=$alone" >> "$GITHUB_OUTPUT"
+          printf 'alone:\n%s\n' "$files"
+
+  suite:
+    name: suite (${{ matrix.shard }})
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tf
+          POSTGRES_PASSWORD: tf
+          POSTGRES_DB: trafficflow_test
+        ports: ["5433:5432"]
+        options: >-
+          --shm-size=1g
+          --health-cmd "pg_isready -U tf -d trafficflow_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+      greenmail:
+        image: greenmail/standalone:2.1.3
+        env:
+          GREENMAIL_OPTS: "-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.users.login=email"
+        ports: ["3143:3143", "3025:3025"]
+    env:
+      DATABASE_URL_PG_TEST: postgres://tf:tf@localhost:5433/trafficflow_test
+      IMAP_HOST: 127.0.0.1
+      IMAP_PORT: "3143"
+      TF_REQUIRE_PG: "1"
+      SHARD: ${{ matrix.shard }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install the locked dependency tree
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Apply the patches this repository carries
+        run: node scripts/apply-patches.mjs apply
+
+      - name: Install Chromium for the layout tests
+        run: npx playwright install --with-deps chromium
+
+      # The engine and the self-host bundles, built as the release and the images build them; the
+      # tests that read a bundle read these.
+      - name: Build the engine and the host bundles
+        run: |
+          set -euo pipefail
+          node scripts/engine-bundle.mjs
+          node scripts/bundle-host.mjs server
+          node scripts/bundle-host.mjs worker
+
+      # A service container cannot be given a command, and MinIO needs `server /data`.
+      - name: Start MinIO
+        env:
+          MINIO_ROOT_USER: tf-staging
+          MINIO_ROOT_PASSWORD: tf-staging-password
+        run: |
+          set -euo pipefail
+          docker run -d --name minio -p 127.0.0.1:3902:9000 -e MINIO_ROOT_USER -e MINIO_ROOT_PASSWORD \
+            quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e \
+            server /data
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3902/minio/health/live >/dev/null 2>&1; then echo "minio up after ${i}s"; exit 0; fi
+            sleep 1
+          done
+          echo "minio never came up"; exit 1
+
+      - name: Does this shard dial Dovecot
+        id: dovecot
+        run: echo "needed=$(node test/support/ci-shards.mjs --needs-dovecot "$SHARD")" >> "$GITHUB_OUTPUT"
+
+      # Dovecot is the CONDSTORE server. It reads its configuration from the checkout, which a
+      # service container starts before, so it is started here and only where a file dials it.
+      - name: Start Dovecot
+        if: steps.dovecot.outputs.needed == 'yes'
+        run: |
+          set -euo pipefail
+          docker run -d --name dovecot -v "$GITHUB_WORKSPACE/test/dovecot/dovecot.conf:/etc/dovecot/dovecot.conf:ro" \
+            -p 127.0.0.1:3144:143 dovecot/dovecot:2.3.21
+          for i in $(seq 1 60); do
+            if (exec 3<>/dev/tcp/127.0.0.1/3144) 2>/dev/null; then echo "dovecot up after ${i}s"; exit 0; fi
+            sleep 1
+          done
+          echo "dovecot never came up"; exit 1
+
+      # An open port is not an IMAP server: this waits for GreenMail's own "* OK" greeting.
+      - name: Wait for GreenMail IMAP
+        run: |
+          for i in $(seq 1 60); do
+            if (exec 3<>/dev/tcp/127.0.0.1/3143 && read -r -t 5 greeting <&3 && [[ "$greeting" == "* OK"* ]]) 2>/dev/null; then
+              echo "greenmail greeted after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "greenmail never greeted"; exit 1
+
+      - name: This checkout's own database
+        run: bash scripts/lane-db.sh "$GITHUB_WORKSPACE"
+
+      - name: Test shard ${{ matrix.shard }} (real Postgres required)
+        run: |
+          set -euo pipefail
+          list=$(node test/support/ci-shards.mjs --shard "$SHARD")
+          mapfile -t files <<< "$list"
+          echo "shard $SHARD runs ${#files[@]} file(s)"
+          mkdir -p build
+          npx vitest run --reporter=default --reporter=json --outputFile="build/ci-suite-$SHARD.json" "${files[@]}"
+
+      # vitest runs the paths it can match and says nothing of one it cannot, so the report is
+      # read back: every file the shard named ran, and nothing else did.
+      - name: Every file of the shard ran
+        if: always()
+        run: node test/support/ci-shards.mjs --verify-report "$SHARD" "build/ci-suite-$SHARD.json"
+
+      - name: Keep the per-file durations for the next pack
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: suite-durations-${{ matrix.shard }}
+          path: build/ci-suite-${{ matrix.shard }}.json
+          if-no-files-found: warn
+
+  alone:
+    name: suite alone (${{ matrix.file }})
+    needs: plan
+    if: needs.plan.outputs.alone != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        file: ${{ fromJSON(needs.plan.outputs.alone) }}
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tf
+          POSTGRES_PASSWORD: tf
+          POSTGRES_DB: trafficflow_test
+        ports: ["5433:5432"]
+        options: >-
+          --shm-size=1g
+          --health-cmd "pg_isready -U tf -d trafficflow_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+      greenmail:
+        image: greenmail/standalone:2.1.3
+        env:
+          GREENMAIL_OPTS: "-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.users.login=email"
+        ports: ["3143:3143", "3025:3025"]
+    env:
+      DATABASE_URL_PG_TEST: postgres://tf:tf@localhost:5433/trafficflow_test
+      IMAP_HOST: 127.0.0.1
+      IMAP_PORT: "3143"
+      TF_REQUIRE_PG: "1"
+      FILE: ${{ matrix.file }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install the locked dependency tree
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Apply the patches this repository carries
+        run: node scripts/apply-patches.mjs apply
+
+      - name: Wait for GreenMail IMAP
+        run: |
+          for i in $(seq 1 60); do
+            if (exec 3<>/dev/tcp/127.0.0.1/3143 && read -r -t 5 greeting <&3 && [[ "$greeting" == "* OK"* ]]) 2>/dev/null; then
+              echo "greenmail greeted after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "greenmail never greeted"; exit 1
+
+      # The service's Postgres is new for this job, so this database is made from empty.
+      - name: This checkout's own database, from empty
+        run: bash scripts/lane-db.sh "$GITHUB_WORKSPACE"
+
+      - name: Test the one file
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          npx vitest run --reporter=default --reporter=json --outputFile=build/ci-alone.json "$FILE"
+          node -e 'const n=require("./build/ci-alone.json").testResults.length;if(n!==1){console.error("expected the one file, the report holds "+n);process.exit(1)}'
+
+  sqlite:
+    name: suite · sqlite
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tf
+          POSTGRES_PASSWORD: tf
+          POSTGRES_DB: trafficflow_test
+        ports: ["5433:5432"]
+        options: >-
+          --shm-size=1g
+          --health-cmd "pg_isready -U tf -d trafficflow_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+      greenmail:
+        image: greenmail/standalone:2.1.3
+        env:
+          GREENMAIL_OPTS: "-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.users.login=email"
+        ports: ["3143:3143", "3025:3025"]
+    env:
+      DATABASE_URL_PG_TEST: postgres://tf:tf@localhost:5433/trafficflow_test
+      IMAP_HOST: 127.0.0.1
+      IMAP_PORT: "3143"
+      TF_REQUIRE_PG: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install the locked dependency tree
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Apply the patches this repository carries
+        run: node scripts/apply-patches.mjs apply
+
+      - name: Wait for GreenMail IMAP
+        run: |
+          for i in $(seq 1 60); do
+            if (exec 3<>/dev/tcp/127.0.0.1/3143 && read -r -t 5 greeting <&3 && [[ "$greeting" == "* OK"* ]]) 2>/dev/null; then
+              echo "greenmail greeted after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "greenmail never greeted"; exit 1
+
+      - name: This checkout's own database
+        run: bash scripts/lane-db.sh "$GITHUB_WORKSPACE"
+
+      - name: Test on SQLite, the second store the schema runs on
+        run: npx vitest run --config vitest.sqlite.config.ts
+
+  proxy-e2e:
+    name: suite · proxy e2e
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tf
+          POSTGRES_PASSWORD: tf
+          POSTGRES_DB: trafficflow_test
+        ports: ["5433:5432"]
+        options: >-
+          --shm-size=1g
+          --health-cmd "pg_isready -U tf -d trafficflow_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      DATABASE_URL_PG_TEST: postgres://tf:tf@localhost:5433/trafficflow_test
+      TF_REQUIRE_PG: "1"
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install the locked dependency tree
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Apply the patches this repository carries
+        run: node scripts/apply-patches.mjs apply
+
+      - name: This checkout's own database
+        run: bash scripts/lane-db.sh "$GITHUB_WORKSPACE"
+
+      # next build type-checks every .ts the web app can see, and the image never shows it a test
+      # directory (apps/webapp/Dockerfile.dockerignore: **/test). The same tree here, plus this file.
+      - name: The tree the web image builds, plus the e2e file
+        run: |
+          set -euo pipefail
+          cp apps/webapp/test/proxy.e2e.test.ts "$RUNNER_TEMP/proxy.e2e.test.ts"
+          find apps packages -path '*/node_modules' -prune -o -type d -name test -prune -exec rm -rf {} +
+          mkdir -p apps/webapp/test
+          cp "$RUNNER_TEMP/proxy.e2e.test.ts" apps/webapp/test/proxy.e2e.test.ts
+
+      # The only file that runs the middleware itself: a real next build and next start, driven over
+      # a socket. It skips unless TF_PROXY_E2E is 1, which is set here and nowhere else.
+      - name: Middleware e2e
+        env:
+          TF_PROXY_E2E: "1"
+        run: npx vitest run apps/webapp/test/proxy.e2e.test.ts
+
+  webapp-build:
+    name: suite · webapp next build
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+      OHMAIL_FLAVOR: selfhost
+      NEXT_PUBLIC_GITHUB_STARS: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install the locked dependency tree
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Apply the patches this repository carries
+        run: node scripts/apply-patches.mjs apply
+
+      # The same type packages, check and module layout the self-host web image builds with.
+      - name: The web build's type packages
+        run: |
+          set -euo pipefail
+          npm install --no-save --ignore-scripts --no-audit --no-fund \
+            typescript@5.9.3 \
+            @types/node@22.20.1 \
+            @types/react@19.2.17 \
+            @types/react-dom@19.2.7
+          node scripts/apply-patches.mjs verify-tree --extra typescript --extra @types/node --extra @types/react --extra @types/react-dom
+          [ ! -d apps/webapp/node_modules/react ] \
+            || [ -d apps/webapp/node_modules/styled-jsx ] \
+            || mv node_modules/styled-jsx apps/webapp/node_modules/styled-jsx
+
+      # The image's context drops every test directory (apps/webapp/Dockerfile.dockerignore: **/test),
+      # and next build type-checks every .ts it can see, so this build sees what the image's does.
+      - name: The tree the web image builds
+        run: find apps packages -path '*/node_modules' -prune -o -type d -name test -prune -exec rm -rf {} +
+
+      - name: next build
+        run: cd apps/webapp && npx --offline next build

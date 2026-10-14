@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -22,20 +22,32 @@ import { describe, expect, it } from "vitest";
  */
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
-const ci = readFileSync(`${HERE}../.github/workflows/ci.yml`, "utf8");
+/** The suite workflow: authored under public/ohmail in the development tree, published to .github. */
+const WORKFLOW = ["public/ohmail/github/workflows/ci.yml", ".github/workflows/ci.yml"].find((p) => existsSync(`${HERE}../${p}`))!;
+const ci = readFileSync(`${HERE}../${WORKFLOW}`, "utf8");
+
+/** One job's text, from its key to the next job key at the same indent. */
+function jobText(job: string): string {
+  const lines = ci.split("\n");
+  const start = lines.indexOf(`  ${job}:`);
+  if (start < 0) return "";
+  const end = lines.findIndex((l, i) => i > start && /^ {2}[A-Za-z][\w-]*:$/.test(l));
+  return lines.slice(start, end < 0 ? undefined : end).join("\n");
+}
 
 describe("CI actually runs the gate", () => {
-  it("sets TF_PROXY_E2E=1 somewhere in the workflow", () => {
+  it("sets TF_PROXY_E2E=1 in the proxy-e2e job and nowhere else", () => {
     expect(ci, "no job sets TF_PROXY_E2E — the middleware e2e file is skipping in CI")
       .toMatch(/TF_PROXY_E2E:\s*"?1"?/);
+    expect(ci.match(/TF_PROXY_E2E:/g) ?? []).toHaveLength(1);
   });
 
   it("…and points it at the file that reads it", () => {
     expect(ci).toContain("apps/webapp/test/proxy.e2e.test.ts");
     // The flag and the run have to be in the same job, or the file skips anyway.
-    const job = /gate:[\s\S]*$/.exec(ci)?.[0] ?? "";
+    const job = jobText("proxy-e2e");
     expect(job).toMatch(/TF_PROXY_E2E:\s*"?1"?/);
-    expect(job).toContain("apps/webapp/test/proxy.e2e.test.ts");
+    expect(job).toContain("npx vitest run apps/webapp/test/proxy.e2e.test.ts");
   });
 
   it("the file still gates on exactly that variable", () => {
@@ -46,9 +58,9 @@ describe("CI actually runs the gate", () => {
     expect(e2e).toMatch(/describe\.skipIf\(!ENABLED\)/);
   });
 
-  it("the gate job runs on every push, like the rest of CI", () => {
+  it("the gate job runs on every pull request, like the rest of CI", () => {
     // A job behind `workflow_dispatch` only would be the same silence with more ceremony.
-    expect(ci).toMatch(/on:\s*\n\s*push:/);
-    expect(ci).toMatch(/\n {2}gate:\n/);
+    expect(ci).toMatch(/\non:\n {2}pull_request:\n/);
+    expect(ci).toMatch(/\n {2}proxy-e2e:\n/);
   });
 });
