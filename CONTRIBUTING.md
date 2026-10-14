@@ -38,7 +38,8 @@ happened, what you expected. If it is visual, a screenshot beats a description.
 
 ## Pull requests
 
-- Fork, branch, open a PR against `main`. PRs are reviewed by a human.
+- Fork, branch, open a PR against `main`, one change per pull request. PRs are
+  reviewed by a human.
 - Every change reaches `main` as a pull request, ours included.
 - CI runs four jobs — macOS, Windows, Linux and the engine. Each platform job
   runs `tsc`, builds the UI bundle, smokes it, runs `cargo test` in both
@@ -48,12 +49,10 @@ happened, what you expected. If it is visual, a screenshot beats a description.
   the smoke is what catches a view that lays out but draws nothing, and the
   artifact inspection is what catches a build that grew a network call.
 - The workflows under `.github/`, the tools under `scripts/` they run and the
-  push gate's baseline under `.gate/` change through our development repository
-  and arrive with our published batches. The **guard** check fails a pull
-  request from anywhere else that changes them, or that carries a
-  `Monorepo-Commit:` line in a commit, its title or its description: that line
-  is our publishing tool's. If you need a change there, describe it in an issue
-  or in your pull request and we will carry it.
+  push gate's baseline under `.gate/` are changed by the maintainers. The
+  **guard** check fails a pull request from a fork that changes them. If you
+  need a change there, describe it in an issue or in your pull request and we
+  will carry it.
 - Keep the existing invariants: colours and shadows come from `packages/tokens`,
   never hand-written in a view; no message is ever replaced by a "N more"
   placeholder. The test suite enforces both, and it is meant to.
@@ -128,10 +127,9 @@ maintainer signing off a patch they are landing for you. Merge commits are
 skipped.
 
 It runs on pull requests and merge groups and never on pushes, because nothing
-reaches `main` by a push: every change is a pull request, including the batches
-published from our private development repository, whose commits carry their
-authors' sign-off like anyone else's. The check is
-`.github/scripts/assert-dco.sh` and it is meant to be read.
+reaches `main` by a push: every change is a pull request, the maintainers'
+included, and their commits carry their authors' sign-off like anyone else's.
+The check is `.github/scripts/assert-dco.sh` and it is meant to be read.
 
 If you forget, the check tells you which commits and what to run. Nobody will
 ask you to sign anything else.
