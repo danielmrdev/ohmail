@@ -64,7 +64,7 @@
 # gate possible rather than aspirational: caddy, postgres, minio, minio/mc and mailpit all
 # publish linux/arm64 in their own manifest lists — and we now serve those manifests ourselves,
 # whole, so the arm64 half of each is ours to keep too. The base these three are built from
-# (`node:22-bookworm-slim`, named in each Dockerfile by its multi-arch index digest, so the bytes
+# (`node:22-bookworm-slim`, named in each Dockerfile by its multi-arch index digest, so the base
 # cannot move under a release) publishes arm64/v8. Checked against the registries, not assumed.
 # `npm ci` picks the matching native halves off the committed lockfile — it records every
 # platform's optional package with its `cpu`/`os` fields, so `@next/swc-linux-arm64-gnu` and
@@ -237,7 +237,12 @@ jobs:
         with:
           node-version: 22.23.3
 
+      # THE BUILDKIT DAEMON BY DIGEST. Left to its default, setup-buildx boots moby/buildkit:buildx-stable-1,
+      # a tag its publisher moves, and that daemon runs every build step and pushes with this job's token.
+      # v0.33.1 is the release that tag named on 2026-10-14; a bump is a reviewed commit.
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          driver-opts: image=moby/buildkit:v0.33.1@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea
 
       - name: Log in to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
