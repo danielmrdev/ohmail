@@ -13,6 +13,12 @@ See [Status](README.md#status--read-this-first).
 
 ## [Unreleased]
 
+### PDF previews work on a self-hosted install
+<!-- changes: split-s9p-product-inputs.md -->
+
+A self-hosted install showed "Can't show this PDF here" for every PDF attachment, because the web image
+did not carry the PDF viewer's worker. It does now, and a PDF attachment opens in the preview.
+
 ### Still to come
 
 Signed installers — a real Apple Developer ID and an Authenticode certificate. See
