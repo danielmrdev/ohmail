@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * THE SELF-HOST BOOT SMOKE — the check that a compose stack in this directory actually boots,
- * migrates, signs in, syncs and stages. It is this project's every-push control AND the check an
- * operator can run against their own install; the second is why it publishes with the stack.
+ * migrates, signs in, syncs and stages. It is this project's control for the stack AND the check an
+ * operator can run against their own install; the second is why it sits beside the stack.
  *
  * AGAINST YOUR OWN STACK. Everything it needs is an env knob:
  *
@@ -36,8 +36,8 @@
  * invisible to unit suites because each one is a coherent, compiling program:
  *
  *  1. TWO-SHAPES DRIFT — a service wired into the managed composition and forgotten here.
- *     The ceremony exercises the self-host bag end to end on every push, so a hole in the
- *     composition fails a step instead of a customer.
+ *     The ceremony exercises the self-host bag end to end, so a hole in the composition fails a
+ *     step instead of a customer.
  *  2. WORKER ROSTER POLARITY — the organizer's duty roster is phrased as a DISABLED list
  *     ("an account with no billing row keeps syncing"). One polarity flip in a refactor kills
  *     every self-host mailbox silently while every hosted test stays green. The seeded-mail
