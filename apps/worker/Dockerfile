@@ -20,7 +20,9 @@
 # The build context is the REPO ROOT (the worker is a workspace importer). See /.dockerignore.
 
 # ── Base: pinned runtime + pinned package manager ───────────────────────────────────────
-FROM node:22-bookworm-slim AS base
+# By digest, never by tag: the multi-arch index node:22-bookworm-slim named on 2026-10-14 (Node
+# 22.23.3, amd64 and arm64). A bump is a reviewed commit that moves every published recipe together.
+FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS base
 # CI=true: pnpm 11 otherwise tries to re-verify/recreate node_modules interactively.
 ENV CI=true \
     PNPM_HOME=/pnpm \
