@@ -1,15 +1,16 @@
 # syntax=docker/dockerfile:1
 #
-# ohmail sync organizer — the SELF-HOST image (`ghcr.io/trafficflowhq/ohmail-worker`).
+# ohmail sync organizer — the SELF-HOST image (`ghcr.io/trafficflowhq/ohmail-worker`), also
+# published as `ghcr.io/trafficflowhq/ohmail-worker-managed`: the same manifest, a second name.
 #
-# TWO RECIPES, ONE PROCESS, and the split is deliberate. The sibling `Dockerfile` is the
-# managed deployment's recipe: it builds in the development workspace, whose pnpm layout and
-# lockfile the public repository does not carry. THIS file is the recipe the public
-# repository's own release workflow builds and publishes — from the published tree, with its
-# own toolchain: `npm ci` against the committed package-lock.json, the dependency patches this
-# repository carries (`scripts/apply-patches.mjs`), then a single-file esbuild bundle with the
-# same pinned bundler the desktop mail engine is built with (`scripts/bundle-host.mjs` carries
-# the reasoning and the entry-stub story).
+# TWO RECIPES, ONE PROCESS, and the split is deliberate. The sibling `Dockerfile` is the recipe
+# the managed deployment builds in the development workspace, whose pnpm layout and lockfile the
+# public repository does not carry; no image this repository publishes is built from it. THIS
+# file is the recipe the public repository's own release workflow builds and publishes — from
+# the published tree, with its own toolchain: `npm ci` against the committed package-lock.json,
+# the dependency patches this repository carries (`scripts/apply-patches.mjs`), then a
+# single-file esbuild bundle with the same pinned bundler the desktop mail engine is built with
+# (`scripts/bundle-host.mjs` carries the reasoning and the entry-stub story).
 #
 # THE ORGANIZER'S DEPENDENCY BOUNDARY IS ENFORCED BY THE BUILD CONTEXT. This process's
 # runtime closure is core + db (+ db-mail's journal constants) and nothing else — notably
@@ -17,7 +18,7 @@
 # boot graph of the process that holds every mailbox credential. The sibling
 # `Dockerfile.selfhost.dockerignore` is the allow-list that admits exactly that closure; an
 # import reaching outside it resolves to a workspace link whose target holds only a
-# manifest, and the BUNDLE fails to build. Same fail-at-build-time property the managed
+# manifest, and the BUNDLE fails to build. Same fail-at-build-time property the sibling
 # recipe's filtered install buys, enforced by what the context contains.
 #
 # The runtime stage carries the bundle and the two journals — no src/, no test/, no
@@ -37,7 +38,7 @@ COPY . .
 
 # WHICH ALLOW-LIST BUILT THIS CONTEXT. The lockfile above reaches it through the sibling
 # `apps/worker/Dockerfile.selfhost.dockerignore`, and only BuildKit reads a per-Dockerfile list. The legacy
-# builder falls back to the root one — the managed worker's context, which admits no lockfile — so
+# builder falls back to the root one — the sibling recipe's context, which admits no lockfile — so
 # npm answers EUSAGE over a lockfile this repository does commit, and the reader goes looking for a
 # missing file instead of a missing builder. The builder is named here, before npm is asked.
 RUN test -f package-lock.json || { \
