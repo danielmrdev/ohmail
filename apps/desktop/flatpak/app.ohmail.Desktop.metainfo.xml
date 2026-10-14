@@ -74,6 +74,20 @@
   </screenshots>
 
   <releases>
+    <release version="0.25.24" date="2026-10-14">
+      <description>
+        <ul>
+          <li>Your own Anthropic key sends each model its own thinking setting</li>
+          <li>Text size, display size and foldable fixes on the phone</li>
+          <li>A phone that reads a mailbox says who organizes it</li>
+          <li>A credit is returned even when its refund cannot be written down</li>
+          <li>Every device screens a mailbox by the window of the device that organizes it</li>
+          <li>Folders deleted on the mail server leave the folder list</li>
+          <li>Revoking a rule that filed letters after a hand-back works</li>
+          <li>Hand the mailbox back lets go within seconds</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.25.23" date="2026-10-13">
       <description>
         <ul>
@@ -153,13 +167,6 @@
           <li>A year press in History fills the rows around it</li>
           <li>Visit statistics on ohmail.app, only if you agree</li>
           <li>What the website's visit statistics count</li>
-        </ul>
-      </description>
-    </release>
-    <release version="0.25.19" date="2026-10-09">
-      <description>
-        <ul>
-          <li>Older mail no longer appears in the Screener</li>
         </ul>
       </description>
     </release>

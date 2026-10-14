@@ -13,6 +13,13 @@ See [Status](README.md#status--read-this-first).
 
 ## [Unreleased]
 
+### Still to come
+
+Signed installers — a real Apple Developer ID and an Authenticode certificate. See
+[Roadmap](README.md#roadmap).
+
+## [0.25.24] — 2026-10-14
+
 ### Your own Anthropic key sends each model its own thinking setting
 <!-- changes: fix-026-ai-follow-ups.md -->
 
@@ -88,11 +95,6 @@ Handing a mailbox back no longer waits for the organizer's next scheduled pass. 
 desktop app the organizer lets go within seconds, so another device can organize the mailbox straight away.
 When a stop could not save a device's settings to the mailbox, the line saying so now stays until that device
 organizes the mailbox again.
-
-### Still to come
-
-Signed installers — a real Apple Developer ID and an Authenticode certificate. See
-[Roadmap](README.md#roadmap).
 
 ## [0.25.23] — 2026-10-13
 
@@ -12281,7 +12283,8 @@ no network in any of them.
   Gatekeeper, SmartScreen and the AppImage's executable bit all need a manual
   step, and that is a real cost of a preview rather than something to gloss over.
 
-[Unreleased]: https://github.com/trafficflowhq/ohmail/compare/v0.25.23...HEAD
+[Unreleased]: https://github.com/trafficflowhq/ohmail/compare/v0.25.24...HEAD
+[0.25.24]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.24
 [0.25.23]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.23
 [0.25.22]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.22
 [0.25.21]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.21
