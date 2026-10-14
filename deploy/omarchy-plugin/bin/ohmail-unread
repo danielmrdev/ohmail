@@ -1,0 +1,158 @@
+#!/bin/bash
+#
+# Print what is known about the unread count, as one line of JSON:
+#
+#   {"state":"ok","unread":7,"why":"..."}      a real number, from a real source
+#   {"state":"unknown","why":"..."}            nobody has said, and we will not guess
+#
+# ── WHY THIS SCRIPT DOES NOT TALK TO ohmail ──────────────────────────────────
+#
+# Because it cannot, and pretending otherwise would be the dishonest part.
+#
+#   · THE DESKTOP APP. Its mail engine is a child process that speaks
+#     length-prefixed frames over its own stdin and stdout. There is no socket
+#     and no port: the only party that can speak to it is the app holding the
+#     pipe. (Turning on same-network access adds a loopback HTTP door, but that
+#     is off by default, is addressed by a port you chose, and wants a paired
+#     device's credentials — not something a bar widget should be holding.)
+#
+#   · THE CLOUD API. It has no "how many unread" endpoint. The message list is
+#     cursor-paged with no total, and search needs a query, so counting would
+#     mean walking the whole list on a timer — while keeping a rotating refresh
+#     token in a config file. That is a bad trade for a number in a bar.
+#
+# So this script reads a count somebody else already has. Three sources, first
+# one that answers wins:
+#
+#   1. A COMMAND YOU GAVE IT — the widget's `command` setting in shell.json, or
+#      $OHMAIL_UNREAD_COMMAND. Anything that prints a non-negative integer.
+#      This is the one that works today for anyone who has their own way to
+#      count, and it is why the setting exists.
+#   2. A COUNT FILE — the first of
+#        $XDG_RUNTIME_DIR/ohmail/unread
+#        ${XDG_STATE_HOME:-$HOME/.local/state}/ohmail/unread
+#      that exists and holds a non-negative integer. This is the seam for the
+#      app to fill in: it knows the number already and writing one line is
+#      cheap. AS OF ohmail 0.12.2 THE APP DOES NOT WRITE IT. Nothing here
+#      pretends it does, and until it does this source simply never fires.
+#   3. --demo N — a fixed number, for screenshots and for proving the widget
+#      renders. Never reached unless you ask for it by name.
+#
+# Anything else is "unknown", and the widget draws that as an envelope with no
+# number rather than as a zero.
+
+set -uo pipefail
+
+# `why` carries paths and command text, so it is escaped rather than trusted:
+# one double quote or backslash in $XDG_RUNTIME_DIR would otherwise produce
+# invalid JSON, and the widget would report "did not answer JSON" for what is
+# really a working source. Control characters become spaces for the same reason.
+json_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//[$'\001'-$'\037']/ }"
+  printf '%s' "$s"
+}
+
+emit_ok()      { printf '{"state":"ok","unread":%d,"why":"%s"}\n' "$1" "$(json_escape "$2")"; }
+emit_unknown() { printf '{"state":"unknown","why":"%s"}\n' "$(json_escape "$1")"; }
+
+# Trim the surrounding whitespace and NOTHING ELSE.
+#
+# The first version of this deleted every space, tab and newline anywhere in the
+# output, and that turned a command printing `1 2` into the number 12, and one
+# printing two lines `1` and `2` into 12 as well. A count nobody produced is the
+# single thing this script exists not to do, so interior whitespace now survives
+# to `is_count`, which rejects it.
+trim() {
+  local s="$1"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
+
+# A count is one to nine digits and nothing else. A command that prints
+# "12 messages", an error page, or an empty line is not a count, and treating
+# any of them as one is how a bar ends up asserting a number nobody produced.
+# The nine-digit ceiling keeps `as_number` inside integer range; no mailbox is
+# anywhere near it.
+is_count() { [[ $1 =~ ^[0-9]{1,9}$ ]]; }
+
+# Force base ten, because bash does not.
+#
+# `printf %d 010` prints 8 and `printf %d 08` prints 0 AND writes "invalid octal
+# number" to stderr — both measured, both a wrong number in the bar from a source
+# that was perfectly correct. `10#` also normalises `007` to `7`, which matters
+# separately: JSON has no leading zeros, so `"unread":007` is not parseable and
+# the widget would have called a working source malformed.
+as_number() { printf '%s' "$((10#$1))"; }
+
+if [[ ${1:-} == --demo ]]; then
+  n="$(trim "${2:-7}")"
+  if is_count "$n"; then
+    emit_ok "$(as_number "$n")" "demo fixture"
+  else
+    emit_unknown "--demo wants a non-negative integer"
+  fi
+  exit 0
+fi
+
+if [[ ${1:-} == -h || ${1:-} == --help ]]; then
+  cat <<'USAGE'
+Usage: ohmail-unread [--command <shell command>] [--demo <n>]
+
+Prints one line of JSON saying what is known about the unread count:
+  {"state":"ok","unread":7,"why":"..."}   a number, from a named source
+  {"state":"unknown","why":"..."}         nobody has said
+
+Sources, first one that answers wins: --command (or $OHMAIL_UNREAD_COMMAND),
+then $XDG_RUNTIME_DIR/ohmail/unread, then $XDG_STATE_HOME/ohmail/unread.
+The header of this file argues why it does not read your mail itself.
+USAGE
+  exit 0
+fi
+
+# 1 — a command you gave it. The widget passes its `command` setting as argv
+# (which is why an empty value has to be tolerated rather than refused); a
+# person at a terminal can use the environment variable instead.
+cmd="${OHMAIL_UNREAD_COMMAND:-}"
+if [[ ${1:-} == --command ]]; then
+  cmd="${2:-}"
+fi
+if [[ -n ${cmd//[[:space:]]/} ]]; then
+  # Captured, not piped into a test: a pipeline reports the last command's
+  # status, so a command that died would otherwise read as one that printed
+  # nothing useful — which is a different fact and deserves a different answer.
+  out=$(bash -c "$cmd" 2>/dev/null)
+  rc=$?
+  out="$(trim "$out")"
+  if (( rc != 0 )); then
+    emit_unknown "your count command exited $rc"
+    exit 0
+  fi
+  if is_count "$out"; then
+    emit_ok "$(as_number "$out")" "your count command"
+  else
+    emit_unknown "your count command did not print a plain number"
+  fi
+  exit 0
+fi
+
+# 2 — a count file.
+for f in \
+  "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/ohmail/unread" \
+  "${XDG_STATE_HOME:-$HOME/.local/state}/ohmail/unread"
+do
+  [[ -f $f ]] || continue
+  out=$(head -c 32 "$f" 2>/dev/null)
+  out="$(trim "$out")"
+  if is_count "$out"; then
+    emit_ok "$(as_number "$out")" "$f"
+  else
+    emit_unknown "$f does not hold a plain number"
+  fi
+  exit 0
+done
+
+emit_unknown "no count source — set the widget's command, or write a number to \$XDG_RUNTIME_DIR/ohmail/unread"

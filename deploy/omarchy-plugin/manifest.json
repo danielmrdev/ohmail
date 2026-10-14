@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "ohmail.mail",
+  "name": "ohmail",
+  "version": "0.1.0",
+  "author": "TrafficFlow GmbH",
+  "description": "Unread mail in the bar, and one key to summon ohmail",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "ohmail",
+    "description": "Unread mail in the bar, and one key to summon ohmail",
+    "category": "Communication",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "intervalMs": 60000,
+      "command": ""
+    },
+    "schema": [
+      {
+        "key": "intervalMs",
+        "type": "number",
+        "label": "Refresh interval (ms)"
+      },
+      {
+        "key": "command",
+        "type": "string",
+        "label": "Command that prints the unread count"
+      }
+    ]
+  }
+}
