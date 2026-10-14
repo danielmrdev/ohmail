@@ -1,0 +1,28 @@
+path	line	class	ruling	hash	note
+apps/desktop/src-tauri/src/config_tests.rs	1193	ohmail.app address not on the allowlist	baseline	b7a5370719e5fb30	published
+apps/desktop/test/desktop-cloud-marked-message.test.tsx	46	personal address	baseline	fd2b09c9d9fe8c83	published
+apps/desktop/test/desktop-devices-lan.test.tsx	349	secret/token/api-key assignment	baseline	6577a04648ebe10b	published
+apps/desktop/test/desktop-devices-states.test.tsx	125	secret/token/api-key assignment	baseline	b248798c8b9f1529	published
+apps/desktop/test/desktop-devices.test.tsx	219	secret/token/api-key assignment	baseline	b248798c8b9f1529	published
+apps/desktop/test/desktop-door-reconfigure.test.tsx	114	password assignment	baseline	13efa1e72ba1456f	published
+apps/desktop/test/desktop-door-reconfigure.test.tsx	115	password assignment	baseline	a84f385d5ebec8eb	published
+apps/desktop/test/desktop-door-tls-census.test.tsx	167	password assignment	baseline	a9a2c212a8248c04	published
+apps/desktop/test/desktop-doors.test.ts	388	password assignment	baseline	752fd6a6f07eafd7	published
+apps/desktop/test/desktop-doors.test.ts	819	password assignment	baseline	b7f459b9d626129d	published
+apps/desktop/test/desktop-mailboxes.test.ts	4421	password assignment	baseline	16243e6c80688c91	published
+apps/desktop/test/desktop-mailboxes.test.ts	4447	password assignment	baseline	16243e6c80688c91	published
+apps/desktop/test/desktop-mailboxes.test.ts	4511	personal address	baseline	57788417abc5d781	published
+apps/desktop/test/desktop-mailboxes.test.ts	4639	password assignment	baseline	154ebcc6f790b0f3	published
+apps/desktop/test/desktop-mailboxes.test.ts	4640	password assignment	baseline	62e536ed98ea63b3	published
+apps/desktop/test/first-door-consent.test.tsx	156	password assignment	baseline	76e967ed1e6c8bc7	published
+apps/desktop/test/first-door-consent.test.tsx	157	password assignment	baseline	dedaffee8937fc49	published
+apps/desktop/test/first-door-consent.test.tsx	78	password assignment	baseline	56d1039b6e9a3371	published
+apps/desktop/test/host-client-pair.test.tsx	81	secret/token/api-key assignment	baseline	892847be0ed814b9	published
+apps/desktop/test/sign-in-again-server.test.ts	39	personal address	baseline	09ac9c53921a2d11	published
+apps/desktop/test/sign-in-again-server.test.ts	43	personal address	baseline	5be7aea65bc731df	published
+apps/mobile/src/engine/kek.ts	22	secret/token/api-key assignment	baseline	067c25be166fead7	published
+apps/webapp/next.config.mjs	231	ohmail.app address not on the allowlist	baseline	becf53b857c85e9f	published
+packages/api/src/deps.ts	617	password assignment	baseline	c12bd2acb34406b6	published
+packages/db/src/unsubscribe-drain-cursor.ts	20	password assignment	baseline	31bb7f34c811b608	published
+packages/services/src/mail/mail-service.ts	187	ohmail.app address not on the allowlist	baseline	e7e02c3141a02cc2	published
+packages/services/src/mail/resend-mailer.ts	43	ohmail.app address not on the allowlist	baseline	985ba3d471b783c4	published
