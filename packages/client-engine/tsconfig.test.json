@@ -1,0 +1,10 @@
+{
+  "//": "TYPECHECK THE TESTS, which `tsconfig.json` does not. That one exists to BUILD `dist` and so includes `src` alone — correct for a build, and it means a test file in this package can fail to compile and still pass, because vitest only transpiles. A review found exactly that: `store-meta-version.test.ts` carried a TS2416 and a TS2554 (an override against `MemoryMirrorStore.persist`, which declares no parameters) and ran green, and `pnpm -C packages/client-engine build` proved nothing about it because the build never looked. `noEmit`, so it produces no artifact and cannot disturb the build's output; run it as `npx tsc -p packages/client-engine/tsconfig.test.json`. SCOPED to the test files this lane owns, deliberately: including the whole `test` directory reports errors in 23 OTHER files that have never been typechecked, which would make this a gate nobody can keep green and therefore no gate at all. Widening it is worth doing and is a lane of its own; the backlog list is reproducible by changing `include` to `[\"src\", \"test\"]`.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["src", "test/store-meta-version.test.ts", "test/idle-drain-derives-nothing.test.ts"]
+}

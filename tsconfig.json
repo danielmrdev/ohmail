@@ -1,0 +1,50 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/core"
+    },
+    {
+      "path": "./packages/core/tsconfig.contract.json"
+    },
+    {
+      "path": "./packages/db-mail"
+    },
+    {
+      "path": "./packages/db"
+    },
+    {
+      "path": "./packages/services"
+    },
+    {
+      "path": "./packages/api"
+    },
+    {
+      "path": "./packages/api/tsconfig.contract.json"
+    },
+    {
+      "path": "./apps/worker"
+    },
+    {
+      "path": "./apps/sidecar"
+    },
+    {
+      "path": "./apps/server"
+    },
+    {
+      "path": "./apps/api-vercel/tsconfig.check.json"
+    },
+    {
+      "path": "./packages/tokens"
+    },
+    {
+      "path": "./packages/fixtures"
+    },
+    {
+      "path": "./packages/ui"
+    },
+    {
+      "path": "./packages/client-engine"
+    }
+  ]
+}

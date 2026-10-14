@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "outDir": "dist", "rootDir": "src" },
+  "include": ["src"],
+  "//references": "TWO, and the list is the same invariant `package.json` and `/.dockerignore` state in their own vocabularies (the dependency rule, test/deps.test.ts). A third entry here is the compile-time face of a runtime dependency: it is what lets `src/` import a package the image would then have to install.",
+  "references": [
+    { "path": "../../packages/core" },
+    { "path": "../../packages/db" }
+  ]
+}

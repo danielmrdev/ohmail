@@ -1,0 +1,83 @@
+# The CI / development OVERLAY for the self-host stack — never part of an operator install.
+#
+#   docker compose -f deploy/selfhost/docker-compose.yml \
+#                  -f deploy/selfhost/docker-compose.ci.yml \
+#                  --env-file <env file> up -d --build
+#
+# The env file holds the stack's variables (.env.example names them); throwaway values do for a smoke run.
+#
+# ── STANDING LIMIT since the image-publish pivot ─────────────────────────────────────────
+# The published image recipes (apps/server/Dockerfile, apps/worker/Dockerfile.selfhost,
+# apps/webapp/Dockerfile) build from the PUBLISHED tree's npm shape — generated manifests,
+# committed package-lock.json — which this workspace does not carry. So the `build:` stanzas
+# below no longer build from THIS checkout: point their contexts at a publish preview
+# (a `publish-desktop.mjs --dry-run` clone, or a clone of the public repository) to run the
+# smoke. That is also the plan of record for the smoke itself — it moves to the public lane
+# with the image workflow rather than being revived here.
+#
+# What it changes, and why each change exists:
+#   · the three ohmail services BUILD FROM A CHECKOUT instead of pulling the published
+#     images — the base compose is the operator surface and names ghcr.io images, this overlay
+#     is where "does the tree still produce those images?" gets asked, before a
+#     release can tag them (`build` tags the results with the same names, so the smoke runs
+#     exactly what an operator would pull);
+#   · a DISPOSABLE mail server (GreenMail) joins the network, so the boot smoke can add real
+#     IMAP mailboxes and seed real messages without touching anything outside the compose;
+#   · the proxy serves plain HTTP on localhost:3080 instead of 80/443 (no TLS ceremony, no
+#     privileged-port clash with whatever else runs on the machine);
+#   · MinIO's object-storage port is published on loopback so the smoke can exercise the presigned
+#     upload/download round-trip from outside the network (the presigned URL names
+#     `minio:9000`, so the smoke dials the published port while preserving that Host);
+#   · the organizer polls fast, so "seeded mail appears in /sync" is seconds, not minutes.
+
+services:
+  proxy:
+    # The base maps 80/443 for a real install; the smoke run replaces them outright with the
+    # loopback HTTP port the CI origin (http://localhost:3080) names.
+    ports: !override
+      - "127.0.0.1:3080:3080"
+    environment:
+      # WHERE THE FRONT DOOR ACTUALLY LISTENS, so the Caddyfile's any-other-address door lands on
+      # the same port as the origin's. It defaults to 80 — every install this compose publishes —
+      # and this overlay is the only thing that moves the front door off it. Without the line the
+      # honest-answer door listens on 80, which nothing here publishes, and a dial by IP goes back
+      # to Caddy's empty 200.
+      OHMAIL_FRONT_DOOR_PORT: "3080"
+
+  web:
+    build:
+      context: ../..
+      dockerfile: apps/webapp/Dockerfile
+
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/server/Dockerfile
+    environment:
+      # GreenMail lives on a private network address, which the add-time probe's SSRF gate
+      # rightly refuses by default. Relaxing it is exactly the documented LAN-mail-server
+      # operator decision, made here for a mail server that exists only inside this compose.
+      TF_PROBE_ALLOW_PRIVATE: "1"
+
+  organizer:
+    build:
+      context: ../..
+      # The SELF-HOST recipe — the image this smoke is about. The sibling plain Dockerfile
+      # is the managed deployment's and is not what ghcr.io/trafficflowhq/ohmail-worker runs.
+      dockerfile: apps/worker/Dockerfile.selfhost
+    environment:
+      POLL_INTERVAL_MS: "5000"
+      TF_ROSTER_INTERVAL_MS: "5000"
+
+  minio:
+    ports:
+      - "127.0.0.1:3903:9000"
+
+  greenmail:
+    image: greenmail/standalone:2.1.3
+    environment:
+      GREENMAIL_OPTS: "-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.users.login=email"
+    ports:
+      # SMTP published on loopback so the smoke can SEED mail from the host; IMAP stays
+      # internal — only the organizer dials it, by the in-network name `greenmail`.
+      - "127.0.0.1:3026:3025"
