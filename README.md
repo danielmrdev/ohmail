@@ -857,6 +857,29 @@ OHMAIL_NODE_ARCHIVES=/path/to/archives node scripts/vendor-node.mjs
 cd apps/desktop && npm run app:build:engine
 ```
 
+On Linux, a source-built AppImage bundles GTK from the build host, which may
+use a different GTK version than the release artifact. The shell pins GTK's
+text DPI to 96, so the desktop's `text-scaling-factor` does not resize the
+whole webview; monitor scaling remains unchanged.
+
+On Arch Linux, pin Tauri's GTK hook before building an AppImage. Tauri's
+uncached hook forces `GDK_BACKEND=x11`, sending HiDPI Wayland sessions through
+XWayland at 1×. `NO_STRIP=1` avoids Tauri's bundled `linuxdeploy` strip rejecting
+the host's `.relr.dyn` sections.
+
+From the repository root:
+
+```bash
+install -m 755 apps/desktop/src-tauri/linux/linuxdeploy-plugin-gtk.sh \
+  ~/.cache/tauri/linuxdeploy-plugin-gtk.sh
+```
+
+Then from `apps/desktop`:
+
+```bash
+NO_STRIP=1 mise exec node@22.23.1 -- npm run app:build:engine -- --bundles appimage
+```
+
 The result carries the engine at `engine/bin/ohmail-engine.mjs` and the runtime
 at `runtime/node`, both under the app's resource directory. The build prints
 the engine's SHA-256, and so does every CI run — and
