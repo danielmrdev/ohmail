@@ -91,13 +91,14 @@ export const cloudSuggestWire: SuggestWire = {
     ask<ScreenerWirePage>(`${PAGE.pattern}${limit != null ? `?limit=${limit}` : ""}`),
 
   /**
-   * Price a set, or buy it.
+   * Price a set, or buy it, in the browser client's words (`screener.suggest`, `api-client.ts`).
    *
-   * The body is the endpoint's: an explicit sender list, plus `dryRun` when nothing is to be spent,
-   * plus `automatic` when the opt-in's unpressed batch is asking — on this door too, or that batch
-   * would reach the hosted server as a press. The KEY IS THE CALLER'S and is set only on the real
-   * run — a dry run moves nothing, so a key on it would consume one for a request that never
-   * charged. On the real run it is per chunk: a lost answer becomes a replay, not a second purchase.
+   * The body is the endpoint's: an explicit sender list; `dryRun` when nothing is to be spent;
+   * `automatic` when the opt-in's unpressed batch is asking, or that batch would arrive as a press;
+   * and on a purchase `maxCredits`, the figure the confirm showed, so the account stops the run at
+   * it instead of charging more — never on a dry run, never invented. The KEY IS THE CALLER'S, set
+   * only on the real run (a dry run moves nothing) and per chunk: a lost answer is replayed, not
+   * bought twice. `desktop-cloud-suggest.test.ts` holds this body equal to the browser's.
    */
   suggest: (senders, opts = {}) =>
     ask<ScreenerSuggestWire>(BUY.pattern, {
@@ -107,7 +108,9 @@ export const cloudSuggestWire: SuggestWire = {
         ...(opts.idempotencyKey ? { "idempotency-key": opts.idempotencyKey } : {}),
       },
       body: JSON.stringify({
-        ...(opts.dryRun ? { senders, dryRun: true } : { senders }),
+        ...(opts.dryRun
+          ? { senders, dryRun: true }
+          : { senders, ...(typeof opts.maxCredits === "number" ? { maxCredits: opts.maxCredits } : {}) }),
         ...(opts.automatic === true ? { automatic: true } : {}),
       }),
     }),

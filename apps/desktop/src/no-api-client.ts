@@ -897,6 +897,7 @@ export const screener: {
     suggest: (senders: string[], opts?: {
         dryRun?: boolean;
         idempotencyKey?: string;
+        maxCredits?: number;
         automatic?: boolean;
     }) => Promise<ScreenerSuggestWire>;
     junkList: (opts?: {
