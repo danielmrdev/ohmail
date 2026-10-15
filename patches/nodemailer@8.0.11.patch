@@ -1,8 +1,8 @@
 diff --git a/lib/smtp-connection/index.js b/lib/smtp-connection/index.js
-index 7ab94f3d9fd3a799833687d569e81b0e8cce2d9b..7ab7361db29365c50e42715c005769e4c3df2963 100644
+index c201529ceb9c37d965b125474b6f618446810269..b22276573805ffdbc31dbafb6a0e27e4e54dde36 100644
 --- a/lib/smtp-connection/index.js
 +++ b/lib/smtp-connection/index.js
-@@ -906,6 +906,28 @@ class SMTPConnection extends EventEmitter {
+@@ -1004,6 +1004,28 @@ class SMTPConnection extends EventEmitter {
       *        has been secured
       */
      _upgradeConnection(callback) {

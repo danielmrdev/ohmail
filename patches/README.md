@@ -157,7 +157,7 @@ that the store copy autolinking resolves carries it with no pristine copy beside
 **What would let us drop this:** a published `expo-image-picker` 57.x carrying #50435, or the move
 to the SDK that ships it.
 
-## `nodemailer@6.10.1`
+## `nodemailer@8.0.11`
 
 MIT. Upstream: <https://github.com/nodemailer/nodemailer>.
 
@@ -176,6 +176,9 @@ the ones already handed to this parser.
 It could not be worked around from our side: the queue and the buffered remainder are the
 connection's private state, read inside `_upgradeConnection` just before the socket is swapped,
 and nothing outside the class sees that moment.
+
+Upstream release 9.0.3 took a different fix for the same condition: it discards those bytes when
+the upgrade begins (RFC 3207 section 6) and continues, where this patch refuses.
 
 **What would let us drop this:** upstream refusing the upgrade on the same condition.
 

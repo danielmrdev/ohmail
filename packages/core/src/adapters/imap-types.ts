@@ -239,7 +239,7 @@ export const PASSIVE_FOLDERS_MAX_NO_STATUS = 32;
 
 /**
  * The two TLS parameters that must never be left to a default. `imapflow@1.5.0` and
- * `nodemailer@6.10.1` pass their `tls` object straight into `tls.connect`, so the effective
+ * `nodemailer@8.0.11` pass their `tls` object straight into `tls.connect`, so the effective
  * defaults are Node's — and both are process globals: `NODE_TLS_REJECT_UNAUTHORIZED=0` silently
  * disables certificate validation unless `rejectUnauthorized: true` is explicit (measured: the
  * explicit form still fails under the env var, the only form that holds), and `node
@@ -266,7 +266,7 @@ const isIpLiteral = (host: string): boolean => {
 
 /**
  * The SNI name for a dial, or undefined when SNI must be omitted. RFC 6066 §3 forbids an IP
- * literal in SNI, and both `imapflow@1.5.0` and `nodemailer@6.10.1` apply exactly this rule when
+ * literal in SNI, and both `imapflow@1.5.0` and `nodemailer@8.0.11` apply exactly this rule when
  * deriving their own default. Pinned here because the derivation lives inside two dependencies'
  * internals: a multi-vhost server presents its default certificate to a dial with no SNI, which
  * fails hostname validation — indistinguishable from a wrong certificate. An explicit
@@ -337,13 +337,13 @@ export interface ImapTlsFloorOptions {
 /** The TLS-relevant slice of nodemailer's `SMTPTransport.Options`, and nothing else. */
 export interface SmtpTlsFloorOptions {
   secure: boolean;
-  /** `nodemailer@6.10.1`: send STARTTLS even if unadvertised, and treat any non-2xx as fatal. */
+  /** `nodemailer@8.0.11`: send STARTTLS even if unadvertised, and treat any non-2xx as fatal. */
   requireTLS?: true;
   /** Would skip STARTTLS entirely. Pinned false so the option is visible, not merely absent. */
   ignoreTLS?: false;
   /** Would downgrade a FAILED upgrade to "continue unencrypted". Pinned false for the same reason. */
   opportunisticTLS?: false;
-  /** SNI, pinned — `smtp-connection/index.js:61` reads it. See {@link sniServername}. */
+  /** SNI, pinned — `smtp-connection/index.js:84` reads it. See {@link sniServername}. */
   servername?: string;
   tls?: TlsFloorOptions;
 }
