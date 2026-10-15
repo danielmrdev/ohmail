@@ -274,6 +274,7 @@ export function FocusFollows(): null {
           && document.activeElement !== left) lastFocus = null;
       });
     };
+    let restoreTimer: ReturnType<typeof setTimeout> | null = null;
     const observer = new MutationObserver(() => {
       if (returning > 0 || !focusIsLost()) return;
       const lost = lastFocus;
@@ -282,10 +283,17 @@ export function FocusFollows(): null {
         land(lost, false);
         return;
       }
+      if (restoreTimer !== null) return;
       /* A PAGE MODAL HOLDS FOCUS. A step that disabled or swapped its own button left focus on
-         the page root with no removal to answer, and ↵ there reached the mail behind setup. */
-      const modal = pageModal(document);
-      if (modal !== null) enterInto(modal);
+         the page root with no removal to answer, and ↵ there reached the mail behind setup.
+         WebKit can deliver mutations between blurring one control and focusing the next, so the
+         check waits one task: a transient page-root focus must not steal a text-field click. */
+      restoreTimer = setTimeout(() => {
+        restoreTimer = null;
+        if (returning > 0 || !focusIsLost()) return;
+        const modal = pageModal(document);
+        if (modal !== null) enterInto(modal);
+      }, 0);
     });
     observer.observe(document.body, { childList: true, subtree: true });
     document.addEventListener("keydown", onKey, true);
@@ -295,6 +303,7 @@ export function FocusFollows(): null {
     document.addEventListener("focusout", onFocusOut);
     return () => {
       observer.disconnect();
+      if (restoreTimer !== null) clearTimeout(restoreTimer);
       document.removeEventListener("keydown", onKey, true);
       document.removeEventListener("pointerdown", onPress, true);
       document.removeEventListener("mousedown", onPress, true);
