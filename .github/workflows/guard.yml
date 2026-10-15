@@ -2,11 +2,11 @@ name: guard
 
 # The workflows, their tools and the gate change only on a maintainer branch of this repository.
 #
-# Every pull request is refused when its tree, or any commit it would merge, carries a file of a font
-# kind. A pull request that changes `.github/`, `scripts/` or `.gate/` is refused unless a maintainer
-# opened it from a `pr/<name>` branch of this repository (a name of letters, digits, `.`, `_` and `-`),
-# and one carrying a `Monorepo-Commit:` line in a commit message, its title or its description is
-# refused too; a maintainer's `publish/<utc>-<sha12>` branch is admitted apart from the font rule. Who
+# Every pull request is refused when its tree holds a file of a font kind, or any commit it would merge
+# adds or changes one. A pull request that changes `.github/`, `scripts/` or `.gate/` is refused unless a
+# maintainer opened it from a `pr/<name>` branch of this repository (a name of letters, digits, `.`, `_`
+# and `-`), and one carrying a `Monorepo-Commit:` line in a commit message, its title or its description
+# is refused too; a maintainer's `publish/<utc>-<sha12>` branch is admitted apart from the font rule. Who
 # counts as a maintainer, and what the rules cannot see, is in .github/scripts/assert-pr-guard.sh.
 #
 # `pull_request_target`, for the reason dco.yml gives: the checker comes from the BASE, the commits

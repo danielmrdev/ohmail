@@ -4,15 +4,15 @@
 #
 #   bash .github/scripts/assert-pr-guard.sh <base sha> <head sha> <pull request json>
 #
-# Every pull request is refused when (c) a file of a font kind is in its tree or in any commit it would
-# merge. A maintainer's `publish/<utc>-<sha12>` branch is otherwise admitted as it is. Any other pull
-# request is refused when (a) it changes `.github/`, `scripts/` or `.gate/` and is not a maintainer's
-# `pr/<name>` branch (a name of letters, digits, `.`, `_` and `-`), or (b) it carries a `Monorepo-Commit:`
-# line in a commit message, its title or its description (the merge message is the description). A
-# maintainer's branch is a branch of THIS repository, which only write access can push (a MEMBER
-# association alone is membership of the organization, not write access), whose pull request a person
-# opened (`user.type` User, never an app's Bot) as OWNER, MEMBER or COLLABORATOR; a field the pull
-# request lacks counts as none. Rule (c) reads names: a font renamed `.bin` is not seen.
+# Every pull request is refused when (c) a file of a font kind is in its tree, or any commit it would
+# merge adds or changes one. A maintainer's `publish/<utc>-<sha12>` branch is otherwise admitted as it
+# is. Any other pull request is refused when (a) it changes `.github/`, `scripts/` or `.gate/` and is
+# not a maintainer's `pr/<name>` branch (a name of letters, digits, `.`, `_` and `-`), or (b) it carries
+# a `Monorepo-Commit:` line in a commit message, its title or its description (the merge message is the
+# description). A maintainer's branch is a branch of THIS repository, which only write access can push
+# (a MEMBER association alone is membership of the organization, not write access), whose pull request a
+# person opened (`user.type` User, never an app's Bot) as OWNER, MEMBER or COLLABORATOR; a field the
+# pull request lacks counts as none. Rule (c) reads names: a font renamed `.bin` is not seen.
 #
 # It reads git objects and JSON and compares strings; nothing from the pull request is run.
 set -euo pipefail
