@@ -16,3 +16,17 @@ This repository is the public mirror of Ohmail: a Tauri desktop mail client and 
 - Commit only PR-scoped changes. When reusing work from another branch, cherry-pick only clean feature commits; split mixed commits first.
 - Before pushing, inspect `git log --oneline upstream/main..HEAD` and `git diff --name-status upstream/main...HEAD`. Check both commit history and final file changes for fork-only content.
 - Push the feature branch to `origin` and target the PR at `trafficflowhq/ohmail:main`.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for `danielmrdev/ohmail`; use `gh`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Use single-context layout: root `GLOSSARY.md` and `docs/adr/`. See `docs/agents/domain.md`.
