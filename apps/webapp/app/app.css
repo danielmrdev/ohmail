@@ -17,9 +17,12 @@ body {
 /* ================= shell ================= */
 /* A FRAME, NEVER A SCROLLER. `hidden` still scrolls under `scrollIntoView` and `focus()`, so a
    row or editor brought into view shifted the whole app up with no way back. `clip` refuses every
-   scroll; `hidden` stays for an engine that does not know `clip`. */
+   scroll; `hidden` stays for an engine that does not know `clip`.
+   VIEWPORT UNITS ARE DIVIDED BY `--ui-zoom`, here and everywhere in the app's stylesheets: under the
+   web door's Text size (`zoom` on <html>, `shell/text-size.ts`) a `100dvh` box renders zoom times the
+   window. Unset, it is 1 — the desktop window zooms natively and stamps nothing. */
 .app-root {
-  height: 100dvh;
+  height: calc(100dvh / var(--ui-zoom, 1));
   overflow: hidden;
   overflow: clip;
   display: flex;
@@ -93,7 +96,7 @@ body.reading .shell {
    `.col-handle-rail`, which must sit exactly where this track ends, reads the same expression
    (`shell/column-handles.css`) instead of restating three numbers that could drift. */
 .deck {
-  --rail-track: clamp(200px, var(--rail-w, 224px), min(360px, calc(100vw - 800px - 2 * var(--gap-edge) - 2 * var(--gap-tile))));
+  --rail-track: clamp(200px, var(--rail-w, 224px), min(360px, calc(100vw / var(--ui-zoom, 1) - 800px - 2 * var(--gap-edge) - 2 * var(--gap-tile))));
   flex: 1;
   min-height: 0;
   display: grid;
@@ -117,7 +120,7 @@ body.reading .shell {
 @media (max-height: 480px) and (max-width: 1023.98px) {
   .app-root {
     height: auto;
-    min-height: 100dvh;
+    min-height: calc(100dvh / var(--ui-zoom, 1));
     overflow: visible;
   }
   .shell,
@@ -129,7 +132,7 @@ body.reading .shell {
   .list-col > .scroller,
   .list-col > .stream {
     flex: none;
-    height: calc(100dvh - 10px);
+    height: calc(100dvh / var(--ui-zoom, 1) - 10px);
   }
 }
 
@@ -221,7 +224,7 @@ body.reading .shell {
    centres inside the shell's flex column; this one has no shell left around it, so it makes its
    own ground and then reuses `.view-fail-card` for the card itself. */
 .page-fail {
-  min-height: 100dvh;
+  min-height: calc(100dvh / var(--ui-zoom, 1));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -658,7 +661,7 @@ input.tag-manage-input { /* by element: the row is the width, the field gives */
   bottom: 18px;
   z-index: var(--z-dock);
   width: auto;
-  max-width: min(320px, calc(100vw - 28px));
+  max-width: min(320px, calc(100vw / var(--ui-zoom, 1) - 28px));
   justify-content: flex-start;
   gap: 3px 8px;
   padding: 7px 14px;
@@ -3490,7 +3493,7 @@ input.set-tag-input {
 /* ================= gate + login pages ================= */
 .gate,
 .login {
-  min-height: 100dvh;
+  min-height: calc(100dvh / var(--ui-zoom, 1));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -4502,7 +4505,7 @@ input.set-tag-input {
   .deck > .rail {
     position: fixed;
     inset: 0 auto 0 0;
-    width: min(320px, calc(100vw - 48px));
+    width: min(320px, calc(100vw / var(--ui-zoom, 1) - 48px));
     z-index: var(--z-drawer);
     background: var(--float);
     box-shadow: var(--lift-3);
@@ -5212,7 +5215,7 @@ input.set-tag-input {
      up to `rail + gap` too wide and put the snap back on every cold boot, which review caught
      before it shipped. */
   grid-template-columns:
-    clamp(200px, var(--rail-w, 224px), min(360px, calc(100vw - 800px - 2 * var(--gap-edge) - 2 * var(--gap-tile))))
+    clamp(200px, var(--rail-w, 224px), min(360px, calc(100vw / var(--ui-zoom, 1) - 800px - 2 * var(--gap-edge) - 2 * var(--gap-tile))))
     var(--split-user-sk, minmax(320px, 400px) 1fr);
   gap: 0 var(--gap-tile); /* mirrors .deck — the skeleton must sit exactly where the shell will */
   /* NO own height or width: in the gate this sits absolutely at `inset:16px`
@@ -6059,10 +6062,10 @@ input.set-tag-input {
   animation: rise 0.22s var(--spring);
   display: flex;
   flex-direction: column;
-  min-height: clamp(240px, calc(100vh - 280px), 460px);
-  min-height: clamp(240px, calc(100dvh - 280px), 460px);
-  max-height: calc(100vh - 48px);
-  max-height: calc(100dvh - 48px);
+  min-height: clamp(240px, calc(100vh / var(--ui-zoom, 1) - 280px), 460px);
+  min-height: clamp(240px, calc(100dvh / var(--ui-zoom, 1) - 280px), 460px);
+  max-height: calc(100vh / var(--ui-zoom, 1) - 48px);
+  max-height: calc(100dvh / var(--ui-zoom, 1) - 48px);
 }
 .reply > * {
   flex: none;
@@ -6665,7 +6668,7 @@ input.set-tag-input {
   transform: translateX(-50%);
   /* Wide enough for three columns: the list is fifty rows, and at two columns it ran past a
      720px window's fold with nothing but an overlay scrollbar to say so. */
-  width: min(900px, calc(100vw - 32px));
+  width: min(900px, calc(100vw / var(--ui-zoom, 1) - 32px));
   max-height: 80vh;
   overflow-y: auto;
   border-radius:calc(var(--r-overlay) * 22 / 20);

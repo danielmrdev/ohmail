@@ -26,6 +26,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { FOLDER_OF_VIEW, type EngineMessage } from "@ohmail/client-engine";
+import { cssPoint, cssRect } from "@ohmail/ui";
 import type { MoveTarget } from "./MessagePane";
 
 /** How far the pointer must travel before a press becomes a drag. */
@@ -268,7 +269,7 @@ export function useDragToFile(opts: {
         removeGhost(ghostEl);
         return;
       }
-      const r = g.rowEl.isConnected ? g.rowEl.getBoundingClientRect() : null;
+      const r = g.rowEl.isConnected ? cssRect(g.rowEl) : null;
       ghostEl.style.transition = `transform ${SPRING_MS}ms var(--swift), opacity ${SPRING_MS}ms var(--swift)`;
       if (r) ghostEl.style.transform = `translate3d(${r.left + 8}px, ${r.top + 6}px, 0)`;
       ghostEl.style.opacity = "0";
@@ -357,7 +358,9 @@ export function useDragToFile(opts: {
           document.body.appendChild(g.ghost);
           document.body.classList.add("dnd-active");
         }
-        placeGhost(g.ghost!, p.clientX, p.clientY);
+        /* The ghost is placed in CSS px; the hit test takes the viewport's (`ui-zoom.ts`). */
+        const at = cssPoint(p);
+        placeGhost(g.ghost!, at.x, at.y);
         const under = elementAt(p.clientX, p.clientY);
         const hit = under ? railDropTargetOf(under) : null;
         if (hit?.el !== g.over?.el) {

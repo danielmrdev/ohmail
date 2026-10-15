@@ -43,6 +43,7 @@ import {
   SizeLadder,
   Spinner,
   TextField,
+  cssRect,
   type AskWellState,
   type DecisionDestination,
   type DecisionScope,
@@ -1081,7 +1082,7 @@ export function ScreenerView({
     // jsdom reports every rect as zero and a mounted assertion cannot tell this formula from a
     // wrong one.
     read.scrollTop = heldAnchorTop(
-      read.getBoundingClientRect().top, last.getBoundingClientRect().top, read.scrollTop,
+      cssRect(read).top, cssRect(last).top, read.scrollTop,
     );
     // The OBSERVED value, not the target: a browser clamps `scrollTop` to the scrollable range, and
     // a stored target beyond it would never match on the next pass — which reads as "the reader

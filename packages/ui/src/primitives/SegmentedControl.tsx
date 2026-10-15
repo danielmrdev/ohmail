@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { cssRect } from "../ui-zoom.js";
 import "./seg.css";
 
 export interface SegmentOption<T extends string = string> {
@@ -29,7 +30,8 @@ export interface SegmentedControlProps<T extends string = string> {
 export function segNaturalWidth(el: HTMLElement): number {
   const cs = getComputedStyle(el);
   let w = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
-  for (const child of el.children) w += (child as HTMLElement).getBoundingClientRect().width;
+  // CSS px, like the paddings and the parent's `clientWidth` it is weighed against (`ui-zoom.ts`).
+  for (const child of el.children) w += cssRect(child).width;
   return w;
 }
 

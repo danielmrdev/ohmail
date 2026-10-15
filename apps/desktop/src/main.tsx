@@ -16,6 +16,8 @@ import { localStorageDoor } from "@ohmail/client-engine/durable";
 import { enableDesktopAttachments } from "../../webapp/app/shell/open-attachment";
 import { enableExternalLinks, interceptLinkClicks } from "../../webapp/app/shell/open-external";
 import { stampColumns } from "../../webapp/app/shell/column-store";
+import { installTextSizeApplier } from "../../webapp/app/shell/text-size";
+import { applyDesktopTextSize } from "./text-zoom.js";
 import { setUiVitalsInterval, setUiVitalsSink } from "../../webapp/app/shell/ui-vitals";
 import { DesktopLocale } from "./DesktopLocale.js";
 import { RendererReloaded, takeReloadedMark } from "./renderer-reloaded.js";
@@ -156,6 +158,9 @@ startNetworkReturnRelay({
    relaunch — so a rail somebody widened is the width the next launch opens at, without a round
    trip to the sidecar (window chrome is not a mailbox fact). Before `createRoot`. */
 stampColumns();
+/* Settings → Text size reaches this window as the shell's page zoom (`text-zoom.ts`); the boot
+   stamp already applied the stored size before the first frame. */
+installTextSizeApplier((size) => void applyDesktopTextSize(size));
 /* Before the provider mounts and arms the crossfade: Linux fades by class (issue #9). */
 configureSchemeTransitions();
 

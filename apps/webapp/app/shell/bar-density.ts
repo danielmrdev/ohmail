@@ -33,6 +33,7 @@
  * once, and a row that still overflows is a column that is too narrow, which is reported.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { cssRect } from "@ohmail/ui";
 
 /** Fallback for the pill's horizontal padding when the computed style is unreadable — the
  *  live value is read off the pill itself in `measure()`. */
@@ -190,7 +191,8 @@ export function admitVerbs(
  * was 913.1, and the row clipped by 1px. The rect is the same number the layout used.
  */
 function widthOf(el: Element): number {
-  return el.getBoundingClientRect().width;
+  // CSS px, like the paddings and the room it is weighed against (`ui-zoom.ts` in @ohmail/ui).
+  return cssRect(el).width;
 }
 
 /** Read an element's verb token off its class list, or null when it carries none. */
@@ -242,7 +244,7 @@ export function useBarDensity(): {
     if (!row) return;
     const container = row.closest(".msg-actions");
     if (!container) return; // a bare mount with no pill around it: nothing to measure against
-    const rect = container.getBoundingClientRect();
+    const rect = cssRect(container);
     if (rect.width <= 0) return; // not laid out; keep the fallback
     const style = getComputedStyle(container);
     /* The pill's own padding is READ, exactly as the container's is — a constant here would
@@ -267,7 +269,7 @@ export function useBarDensity(): {
     let fromPane = false;
     if (pane) {
       const ps = getComputedStyle(pane);
-      const inner = pane.getBoundingClientRect().width
+      const inner = cssRect(pane).width
         - (parseFloat(ps.paddingLeft) || 0) - (parseFloat(ps.paddingRight) || 0);
       if (inner > 0) { room = inner; fromPane = true; }
     }
@@ -342,14 +344,14 @@ export function useBarDensity(): {
         const lab = row.querySelector<HTMLElement>(sel.label);
         if (!lab) continue;
         const btn = lab.closest<HTMLElement>(sel.button);
-        const labW = lab.getBoundingClientRect().width;
+        const labW = cssRect(lab).width;
         if (labW <= 0) continue;
         const bs = btn ? getComputedStyle(btn) : null;
         const inner = bs ? parseFloat(bs.columnGap) || 0 : 0;
         /* A button with a `min-width` (the 44px touch target under 640px) cannot shrink below it,
            so the words save only what lies above that floor — counting the whole label let the
            compact row paint wider than the room it was measured for. */
-        const btnW = btn ? btn.getBoundingClientRect().width : 0;
+        const btnW = btn ? cssRect(btn).width : 0;
         const minW = bs ? parseFloat(bs.minWidth) || 0 : 0;
         const saves = btn && minW > 0 ? Math.min(labW + inner, Math.max(0, btnW - minW)) : labW + inner;
         if (saves > widest) { widest = saves; isRead = sel.button === ".abar-read"; }
@@ -360,7 +362,7 @@ export function useBarDensity(): {
        wherever a coarse pointer would otherwise be left the dot alone. It saves the button and
        the gap its group closes. A mount with no read switch (a stream card's bar) folds nothing. */
     const readBtn = row.querySelector<HTMLElement>(".abar-read");
-    const readW = readBtn ? readBtn.getBoundingClientRect().width : 0;
+    const readW = readBtn ? cssRect(readBtn).width : 0;
     const first = base > avail ? compactSaving(false) : { widest: 0, isRead: false };
     const coarse = window.matchMedia?.("(pointer: coarse)").matches === true;
     /* The narrow shell — the drawer band, the number `shell/narrow.ts` asks. A client with no
@@ -390,9 +392,9 @@ export function useBarDensity(): {
       if (floor <= avail) break;
       const lab = row.querySelector<HTMLElement>(face.label);
       const btn = lab?.closest<HTMLElement>(face.button) ?? null;
-      const labW = lab ? lab.getBoundingClientRect().width : 0;
+      const labW = lab ? cssRect(lab).width : 0;
       if (!lab || labW <= 0) continue;
-      const btnW = btn ? btn.getBoundingClientRect().width : 0;
+      const btnW = btn ? cssRect(btn).width : 0;
       const minW = btn ? parseFloat(getComputedStyle(btn).minWidth) || 0 : 0;
       const plain = Math.max(0, labW - ANSWER_ICON_PX);
       floor -= btn && minW > 0 ? Math.min(plain, Math.max(0, btnW - minW)) : plain;

@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { ThemeProvider, ToastHost, themeInitScript } from "@ohmail/ui";
 import { localStorageDoor } from "../shell/durable";
 import { columnsBootScript } from "../shell/column-store";
+import { textSizeBootScript } from "../shell/text-size";
 
 /* One door per host, at module scope: the provider reads it through a ref, and a door rebuilt
    every render would be a new object on every frame for no reason. */
@@ -31,6 +32,9 @@ export function Providers({ children, nonce }: { children: ReactNode; nonce?: st
           The desktop window and the served host client re-state this from their own bundles
           (`stampColumns`), exactly as they re-state the theme stamp above. */}
       <script nonce={nonce} dangerouslySetInnerHTML={{ __html: columnsBootScript() }} />
+      {/* …and Settings → Text size, the same way and for the same reason: the first frame is
+          drawn at the chosen size, never at 100% and then again (`shell/text-size.ts`). */}
+      <script nonce={nonce} dangerouslySetInnerHTML={{ __html: textSizeBootScript() }} />
       {/* `faces` — the paper/ohmarchy axis is ACTIVE on the product door only: this is the
           host that wired the face controls (Settings → Look, the Option B offer). The
           landing and the admin mount the same provider and deliberately do not pass it. */}

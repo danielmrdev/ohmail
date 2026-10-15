@@ -72,6 +72,7 @@ const DEFAULT_MAIL_STATUS_COMMAND = "default_mail_status";
 const DEFAULT_MAIL_REQUEST_COMMAND = "default_mail_request";
 const UI_VITALS_COMMAND = "ui_vitals";
 const WINDOW_READY_COMMAND = "window_ready";
+const TEXT_SIZE_COMMAND = "set_text_size";
 
 /**
  * The places on the web this app can open, named as PLACES and never as addresses. A hosted
@@ -483,6 +484,23 @@ export function frameCanvas(doc: Document = document): string | null {
     return `#${[r, g, b].map((v) => (v ?? 0).toString(16).padStart(2, "0")).join("")}`;
   } catch {
     return null;
+  }
+}
+
+/**
+ * SETTINGS → TEXT SIZE AS THE WINDOW'S OWN PAGE ZOOM (`text_scale.rs`): layout, hit targets and
+ * geometry scale as one, which a CSS zoom on the page cannot give. The shell keeps the size for
+ * the next launch. Answers whether the shell took it; `false` where there is no shell or the
+ * command is refused, and the caller stamps the browser form instead.
+ */
+export async function setNativeTextSize(percent: number): Promise<boolean> {
+  const shell = internals();
+  if (!shell) return false;
+  try {
+    await shell.invoke(TEXT_SIZE_COMMAND, { percent });
+    return true;
+  } catch {
+    return false;
   }
 }
 

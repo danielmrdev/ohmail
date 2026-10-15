@@ -89,7 +89,7 @@ export const SPLIT_SK_VAR = "--split-user-sk";
  */
 export const RAIL_TRACK =
   `clamp(${RAIL.min}px, var(${RAIL_VAR}, ${RAIL.dflt}px), `
-  + `min(${RAIL.max}px, calc(100vw - ${LIST.min + LIST.viewerMin}px - 2 * var(--gap-edge) - 2 * var(--gap-tile))))`;
+  + `min(${RAIL.max}px, calc(100vw / var(--ui-zoom, 1) - ${LIST.min + LIST.viewerMin}px - 2 * var(--gap-edge) - 2 * var(--gap-tile))))`;
 
 /** What is left for the list once the reading column keeps its floor — per box. */
 const ROOM_SPLIT = `calc(100% - ${LIST.viewerMin}px - var(--gap-tile))`;

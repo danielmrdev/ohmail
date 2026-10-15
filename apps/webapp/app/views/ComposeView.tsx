@@ -15,7 +15,7 @@ import { useTranslations } from "next-intl";
 import { addressBook } from "@ohmail/client-engine";
 import type { EngineDraft, OhmailEngine } from "@ohmail/client-engine";
 import type { Editor } from "@tiptap/react";
-import { Button, Chip, Icon, Kbd, TextField, formatFileSize, useToast } from "@ohmail/ui";
+import { Button, Chip, Icon, Kbd, TextField, cssRect, formatFileSize, useToast } from "@ohmail/ui";
 import { DRAFT_BODY_MAX_BYTES } from "@trafficflow/core/outbound-text";
 import { chordKeys, useBinding, useKeyBindings, useModGlyph, useWritingSurface } from "../shell/keymap";
 import { displayAddress } from "../shell/idn";
@@ -385,7 +385,7 @@ export function ComposeView({
     const el = rootRef.current?.querySelector<HTMLElement>("#compose-to");
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => {
-      const w = el.getBoundingClientRect().width;
+      const w = cssRect(el).width;
       if (w > 0) setToNarrow(toPlaceholderIsShort(w));
     });
     ro.observe(el);

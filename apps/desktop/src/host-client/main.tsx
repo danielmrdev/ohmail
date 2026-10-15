@@ -24,6 +24,7 @@ import "../../../webapp/app/app.css";
 import "../../../webapp/app/zero-layout.css";
 import { DesktopLocale } from "../DesktopLocale.js";
 import { stampColumns } from "../../../webapp/app/shell/column-store";
+import { applyTextSize, readTextSize } from "../../../webapp/app/shell/text-size";
 import { BearerManager } from "./bearer.js";
 import { HostGate } from "./HostGate.js";
 
@@ -60,6 +61,8 @@ try {
    with nothing to stamp; a tablet held wide gets the same shell the window does, and the store
    is that browser's own, which is the right scope for a fact about a screen. */
 stampColumns();
+/* …and Settings → Text size, this browser's own, as the web door stamps it (`text-size.ts`). */
+applyTextSize(readTextSize());
 
 /**
  * THE THEME'S WRITE DOOR — one per window, at module scope so it is not rebuilt per frame.

@@ -25,6 +25,7 @@
  * without them degrades to "cap below the point", which still keeps everything reachable.
  */
 import { useLayoutEffect, useState, type CSSProperties, type RefObject } from "react";
+import { cssViewport } from "@ohmail/ui";
 
 /** Distance from the anchor's edge, matching `placePicker`'s original `+ 8`. */
 export const OVERLAY_GAP = 8;
@@ -133,14 +134,16 @@ export function useOverlayFit(
     if (el == null) return;
     const measure = () => {
       // `scrollHeight` is the NATURAL height — what the sheet wants, not what the cap left it —
-      // so a capped sheet whose content shrinks back under the cap un-caps correctly too.
+      // so a capped sheet whose content shrinks back under the cap un-caps correctly too. The
+      // viewport is in CSS px like the box and the point (`ui-zoom.ts` in @ohmail/ui).
+      const view = cssViewport();
       const { top, maxHeight } = clampOverlay(
         { y, anchorTop, anchorBottom },
         el.scrollHeight,
-        window.innerHeight,
+        view.height,
       );
-      const left = clampOverlayX(x, el.offsetWidth, window.innerWidth);
-      const full = Math.min(el.scrollHeight, maxHeight) >= window.innerHeight - 2 * OVERLAY_EDGE;
+      const left = clampOverlayX(x, el.offsetWidth, view.width);
+      const full = Math.min(el.scrollHeight, maxHeight) >= view.height - 2 * OVERLAY_EDGE;
       setFit((prev) =>
         prev != null && prev.left === left && prev.top === top && prev.maxHeight === maxHeight
           && prev.full === full

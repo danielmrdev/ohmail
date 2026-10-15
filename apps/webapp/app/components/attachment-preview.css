@@ -168,7 +168,7 @@ body.ap-lock { overflow: hidden; }
 @keyframes ap-rise { from { opacity: 0; transform: translateY(12px) scale(.99); } to { opacity: 1; transform: none; } }
 @media (max-width: 640px) {
   .ap-scrim { padding: 0; }
-  .ap-panel { width: 100vw; height: 100vh; border-radius: 0; }
+  .ap-panel { width: calc(100vw / var(--ui-zoom, 1)); height: calc(100vh / var(--ui-zoom, 1)); border-radius: 0; }
   .ap-stage { padding: 12px; }
   .ap-nav { width: 34px; height: 34px; }
   .ap-prev { left: 6px; } .ap-next { right: 6px; }

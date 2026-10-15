@@ -9,6 +9,13 @@
  * with this file in both. The mapping law is out of reach here - `omarchy-paint.ts` says why.
  */
 import { paintCachedOmarchyPalette } from "./omarchy-paint.js";
+import { applyDesktopTextSize } from "./text-zoom.js";
+import { readTextSize } from "../../webapp/app/shell/text-size.js";
+
+/* SETTINGS → TEXT SIZE. The shell already applied the size it kept before the window's first
+   frame (`text_scale.rs`); this hands it the stored one, which is the setting — the two differ
+   only after the store was cleared or written elsewhere, and then this corrects the kept copy. */
+void applyDesktopTextSize(readTextSize());
 
 /* The THEME. `themeInitScript()` from @ohmail/ui exists for server-rendered pages, which
    inline it as a <script>; the desktop CSP forbids inline scripts, so the same contract is
