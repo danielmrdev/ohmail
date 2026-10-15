@@ -93,11 +93,11 @@ export const cloudSuggestWire: SuggestWire = {
   /**
    * Price a set, or buy it.
    *
-   * The body is the endpoint's: an explicit sender list, plus `dryRun` when nothing is to be spent.
-   * The KEY IS THE CALLER'S and is set only on the real run — a dry run moves nothing, so there is
-   * nothing for a replay to protect, and a key on it would consume one for a request that never
-   * charged. On the real run it is per chunk and it is what turns a lost answer into a replay
-   * instead of a second purchase.
+   * The body is the endpoint's: an explicit sender list, plus `dryRun` when nothing is to be spent,
+   * plus `automatic` when the opt-in's unpressed batch is asking — on this door too, or that batch
+   * would reach the hosted server as a press. The KEY IS THE CALLER'S and is set only on the real
+   * run — a dry run moves nothing, so a key on it would consume one for a request that never
+   * charged. On the real run it is per chunk: a lost answer becomes a replay, not a second purchase.
    */
   suggest: (senders, opts = {}) =>
     ask<ScreenerSuggestWire>(BUY.pattern, {
@@ -106,7 +106,10 @@ export const cloudSuggestWire: SuggestWire = {
         "content-type": "application/json",
         ...(opts.idempotencyKey ? { "idempotency-key": opts.idempotencyKey } : {}),
       },
-      body: JSON.stringify(opts.dryRun ? { senders, dryRun: true } : { senders }),
+      body: JSON.stringify({
+        ...(opts.dryRun ? { senders, dryRun: true } : { senders }),
+        ...(opts.automatic === true ? { automatic: true } : {}),
+      }),
     }),
 
   messageFor: (err, fallback) => (err instanceof SuggestRefused ? err.message : fallback),

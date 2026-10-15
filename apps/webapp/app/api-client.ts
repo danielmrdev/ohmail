@@ -3188,7 +3188,9 @@ export interface ScreenerWirePage {
  */
 export type ScreenerSkipReason =
   | "not_held" | "out_of_credits" | "over_quote" | "spend_unavailable" | "model_unavailable"
-  | "model_declined";
+  | "model_declined"
+  // Only ever an answer to `automatic`: the sender's mail is kept out of automatic AI.
+  | "no_auto_ai";
 
 export interface ScreenerSuggestWire {
   dryRun: boolean;
@@ -3254,15 +3256,19 @@ export const screener = {
    */
   suggest: (
     senders: string[],
-    opts: { dryRun?: boolean; idempotencyKey?: string; maxCredits?: number } = {},
+    opts: { dryRun?: boolean; idempotencyKey?: string; maxCredits?: number; automatic?: boolean } = {},
   ) =>
     api<ScreenerSuggestWire>("/screener/suggest", {
       method: "POST",
       // `maxCredits` is the ceiling the CONFIRM carries — the figure this client showed beside the
-      // button. Never on a dry run: a price check has nothing to bound.
-      body: opts.dryRun
-        ? { senders, dryRun: true }
-        : { senders, ...(typeof opts.maxCredits === "number" ? { maxCredits: opts.maxCredits } : {}) },
+      // button. Never on a dry run: a price check has nothing to bound. `automatic` rides both: an
+      // unpressed batch is priced and bought under the automatic rule.
+      body: {
+        ...(opts.dryRun
+          ? { senders, dryRun: true }
+          : { senders, ...(typeof opts.maxCredits === "number" ? { maxCredits: opts.maxCredits } : {}) }),
+        ...(opts.automatic === true ? { automatic: true } : {}),
+      },
       ...(opts.idempotencyKey ? { headers: { "Idempotency-Key": opts.idempotencyKey } } : {}),
     }),
 

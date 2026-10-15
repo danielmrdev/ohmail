@@ -27,11 +27,12 @@ import { pagingNumber } from "../query-bounds.js";
  * The wire shape of `POST /screener/suggest`, declared HERE rather than imported.
  *
  * The service package's public barrel does not re-export `ScreenerSuggestBody` — that one line
- * is still owed — and this is the shape the route accepts either way: both fields are `unknown`
+ * is still owed — and this is the shape the route accepts either way: every field is `unknown`
  * because the service validates them, and a route that pre-narrowed them would be a second,
- * weaker copy of the rule that refuses an absent sender set.
+ * weaker copy of the rule that refuses an absent sender set. `automatic` marks the opt-in's
+ * unpressed batch, which the service holds to the automatic rule.
  */
-interface SuggestBody { senders?: unknown; dryRun?: unknown }
+interface SuggestBody { senders?: unknown; dryRun?: unknown; automatic?: unknown }
 
 export const screenerRoutes: Route[] = [
   {

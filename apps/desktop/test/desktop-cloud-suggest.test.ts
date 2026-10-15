@@ -7,6 +7,7 @@ import { ThemeProvider, ToastHost } from "@ohmail/ui";
 
 import messages from "../../webapp/messages/en.json";
 import { CloudSuggest } from "../src/CloudSuggest.js";
+import { cloudSuggestWire } from "../src/cloud-suggest.js";
 import { suggestDoorFor } from "../src/doors.js";
 import type { EngineStatus } from "../src/bridge-fetch.js";
 import type { SenderSuggestion } from "../../webapp/app/shell/screener-suggest";
@@ -309,6 +310,26 @@ describe("the hosted door's suggest control", () => {
     await mount([], SENDERS.slice(0, 7));
     expect(hostEl.textContent).toContain("7");
     expect(buttons().map((b) => b.textContent)).toContain("Suggest again…");
+  });
+});
+
+/**
+ * THE TRANSPORT CARRIES `automatic` — the shell's opt-in batch reaches the hosted server through it
+ * on this door. Dropped here, that batch would arrive as a press and ask about every held sender.
+ */
+describe("the hosted wire's body", () => {
+  afterEach(() => { delete host.__TAURI_INTERNALS__; });
+
+  it("says `automatic` for the unpressed batch and its quote, and never for a press", async () => {
+    const engine = engineAnswering();
+    await cloudSuggestWire.suggest(["a@example.com"], { dryRun: true, automatic: true });
+    await cloudSuggestWire.suggest(["a@example.com"], { idempotencyKey: "k-1", automatic: true });
+    await cloudSuggestWire.suggest(["a@example.com"], { idempotencyKey: "k-2" });
+    expect(engine.asked.filter((a) => a.url === "/screener/suggest").map((a) => a.body)).toEqual([
+      { senders: ["a@example.com"], dryRun: true, automatic: true },
+      { senders: ["a@example.com"], automatic: true },
+      { senders: ["a@example.com"] },
+    ]);
   });
 });
 
