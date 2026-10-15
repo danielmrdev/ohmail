@@ -105,6 +105,9 @@ mod perf_budgets;
 // preview opens the same window and asks for the same budget.
 mod webview_budget;
 
+#[cfg(target_os = "linux")]
+mod gtk_text_dpi;
+
 // The window opens hidden and is shown on its own canvas once the page has composed its first
 // frame, or at a bound. Always compiled: every build opens the same hidden window.
 mod launch_window;
@@ -127,6 +130,18 @@ fn main() {
     // cap, and there is no window to apply it to yet. `webview_budget.rs` has the thresholds and
     // why the kill threshold is not among them.
     webview_budget::apply_process_pressure();
+
+    // GTK applies the desktop's text scale to WebKit's whole canvas. Pin GTK's text DPI to its
+    // 96-DPI baseline in both directions, but leave the monitor's scale alone. GTK is already up.
+    #[cfg(target_os = "linux")]
+    if gtk::is_initialized_main_thread() {
+        use gtk::prelude::GtkSettingsExt;
+        if let Some(settings) = gtk::Settings::default() {
+            if let Some(dpi) = gtk_text_dpi::pinned_dpi(settings.gtk_xft_dpi()) {
+                settings.set_gtk_xft_dpi(dpi);
+            }
+        }
+    }
 
     let mut builder = tauri::Builder::default();
     // The commands the window may call, registered in `engine.rs` so that this file names none

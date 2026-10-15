@@ -662,6 +662,12 @@ describe("the Rust side", () => {
       // own GNOME one, and `menu.rs` performs it from the binary's single `setup`.
       "frame.rs",
       "frame_tests.rs",
+      // GTK'S TEXT DPI, PINNED AT 96 IN BOTH DIRECTIONS (issue #14): the policy as a pure function,
+      // applied from `main` once GTK is up and before the first web context, so the desktop's
+      // text-scaling-factor never reaches WebKit's canvas. Linux only; the monitor's scale is not
+      // touched. Reads and writes one GTK setting and nothing else.
+      "gtk_text_dpi.rs",
+      "gtk_text_dpi_tests.rs",
       // Host mode: publishing the engine's loopback door to the user's own tailnet — the
       // setting, the tailscale invocations (serve, never funnel — mutation-pinned in its own
       // tests), the tray and close-to-hide lifecycle, start-at-login. Compiled only under
