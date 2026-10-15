@@ -1,0 +1,63 @@
+# THIS WORKSPACE'S OWN TEST SERVICES — never a deployment. The deployable stack is
+# deploy/selfhost/docker-compose.yml; this file is the Postgres, mail and object-store
+# doubles the suites need.
+#
+# EVERY PUBLISHED PORT BINDS LOOPBACK. A publish with no address binds 0.0.0.0 AND [::] —
+# every interface the machine has — and what is behind these ports is a database whose
+# password is in this file, a mail server with authentication switched off, and an object
+# store with a known key. That is fine on a desk and not fine on a laptop in a cafe, and
+# the file said nothing about which one it assumed.
+#
+# OHMAIL_DEV_BIND is the one place that is decided. It defaults to 127.0.0.1; a rig that has
+# to reach these services from another machine or from an emulator sets it explicitly
+# (an Android emulator reaches the host at 10.0.2.2, which is NOT loopback — `adb reverse`
+# is the other way, and the one that does not open a socket to the room).
+
+services:
+  db:
+    image: postgres:16
+    shm_size: "1g"
+    environment:
+      POSTGRES_USER: tf
+      POSTGRES_PASSWORD: tf
+      POSTGRES_DB: trafficflow_test
+    ports:
+      - "${OHMAIL_DEV_BIND:-127.0.0.1}:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tf -d trafficflow_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  greenmail:
+    image: greenmail/standalone:2.1.3
+    environment:
+      GREENMAIL_OPTS: "-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.users.login=email"
+    ports:
+      - "${OHMAIL_DEV_BIND:-127.0.0.1}:3143:3143"   # IMAP
+      - "${OHMAIL_DEV_BIND:-127.0.0.1}:3025:3025"   # SMTP
+
+  minio:
+    # Docker Hub deleted both MinIO repositories on 2026-09-12. Quay serves the same
+    # manifest — the digest below is the one Docker Hub served — and the shipped stacks
+    # now boot our own mirrored copies (deploy/selfhost/images.lock).
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: tf-staging
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-tf-staging-password}
+    ports:
+      - "${OHMAIL_DEV_BIND:-127.0.0.1}:3902:9000"   # object-store API — attachment-staging-s3.minio.test.ts round-trips against it
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  dovecot:
+    image: dovecot/dovecot:2.3.21
+    volumes:
+      - ./test/dovecot/dovecot.conf:/etc/dovecot/dovecot.conf:ro
+    ports:
+      - "${OHMAIL_DEV_BIND:-127.0.0.1}:3144:143"   # IMAP (plaintext)
+    profiles: ["condstore"]   # only started with: docker compose --profile condstore up -d dovecot

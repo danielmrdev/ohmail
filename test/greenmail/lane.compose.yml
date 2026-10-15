@@ -1,0 +1,14 @@
+# One checkout's own GreenMail, run by scripts/lane-greenmail.sh as compose project ohmail-gm-<key>.
+# Image and options are the shared `greenmail` service's (docker-compose.yml), held equal by
+# test/lane-greenmail.test.ts. No user is configured at start: authentication is disabled and a
+# login makes its mailbox, so the startup log carries no credential. Loopback only.
+services:
+  greenmail:
+    image: greenmail/standalone:2.1.3
+    environment:
+      GREENMAIL_OPTS: "-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.users.login=email"
+    labels:
+      app.ohmail.lane-greenmail.worktree: "${LANE_GREENMAIL_WORKTREE:?set by scripts/lane-greenmail.sh}"
+    ports:
+      - "127.0.0.1:${LANE_GREENMAIL_IMAP_PORT:?set by scripts/lane-greenmail.sh}:3143"
+      - "127.0.0.1:${LANE_GREENMAIL_SMTP_PORT:?set by scripts/lane-greenmail.sh}:3025"

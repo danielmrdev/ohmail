@@ -1,0 +1,1232 @@
+{
+  "$comment": [
+    "THE CEILINGS, IN ONE PLACE, EACH WITH THE READING IT RESTS ON.",
+    "",
+    "Three readers disagreed about the renderer at 0.17.0 and none of them knew it: the release's",
+    "memory gate read 1 048 576 kB, the kit's perf headline guard read the same literal, and the",
+    "product declares 1 536 000 kB to itself in apps/desktop/src-tauri/src/vitals.rs. A candidate",
+    "was measured RED against a ceiling 68% of the contract the app ships with, and the engine's",
+    "own numbers lived as prose in the performance notes where no gate could read them.",
+    "",
+    "So: one table, surface x size class -> ceiling in kB, every ceiling citing the measurement it",
+    "rests on by document and date. A ceiling with no reading is not a ceiling \u2014 it is null, with",
+    "the state that says why, and no gate may read it. test/perf-budgets.test.ts asserts the",
+    "shape, asserts the performance notes against this file, and censuses the repository for literals",
+    "that should be reading it.",
+    "",
+    "2026-09-15: the renderer's line is three numbers per rig \u2014 floor, loaded-undriven, driven \u2014 each",
+    "naming its drive and its load, because two honest instruments read one binary 367 MB apart and the",
+    "largest term was how far the app had been driven. The one-number steady line is retired to history.",
+    "The surface's own $comment carries the rule."
+  ],
+  "version": 2,
+  "sizeClasses": {
+    "5k": {
+      "messages": 5000,
+      "note": "the design notes' class"
+    },
+    "25k": {
+      "messages": 25000,
+      "note": "the design notes' class"
+    },
+    "75k": {
+      "messages": 80000,
+      "note": "the rig corpus (its size differs slightly by platform)"
+    }
+  },
+  "surfaces": {
+    "engine": {
+      "what": "the engine process's RSS, settled",
+      "budgets": {
+        "empty": {
+          "ceilingKb": 409600,
+          "reading": {
+            "value": "400 MB empty",
+            "document": "the project's design notes",
+            "date": "2026-09-11",
+            "via": "the project's design notes"
+          }
+        },
+        "5k": {
+          "ceilingKb": 460800,
+          "reading": {
+            "value": "450 MB settled / 520 MB peak, measured at 5 000 and 25 000",
+            "document": "the project's design notes",
+            "date": "2026-09-11",
+            "via": "the project's design notes"
+          }
+        },
+        "25k": {
+          "ceilingKb": 460800,
+          "reading": {
+            "value": "450 MB settled / 520 MB peak, measured at 5 000 and 25 000",
+            "document": "the project's design notes",
+            "date": "2026-09-11",
+            "via": "the project's design notes"
+          }
+        },
+        "75k": {
+          "ceilingKb": 716800,
+          "unit": "RSS kB",
+          "state": "ruled",
+          "ruledBy": "dispatcher 2026-09-13",
+          "why": "716 800 kB (700 MB) is what has been APPLIED to the engine at this class since 2026-09-13. The design notes' Windows release-candidate run header states the per-class scale ('5k 400 MB \u00b7 25k 500 MB \u00b7 75k 700 MB'); four run tables then read engine figures against it as a percentage of class; the 0.19.0 macOS line prints 'flat 460 800 / class 716 800'; and the plan's 2026-09-13 reading calls a Linux 735 872 kB '> the 75k class 716 800'. WHAT IT DOES NOT HAVE IS A NUMERIC TRAIL OF ITS OWN: the two documents the ruling is cited to - two of the project's change notes - are the RENDERER's retired `steady-75k` row, which carries the same number for a different surface. The readings below are the engine's own at this class and they do not converge on it: they span 273 to 736 MB across three platforms and two builds. The figure is written with that gap stated; the 400-vs-450 contest above is where it gets settled.",
+          "readings": [
+            {
+              "value": "427-668 MB over the rig corpus, 668 MB at the last sample - a build with a known defect",
+              "document": "the project's design notes",
+              "date": "2026-09-12"
+            },
+            {
+              "value": "engine 273 -> 408 MB during an import of the rig corpus (Windows, a release candidate)",
+              "document": "the 0.19.1 plan, its 2026-09-12 reading",
+              "date": "2026-09-12"
+            },
+            {
+              "value": "engine 478 656 kB and 478 280 kB, read as 67 % of class on the Windows release-candidate guest",
+              "document": "the project's design notes, the 0.17.0 Windows release-candidate run",
+              "date": "2026-09-12"
+            },
+            {
+              "value": "engine 735 872 kB over the rig corpus on the Linux Omarchy guest - OVER this class, which is how the class came to be quoted at all",
+              "document": "the 0.19.1 plan, its 2026-09-13 Linux reading",
+              "date": "2026-09-13"
+            },
+            {
+              "value": "engine peak 505 552 kB / 375 160 kB by its own reading (Windows, 0.19.0)",
+              "document": "the project's design notes, the 0.19.0 Windows run",
+              "date": "2026-09-15"
+            },
+            {
+              "value": "engine median 362 768 kB over the idle window (macOS, 0.19.0)",
+              "document": "the project's design notes, the 0.19.0 macOS run",
+              "date": "2026-09-14"
+            },
+            {
+              "value": "current main holds 530.1 MB at idle for 118 minutes and RELEASES 190 MB at settle (slope -96 518 kB/h, largest single-sample rise +0.9 MB); the released 0.19.0 engine holds 720.7 MB on the same host, the same rig corpus and the same instrument, and never releases the import (721.1 -> 719.4 MB over 162.3 min). Main drains once every 118 s against 0.19.0's every 16.6 s.",
+              "document": "the engine-memory step's change notes and its run log",
+              "date": "2026-09-16"
+            }
+          ],
+          "goalKb": 512000,
+          "goalState": "ruled",
+          "goalRuledBy": "dispatcher 2026-09-12, printed beside the arm and not gated"
+        }
+      },
+      "contest": {
+        "id": "engine-steady-ceiling-400-vs-450-mb",
+        "question": "one flat 400 MB ceiling at every class, or the per-size-class table below",
+        "state": "open - a maintainer reads this and picks. Nothing else picks, and no number in this surface moves without a measured origin.",
+        "sides": [
+          {
+            "case": "400 MB flat, every size class",
+            "kb": 409600,
+            "origin": "the 0.19.1 plan's pass line, `< 400 MB` flat",
+            "document": "the 0.19.1 plan's budget section",
+            "date": "2026-09-12",
+            "against": "it reddens a build behaving exactly as the design notes measured it: 450 MB settled at 5 000 and 25 000, and every reading over the rig corpus on record is above 400 MB."
+          },
+          {
+            "case": "per size class - 400 MB empty, 450 MB at the small and middle classes, 700 MB at the large corpus class",
+            "kb": null,
+            "origin": "the design notes' measured settles for the small classes; the 75k class as ruled and applied since 2026-09-13",
+            "document": "the project's design notes; the project's ledger; the project's design notes",
+            "date": "2026-09-11",
+            "against": "the class BOUNDARIES have never been measured as boundaries. The small and middle classes share one figure taken from one document, and the large corpus class's only numeric trail is a renderer row (see that row's `why`)."
+          }
+        ],
+        "readings": [
+          {
+            "value": "current main holds 530.1 MB at idle for 118 minutes and RELEASES 190 MB at settle (slope -96 518 kB/h, largest single-sample rise +0.9 MB); the released 0.19.0 engine holds 720.7 MB on the same host, the same rig corpus and the same instrument, and never releases the import (721.1 -> 719.4 MB over 162.3 min). Main drains once every 118 s against 0.19.0's every 16.6 s.",
+            "document": "the engine-memory step's change notes and its run log",
+            "date": "2026-09-16"
+          }
+        ],
+        "whatTheOwnerPicksDecides": "If 400 flat holds, the engine-memory step's acceptance is 400 MB at every class and this surface collapses to one row. If the class table is accepted, the four rows below stand and the kit's flat variable is replaced by the four class ones."
+      },
+      "$comment": [
+        "THE ENGINE CEILING IS PER SIZE CLASS, AND THE 400-vs-450 CONTEST IS A MAINTAINER'S TO READ.",
+        "",
+        "Measured 2026-09-16: FOUR spellings of this ceiling were live and none of them was this table.",
+        "  1. here and the performance notes    400 MB empty \u00b7 450 MB at 5 000 and 25 000 \u00b7 75k owed",
+        "  2. the performance notes' Windows    '5k 400 MB \u00b7 25k 500 MB \u00b7 75k 700 MB' - the only place",
+        "     run header                        that scale is ever written, and four run tables read",
+        "                                       engine figures as a percentage of it",
+        "  3. the perf kit's budgets.env        one FLAT 460 800 kB that three readers DECIDE on",
+        "  4. the 0.19.0 macOS line          both at once: 'flat 460 800 / class 716 800'",
+        "",
+        "The 75k class is stated below because a ceiling four run tables already judge against belongs",
+        "in the table rather than in a run header. What it rests on - including the part of it that is a",
+        "RENDERER row carrying the same number - is written in that row's `why` rather than papered over.",
+        "",
+        "`contest` above holds both cases with their origins. Neither is picked here."
+      ]
+    },
+    "renderer": {
+      "what": "the renderer process group's RSS (WebKit/WebView children included)",
+      "budgets": {
+        "floor-linux-xvfb-rig": {
+          "ceilingKb": 193683,
+          "unit": "PSS kB",
+          "state": "ruled",
+          "drive": "none \u2014 an empty mailbox, freshly relaunched, settled on Reads",
+          "load": "unread \u2014 this reading carries no 1-minute load. The rule that a figure carries its load was written at the END of the run that produced these numbers, after two arms of one configuration read 10 840 kB apart at loads 6.47 and 13.18. Every reading taken under it states one.",
+          "why": "The floor is ruled in PSS. 200 524 kB of this renderer's RSS is file-backed library and bundle text against 99 485 kB PSS \u2014 the WebKit and GTK libraries are mapped into the shell and the network process too, so an RSS floor counts the same pages two and three times. The same reading in RSS is 298 396 kB and is stated beside, not budgeted.",
+          "alsoKb": {
+            "rss": 298396
+          },
+          "readings": [
+            {
+              "value": "empty mailbox, freshly relaunched: 298 396 kB RSS / 193 683 kB PSS; after 25 minutes idle on the same empty mailbox, 373 316 kB RSS / 267 578 kB PSS. Its two file-backed classes are identical to the loaded install's.",
+              "document": "0.19.1 renderer class measurement \u2014 Linux Xvfb rig (the run's report)",
+              "date": "2026-09-15"
+            }
+          ],
+          "goalKb": null,
+          "goalState": "owed",
+          "goalWhy": "No goal has been ruled for the floor. Of the 298 396 kB, ~200 MB is library text no window policy can reach and ~10 MB is graphics buffer, so a goal here is a question about what the app maps, not about what it holds.",
+          "ruledBy": "dispatcher 2026-09-15"
+        },
+        "loaded-undriven-linux-xvfb-rig": {
+          "ceilingKb": 433180,
+          "unit": "RSS kB",
+          "state": "ruled",
+          "drive": "none \u2014 the rig corpus mirrored and settled, freshly relaunched, driven through nothing",
+          "load": "unread \u2014 this reading carries no 1-minute load. The rule that a figure carries its load was written at the END of the run that produced these numbers, after two arms of one configuration read 10 840 kB apart at loads 6.47 and 13.18. Every reading taken under it states one.",
+          "why": "The whole corpus costs 134 784 kB over this rig's own floor (433 180 \u2212 298 396), both in RSS. Two thirds of the renderer is there before any mail is. WHEN a gate looks decides which figure it gets, not the mailbox: the same install read 433 180 fresh, 526 748 after thirty minutes idle and 722 084 during the first pull.",
+          "perMessageAllowanceKb": 134784,
+          "readings": [
+            {
+              "value": "the rig corpus, settled, freshly relaunched: 433 180 kB RSS",
+              "document": "0.19.1 renderer class measurement \u2014 Linux Xvfb rig (the run's report)",
+              "date": "2026-09-15"
+            },
+            {
+              "value": "the same install thirty minutes later, settled: 526 748 kB RSS / 427 036 kB PSS, at a 1-minute load of 8.5",
+              "document": "0.19.1 renderer class measurement \u2014 Linux Xvfb rig (the run's report)",
+              "date": "2026-09-15"
+            },
+            {
+              "value": "during the first pull: 722 084 kB RSS, at a 1-minute load of 9.3 \u2014 a peak, not a steady state; the renderer gave back 194 628 kB within the minute the pull finished",
+              "document": "0.19.1 renderer class measurement \u2014 Linux Xvfb rig (the run's report)",
+              "date": "2026-09-15"
+            }
+          ],
+          "goalKb": null,
+          "goalState": "owed",
+          "goalWhy": "The 0.19.1 memory work \u2014 the total mirror window, bodies leaving the cold mirror, the body cache evicting by date \u2014 is what a candidate is expected to move here. A goal is ruled from the first candidate reading at this drive, not before it.",
+          "ruledBy": "dispatcher 2026-09-15"
+        },
+        "driven-linux-xvfb-rig": {
+          "ceilingKb": null,
+          "state": "owed",
+          "reading": "unread",
+          "unit": "RSS kB",
+          "drive": "30 folder switches, then 20 searches",
+          "namedDrive": true,
+          "load": "unread \u2014 there is no reading to carry one. The row is owed and its load is owed with it; a load stated for a reading nobody took would be an invention.",
+          "why": "unread: this rig was never driven through the named drive. Every reading it carries is undriven or first-sync, so it has no figure in the state a ceiling has to bound. The driven number in the table is the Omarchy guest's."
+        },
+        "floor-linux-omarchy-guest": {
+          "ceilingKb": null,
+          "state": "owed",
+          "reading": "unread",
+          "unit": "PSS kB",
+          "drive": "none \u2014 an empty mailbox, freshly relaunched, settled on Reads",
+          "load": "unread \u2014 there is no settled reading to carry one; the unsettled figure below was classified 120 s after the wizard and its load was not read either.",
+          "why": "unread: the empty-mailbox arm was stopped 51 s into a 240 s settle when the guest was claimed for other work, and no reading was taken rather than one being carried. The only empty figure this guest has is 512 940 kB RSS / 376 240 kB PSS classified 120 s after the wizard \u2014 not settled, and not used as a floor. It bounds the guest floor from below and nothing more.",
+          "readings": [
+            {
+              "value": "empty install, 120 s after the wizard, NOT settled: 512 940 kB RSS / 376 240 kB PSS, swap 0, file-backed classes already at their full 166 680 kB",
+              "document": "0.19.1 renderer drive-state measurement \u2014 Omarchy guest (the run's report)",
+              "date": "2026-09-15"
+            }
+          ]
+        },
+        "loaded-undriven-linux-omarchy-guest": {
+          "ceilingKb": 736828,
+          "unit": "RSS kB",
+          "state": "ruled",
+          "drive": "none \u2014 resumed on the rig corpus, settled, driven through nothing",
+          "load": "unread for this reading. Five arms on the same install the same morning ran at 1-minute loads of 1.14, 1.27, 1.34, 1.36 and 1.58, all with swap 0, which is the band this guest was quiet in.",
+          "why": "The same state as `loaded-undriven-linux-xvfb-rig` on a different distribution, and 303 648 kB larger. Named: +61 628 kB is the software rasteriser's VERSION (its own row below), +113 364 kB is glibc \u2014 a 73 MB brk heap and four 64M-class arenas here against one arena holding 40 kB there \u2014 and +5 456 kB is a 1896\u00d71030 window buffer against 1600\u00d71000. The AppImage bundles its own WebKit and neither libc nor Mesa, which is why the distribution reaches the figure at all.",
+          "readings": [
+            {
+              "value": "resumed, settled, driven through nothing: 736 828 kB RSS",
+              "document": "0.19.1 renderer drive-state measurement \u2014 Omarchy guest (the run's report)",
+              "date": "2026-09-15"
+            }
+          ],
+          "goalKb": null,
+          "goalState": "owed",
+          "goalWhy": "As for the Xvfb rig: ruled from the first 0.19.1 candidate reading at this drive.",
+          "ruledBy": "dispatcher 2026-09-15"
+        },
+        "driven-linux-omarchy-guest": {
+          "ceilingKb": 1095148,
+          "unit": "RSS kB",
+          "state": "ruled",
+          "drive": "30 folder switches, then 20 searches \u2014 one process, one mailbox, minutes apart, nothing else changed",
+          "namedDrive": true,
+          "load": "unread \u2014 this reading carries no 1-minute load. The rule that a figure carries its load was written at the END of the run that produced these numbers, after two arms of one configuration read 10 840 kB apart at loads 6.47 and 13.18. Every reading taken under it states one.",
+          "why": "The driving is the largest term in the whole comparison: +113 912 kB for the switches and +358 320 kB with the searches on top, against +61 628 for Mesa and +113 364 for glibc. This is the state a person's app is in after ten minutes of use and the one the ceiling has to bound. The drift that made a 6 MB lever unmeasurable on this subject is ~11 MB DOWNWARD across separate launches; these three readings are one process moving UPWARD by ten to thirty times that, so the confound cannot produce the effect.",
+          "readings": [
+            {
+              "value": "resumed and undriven 736 828 kB; after 30 folder switches 850 740 kB (+113 912); after 30 switches and 20 searches 1 095 148 kB (+358 320) \u2014 all RSS, one process, one sitting",
+              "document": "0.19.1 renderer drive-state measurement \u2014 Omarchy guest (the run's report)",
+              "date": "2026-09-15"
+            },
+            {
+              "value": "the per-minute sampler then read 890 008, 817 812, 1 132 780, 1 184 672 and 989 268 kB as the driven install came back down",
+              "document": "0.19.1 renderer drive-state measurement \u2014 Omarchy guest (the run's report)",
+              "date": "2026-09-15"
+            },
+            {
+              "value": "the 0.19.0 run's renderer steady at idle, 893 036 kB, is the MEDIAN of a 7 200 s window on an install driven through the day's cells first (884 556\u2013902 156 kB across it, with 296 188\u2013309 148 kB of the app group swapped out beside it). It sits inside the band above.",
+              "document": "the project's design notes, the 0.19.0 Linux run",
+              "date": "2026-09-14"
+            }
+          ],
+          "goalKb": null,
+          "goalState": "owed",
+          "goalWhy": "The 0.19.1 memory work is expected to move this row most, because the driven term is where the mirror window, the cold-mirror bodies and the body cache's eviction act. A goal is ruled from the first candidate reading at this drive.",
+          "ruledBy": "dispatcher 2026-09-15"
+        },
+        "floor-windows-guest": {
+          "ceilingKb": null,
+          "state": "owed",
+          "reading": "unread",
+          "unit": "RSS kB",
+          "drive": "none \u2014 an empty mailbox, freshly relaunched, settled on Reads",
+          "load": "unread \u2014 there is no reading to carry one. The row is owed and its load is owed with it; a load stated for a reading nobody took would be an invention.",
+          "why": "unread: no empty-mailbox reading exists on the Windows guest. The run there installed the app over a removed app state and went straight to a first sync, which is what made the first-sync arm measurable and leaves the floor unmeasured."
+        },
+        "loaded-undriven-windows-guest": {
+          "ceilingKb": null,
+          "state": "owed",
+          "reading": "unread",
+          "unit": "RSS kB",
+          "drive": "none \u2014 the rig corpus mirrored and settled, freshly relaunched, driven through nothing",
+          "load": "unread \u2014 there is no reading to carry one. The row is owed and its load is owed with it; a load stated for a reading nobody took would be an invention.",
+          "why": "unread: no freshly-relaunched, settled, undriven reading exists on this guest. The nearest figure is the cold/warm-start cell's renderer peak of 416 556 kB, which is a peak across a start and not a settled undriven figure \u2014 recorded here so nobody promotes it to one.",
+          "readings": [
+            {
+              "value": "cold/warm start cell: renderer peak 416 556 kB \u2014 a peak, not a settled undriven reading",
+              "document": "the project's design notes, the 0.19.0 Windows run",
+              "date": "2026-09-15"
+            }
+          ]
+        },
+        "driven-windows-guest": {
+          "ceilingKb": 81784,
+          "unit": "RSS kB",
+          "state": "ruled",
+          "drive": "the first sync of the rig corpus, then the day-of-use cell \u2014 a two-hour idle window, 30 interactions, then 30 minutes idle",
+          "namedDrive": false,
+          "load": "unread \u2014 the guest run records no 1-minute load per reading. Windows Update rebooted the guest midway through the long idle window, so the readings before and after are kept apart rather than averaged, and the figure above is from the clean two-hour window run afterwards with updates paused.",
+          "why": "This is a driven figure and it names its drive, but the drive is NOT the named one (30 folder switches, then 20 searches), so it is not comparable to the Linux driven rows and no gate may read it as if it were. It is this platform's no-regression line at ITS drive. The named drive on Windows is owed \u2014 the day-of-use cell gains it as a step.",
+          "readings": [
+            {
+              "value": "day-of-use cell, clean two-hour window: renderer steady 81 784 kB with an idle slope of +3.2 / +3.6 MB/h, both passing; the engine's +12.0 / +11.6 MB/h is what is red there",
+              "document": "the project's design notes, the 0.19.0 Windows run",
+              "date": "2026-09-15"
+            },
+            {
+              "value": "search-and-switch cell: renderer peak 492 516 kB. Scroll-and-open: 259 252 kB. First sync: 388 336 kB over a real import of the rig corpus.",
+              "document": "the project's design notes, the 0.19.0 Windows run",
+              "date": "2026-09-15"
+            }
+          ],
+          "goalKb": null,
+          "goalState": "owed",
+          "goalWhy": "Ruled from the first candidate reading at this platform's drive, once the named drive has been run here at least once beside it.",
+          "ruledBy": "dispatcher 2026-09-15"
+        },
+        "floor-macos": {
+          "ceilingKb": null,
+          "state": "owed",
+          "reading": "unread",
+          "unit": "contested \u2014 RSS or phys_footprint",
+          "drive": "none \u2014 an empty mailbox, freshly relaunched, settled on Reads",
+          "load": "unread \u2014 there is no reading to carry one. The row is owed and its load is owed with it; a load stated for a reading nobody took would be an invention.",
+          "why": "unread: no empty-mailbox renderer reading exists on the Mac. unread as a ceiling \u2014 THE UNIT IS CONTESTED. The sampler reads `ps -o rss` and the product charges `ri_phys_footprint`, and on this machine the renderer's footprint is 1.92\u00d7 its RSS (541 328 \u2192 1 040 290 kB, confirmed independently by `vmmap` at 1.0G). The window's own `renderer_vitals` reads `measured:false` there, so there is no reading in the unit a gate would compare. A number here would be a guess about which unit it is in, which is the one thing this table may not do."
+        },
+        "loaded-undriven-macos": {
+          "ceilingKb": null,
+          "state": "owed",
+          "reading": "unread",
+          "unit": "contested \u2014 RSS or phys_footprint",
+          "drive": "none \u2014 the rig corpus mirrored and settled, freshly relaunched, driven through nothing",
+          "load": "unread \u2014 there is no reading to carry one. The row is owed and its load is owed with it; a load stated for a reading nobody took would be an invention.",
+          "why": "unread: no freshly-relaunched, settled, undriven reading exists on the Mac. unread as a ceiling \u2014 THE UNIT IS CONTESTED. The sampler reads `ps -o rss` and the product charges `ri_phys_footprint`, and on this machine the renderer's footprint is 1.92\u00d7 its RSS (541 328 \u2192 1 040 290 kB, confirmed independently by `vmmap` at 1.0G). The window's own `renderer_vitals` reads `measured:false` there, so there is no reading in the unit a gate would compare. A number here would be a guess about which unit it is in, which is the one thing this table may not do."
+        },
+        "driven-macos": {
+          "ceilingKb": null,
+          "state": "owed",
+          "reading": "unread",
+          "unit": "contested \u2014 RSS or phys_footprint",
+          "drive": "30 folder switches, then 20 searches",
+          "namedDrive": true,
+          "load": "unread \u2014 the Mac run records no 1-minute load per reading",
+          "why": "unread: the Mac has driven readings but not at the named drive, and unread as a ceiling \u2014 THE UNIT IS CONTESTED. The sampler reads `ps -o rss` and the product charges `ri_phys_footprint`, and on this machine the renderer's footprint is 1.92\u00d7 its RSS (541 328 \u2192 1 040 290 kB, confirmed independently by `vmmap` at 1.0G). The window's own `renderer_vitals` reads `measured:false` there, so there is no reading in the unit a gate would compare. A number here would be a guess about which unit it is in, which is the one thing this table may not do. The readings below are stated so the re-run knows what it is replacing.",
+          "readings": [
+            {
+              "value": "day-of-use idle window: renderer RSS median 200 816 kB and footprint 1 040 370 kB at the same window \u2014 the two units, 5.2\u00d7 apart at this reading",
+              "document": "the project's design notes, the 0.19.0 macOS run",
+              "date": "2026-09-14"
+            },
+            {
+              "value": "first-sync cell: renderer group peak 900 256 kB RSS over 98 samples / 2 928 s; at the 1.92\u00d7 footprint ratio the same peak is about 1.7 GB of footprint",
+              "document": "the project's design notes, the 0.19.0 macOS run",
+              "date": "2026-09-14"
+            }
+          ]
+        },
+        "rasteriser-class-linux": {
+          "ceilingKb": null,
+          "state": "excluded",
+          "excludedFrom": "every comparison of one Linux rig's renderer against another's",
+          "unit": "RSS kB, file-backed",
+          "drive": "none \u2014 a mapping census, not a driven reading",
+          "load": "not applicable \u2014 a file-backed mapping size, read off the mapping paths",
+          "why": "61 628 kB of the difference between two honest renderer readings was Mesa's VERSION, not the app. Both rigs fall back to llvmpipe \u2014 the guest has /dev/dri/card1 and renderD128 and Mesa fails anyway \u2014 so neither has a working GPU path and both pay a software rasteriser. It is stated beside every Linux figure and taken out of every comparison between rigs. No gate may read it as a ceiling; a machine with a working driver pays neither of these.",
+          "readings": [
+            {
+              "value": "Linux Xvfb rig: libLLVM.so.20.1 63 676 kB + libgallium 25.2.8 15 472 kB = 79 148 kB. Omarchy guest: libLLVM.so.22.1 110 232 kB + libgallium 26.2.1 30 544 kB = 140 776 kB. Fixed difference +61 628 kB.",
+              "document": "0.19.1 renderer drive-state measurement \u2014 Omarchy guest (the run's report)",
+              "date": "2026-09-15"
+            }
+          ]
+        },
+        "peak-first-sync": {
+          "ceilingKb": 1433600,
+          "unit": "RSS kB",
+          "state": "ruled",
+          "why": "The axis all the disagreeing readers were about. It admits both measured peaks with ~7% headroom and sits BELOW the product's own declared budget, so the app no longer promises itself more than its gate allows. The goal is the number the gates read as the target to get under.",
+          "readings": [
+            {
+              "value": "raw max 1 303 584 kB, post-collect 1 178 200 kB (Linux, a release candidate)",
+              "document": "the 0.19.1 plan, its 2026-09-12 reading",
+              "date": "2026-09-12"
+            },
+            {
+              "value": "transient peak 1 147 280 kB at +605 s of an import of the rig corpus; an earlier candidate's peak 817 688 kB (Windows, a release candidate)",
+              "document": "the 0.19.1 plan, its 2026-09-12 reading",
+              "date": "2026-09-12"
+            },
+            {
+              "value": "the plan's stated goal: < 1 GB peak during first sync",
+              "document": "the 0.19.1 plan's budget section",
+              "date": "2026-09-12"
+            }
+          ],
+          "goalKb": 1048576,
+          "ruledBy": "dispatcher 2026-09-13",
+          "drive": "the first sync of the rig corpus \u2014 the import itself, which is the transient this row bounds. It is not a state of use and is not one of the three.",
+          "load": "unread \u2014 the readings behind this row predate the rule that a figure carries its load. Both are guest readings taken with the import as the only load on the machine."
+        },
+        "steady-5k": {
+          "ceilingKb": null,
+          "state": "retired",
+          "why": "RETIRED from pass/fail, kept as history. A steady ceiling keyed on the MAILBOX cannot be met or missed reproducibly: on one binary, one machine and one rig corpus the same install read 736 828 kB driven through nothing and 1 095 148 kB after 30 folder switches and 20 searches. It passed or failed on how far it had been driven, and no row said. The three by-drive rows above replace it. The number is kept so a reader of an older run can still see what it was judged against.",
+          "readings": [
+            {
+              "value": "the released 0.16.2 build settled at 598 MB with 5 000",
+              "document": "the project's design notes",
+              "date": "2026-09-12"
+            }
+          ],
+          "stale": "0.16.2 reading, re-read on the first 0.18 build",
+          "retiredKb": 665600,
+          "retiredGoalKb": 614400,
+          "retiredBy": "dispatcher 2026-09-15"
+        },
+        "steady-75k": {
+          "ceilingKb": null,
+          "state": "retired",
+          "why": "RETIRED from pass/fail, kept as history, for the reason under `steady-5k`. Its own readings show the problem: 'steady' at 75k read LOWER than at 5k, which is a statement about two differently driven installs and not about the mailbox.",
+          "readings": [
+            {
+              "value": "~360 MB steady after an import of the rig corpus (Windows, a release candidate)",
+              "document": "the 0.19.1 plan, its 2026-09-12 reading",
+              "date": "2026-09-12"
+            },
+            {
+              "value": "the plan's stated goal: < 600 MB steady at 75k (goal 400)",
+              "document": "the 0.19.1 plan's budget section",
+              "date": "2026-09-12"
+            }
+          ],
+          "retiredKb": 716800,
+          "retiredGoalKb": 614400,
+          "retiredBy": "dispatcher 2026-09-15",
+          "retiredSpellings": [
+            {
+              "ceilingKb": 716800,
+              "goalKb": 614400,
+              "origin": "the dispatcher's one-renderer-ceiling-table ruling",
+              "date": "2026-09-13",
+              "note": "the spelling this table retired, and the one `retiredKb`/`retiredGoalKb` above carry."
+            },
+            {
+              "ceilingKb": 614400,
+              "goalKb": 409600,
+              "origin": "the 0.19.1 plan's pass line: 600 MB steady, goal 400 MB",
+              "date": "2026-09-12",
+              "note": "MEASURED 2026-09-16: this is the spelling the perf kit carries as PERF_RENDERER_STEADY_KB, and `read-p2.sh` still DECIDES on it - on a line this table retired on 2026-09-15. Recorded rather than rewritten because the reader ships against it and no value may move here without a measured origin; a row of the project's ledger stays open on it."
+            }
+          ]
+        }
+      },
+      "$comment": [
+        "THE RENDERER LINE IS THREE NUMBERS PER RIG, NEVER ONE, AND EACH NAMES ITS DRIVE AND ITS LOAD.",
+        "",
+        "Two honest instruments read the SAME binary on the SAME rig corpus 367 MB apart, and",
+        "the largest term in that gap was how far the app had been driven \u2014 which no ceiling named. On one",
+        "machine, one binary and one mailbox the renderer read 736 828 kB driven through nothing, 850 740",
+        "after 30 folder switches and 1 095 148 after 30 switches and 20 searches. A ceiling keyed on the",
+        "mailbox passes and fails the same install.",
+        "",
+        "So a renderer row is one of three states of use:",
+        "  1. FLOOR               \u2014 an empty mailbox, freshly relaunched, driven through nothing. Ruled in",
+        "                           PSS: ~200 MB of the floor is file-backed WebKit/GTK/Mesa text that RSS",
+        "                           counts again in the shell and the network process, so an RSS floor is",
+        "                           partly a ceiling on how many times the same pages are counted.",
+        "  2. LOADED, UNDRIVEN    \u2014 a stated corpus, freshly relaunched and settled, driven through",
+        "                           nothing. LOADED minus FLOOR is the per-message allowance.",
+        "  3. DRIVEN              \u2014 after a NAMED drive: 30 folder switches, then 20 searches. This is the",
+        "                           state a person's app is in after ten minutes, and the one a ceiling has",
+        "                           to bound.",
+        "",
+        "Two rules follow from the readings rather than from taste:",
+        "  \u00b7 THE SOFTWARE-RASTERISER CLASS IS STATED AND EXCLUDED across distributions. 61 628 kB of the",
+        "    difference between two honest readings was Mesa's VERSION. A ceiling that includes it measures",
+        "    the distribution, not the app. Its own row is `rasteriser-class-linux`.",
+        "  \u00b7 A FIGURE WITHOUT ITS DRIVE AND ITS LOAD IS NOT A FIGURE. Every row here carries both, `unread`",
+        "    with the reason where the reading does not have one, and the reader refuses to print a number",
+        "    for a row that carries neither.",
+        "",
+        "For 0.19.1 each ceiling IS the 0.19.0 reading at that drive \u2014 a no-regression line. The freeze",
+        "compares a candidate's three numbers at the SAME drive against these, and a regression in any of",
+        "the three blocks. Goals are aspirational and printed apart under `goalKb`/`goalState`; where no",
+        "goal has been ruled the row says `owed` rather than borrowing the retired one."
+      ]
+    },
+    "shell": {
+      "what": "the desktop shell process's own RSS, settled - the Tauri process, not the webview",
+      "budgets": {
+        "steady": {
+          "ceilingKb": 409600,
+          "unit": "RSS kB",
+          "state": "ruled",
+          "ruledBy": "the performance notes' budget table",
+          "why": "A shell that moves is a finding on its own: this process draws a frame and owns the engine's lifetime, and nothing it does scales with the mailbox. The arm RECORDS rather than decides - no run has yet watched it fail.",
+          "arm": "records",
+          "readings": [
+            {
+              "value": "flat at 203 MB across a two-hour soak (0.14.0)",
+              "document": "the project's design notes",
+              "date": "2026-09-11",
+              "via": "the project's design notes"
+            },
+            {
+              "value": "308-377 MB through the 0.16.2 baseline. The perf kit's own note spells the same reading 315-386 MB; the two are kept apart rather than averaged until one is re-read.",
+              "document": "the project's design notes",
+              "date": "2026-09-11"
+            }
+          ],
+          "goalKb": null,
+          "goalState": "owed",
+          "goalWhy": "No goal has been ruled for the shell. It has never been the thing that moved."
+        }
+      }
+    }
+  },
+  "latency": {
+    "$comment": [
+      "DURATIONS IN MILLISECONDS, kept apart from the kB memory surfaces above so a reader never",
+      "budgets a millisecond figure against a kilobyte ceiling.",
+      "",
+      "EVERY ENTRY HERE CARRIES ITS SHAPE AND ITS ORIGIN, and `test/perf-budgets.test.ts` refuses a",
+      "malformed one. Before 2026-09-16 this block lived outside `surfaces`, which that test iterates,",
+      "so a latency entry could ship with no origin, no state and no arm and nothing would say - which",
+      "is how seven budgets came to be quoted with no measurement behind any of them",
+      "(two rows of the project's ledger).",
+      "",
+      "The shape, and each rule's reason:",
+      "  \u00b7 `what`   - what is being timed. A number with no subject is not a budget.",
+      "  \u00b7 `state`  - `measured` (a run has read this and the number rests on it) or `no-origin-yet`",
+      "               (the number is a line somebody wrote and nothing has been measured at it).",
+      "  \u00b7 `arm`    - `decides` (a run over it is RED) or `records` (printed, reddens nothing). A",
+      "               `no-origin-yet` entry may only RECORD: an arm that reddens a build against a",
+      "               number nobody measured is the failure this table exists to remove.",
+      "  \u00b7 `origin` - the run the number came from, or `null` under `no-origin-yet`. Never absent.",
+      "  \u00b7 p95/p99 both where the budget is a percentile pair, and p99 is never below p95.",
+      "  \u00b7 `readings` may exist under `no-origin-yet` and do NOT promote it: a reading of how long",
+      "               something takes is not a measurement of what it is allowed to take."
+    ],
+    "start-to-list": {
+      "what": "cold start to a usable message list, in ms",
+      "ceilingMs": 2000,
+      "state": "no-origin-yet",
+      "origin": null,
+      "arm": "records",
+      "why": "NO ORIGIN YET: the number is the 0.19.1 plan's line and nothing has been measured AT it. The arm RECORDS - it prints the reading against the budget and reddens nothing - until a run reads under it, which is what would give it an origin as a budget.",
+      "readings": [
+        {
+          "value": "cold start p95 10 277 ms, median 5 887; warm p95 6 755 ms, median 5 739, over 20 starts (Windows, a release candidate)",
+          "document": "the project's design notes, the 0.17.0 Windows release-candidate run",
+          "date": "2026-09-12"
+        },
+        {
+          "value": "the same five starts: 2 730-4 800 ms with the store made in memory, 9 585-14 728 ms with it written by initdb; a hosted runner read 8 637 ms of the latter (0.25.3 rc2). The smoke now decides at 7 800 ms for that shape alone.",
+          "document": "the project's change notes",
+          "date": "2026-09-28"
+        },
+        {
+          "value": "the CI perf smoke on hosted runners, the published build's runs for 0.25.0-0.25.8, every attempt (n=15): p50 6 819, p95 8 952, max 9 687 ms. The smoke now decides at 9 900 ms (p95 + 10 %), the readings and the rule in scripts/perf-smoke-check.mjs.",
+          "document": "the project's change notes",
+          "date": "2026-10-02"
+        }
+      ]
+    },
+    "engine-ready": {
+      "what": "the engine reporting ready, read from `boot_phases.totalReadyMs`, in ms",
+      "ceilingMs": 4000,
+      "state": "no-origin-yet",
+      "origin": null,
+      "arm": "records",
+      "why": "NO ORIGIN YET: the number is the 0.19.1 plan's line and nothing has been measured AT it. The arm RECORDS - it prints the reading against the budget and reddens nothing - until a run reads under it, which is what would give it an origin as a budget.",
+      "readings": [
+        {
+          "value": "the perf smoke's shape on a Linux desktop (empty install, 5k fixture), five starts each in the same minutes: 1 814-3 456 ms with a new store made in memory, 8 436-13 814 ms with it written to the disk by initdb; a hosted runner read 4 349 ms of the latter (0.25.3 rc2). The smoke now decides at 4 000 ms for that shape alone.",
+          "document": "the project's change notes",
+          "date": "2026-09-28"
+        },
+        {
+          "value": "the CI perf smoke on hosted runners, the published build's runs for 0.25.0-0.25.8, every attempt (n=15): p50 4 126, p95 5 344, max 6 127 ms; macOS's packaged engine alone (n=11) p50 2 641, p95 3 464. The smoke now decides at 5 900 ms and macOS at 3 900 ms (p95 + 10 %); the hosted runner's 4 349 ms for the initdb store sits inside that spread, so a regression of that size is a rig cell's to see.",
+          "document": "the project's change notes",
+          "date": "2026-10-02"
+        }
+      ]
+    },
+    "open-message": {
+      "what": "opening a message, from the press to the body on screen, in ms",
+      "p95Ms": 150,
+      "p99Ms": 400,
+      "state": "no-origin-yet",
+      "origin": null,
+      "arm": "records",
+      "why": "NO ORIGIN YET: the number is the 0.19.1 plan's line and nothing has been measured AT it. The arm RECORDS - it prints the reading against the budget and reddens nothing - until a run reads under it, which is what would give it an origin as a budget.",
+      "readings": [
+        {
+          "value": "open p95 1 056 ms / p99 1 838 over 199 opens (Windows, a release candidate); p95 627 ms over 190 (Windows 0.19.0)",
+          "document": "the project's design notes",
+          "date": "2026-09-15"
+        }
+      ]
+    },
+    "view-switch": {
+      "what": "switching folder or view, in ms",
+      "p95Ms": 200,
+      "state": "no-origin-yet",
+      "origin": null,
+      "arm": "records",
+      "why": "NO ORIGIN YET: the number is the 0.19.1 plan's line and nothing has been measured AT it. The arm RECORDS - it prints the reading against the budget and reddens nothing - until a run reads under it, which is what would give it an origin as a budget.",
+      "readings": [
+        {
+          "value": "switch p95 4 421 ms over 480 (Windows, a release candidate); 5 432 ms (Windows 0.19.0)",
+          "document": "the project's design notes",
+          "date": "2026-09-15"
+        }
+      ]
+    },
+    "search-first": {
+      "what": "first results on screen for a search over the rig's full corpus, in ms",
+      "ceilingMs": 500,
+      "state": "no-origin-yet",
+      "origin": null,
+      "arm": "records",
+      "why": "NO ORIGIN YET: the number is the 0.19.1 plan's line and nothing has been measured AT it. The arm RECORDS - it prints the reading against the budget and reddens nothing - until a run reads under it, which is what would give it an origin as a budget.",
+      "readings": [
+        {
+          "value": "search first p95 771 ms over 320 (Windows, a release candidate); 696 ms (Windows 0.19.0)",
+          "document": "the project's design notes",
+          "date": "2026-09-15"
+        }
+      ]
+    },
+    "frame-gap": {
+      "what": "the longest gap between frames during a fling, in ms",
+      "ceilingMs": 50,
+      "state": "no-origin-yet",
+      "origin": null,
+      "arm": "records",
+      "why": "NO ORIGIN YET: the number is the 0.19.1 plan's line and nothing has been measured AT it. The arm RECORDS - it prints the reading against the budget and reddens nothing - until a run reads under it, which is what would give it an origin as a budget. The nearest real figures are not paints at all: a whole-mirror derivation pass and `screenerSegments` at 57-68 ms per render with a long Screener queue. Both are over a 50 ms frame and neither is a frame gap."
+    },
+    "long-task": {
+      "what": "tasks longer than `ceilingMs` during a fling; `maxCount` is how many are allowed",
+      "ceilingMs": 200,
+      "maxCount": 0,
+      "state": "no-origin-yet",
+      "origin": null,
+      "arm": "records",
+      "why": "NO ORIGIN YET: the number is the 0.19.1 plan's line and nothing has been measured AT it. The arm RECORDS - it prints the reading against the budget and reddens nothing - until a run reads under it, which is what would give it an origin as a budget.",
+      "readings": [
+        {
+          "value": "0 long tasks over the scroll-and-open cell (Windows 0.19.0) - a green reading, and not a measurement of what the ceiling should be",
+          "document": "the project's design notes, the 0.19.0 Windows run",
+          "date": "2026-09-15"
+        }
+      ]
+    },
+    "derive-p95": {
+      "what": "the whole-mirror derivation's p95 over the last hundred version bumps, on the window's ui_vitals line (the deriveP95Ms field), in ms",
+      "ceilingMs": null,
+      "goalMs": 50,
+      "state": "no-origin-yet",
+      "origin": null,
+      "arm": "records",
+      "why": "A GOAL, NOT A BUDGET, and the reader prints it as one. 50 ms is ONE FRAME at 60 Hz, from the performance notes' derivation row: the pass runs once per version bump and holds the thread while it does, so that is the frame it has to fit inside to be invisible. Nothing has been measured AT it. A ceiling would be the first run that reads under the goal; until then the smoke prints the reading against the goal and reddens nothing.",
+      "goalReading": {
+        "value": "50 ms is one frame at 60 Hz, the derivation row's goal",
+        "document": "the project's design notes",
+        "date": "2026-09-13"
+      },
+      "readings": [
+        {
+          "value": "67 ms at the small class, 297 ms at the middle class, 180-480 ms over the rig's full corpus (I3 rig reading, a build with the derivation defect)",
+          "document": "the project's change notes",
+          "date": "2026-09-13"
+        },
+        {
+          "value": "the shipped 0.19.0 read a median of 8 ms on the Omarchy guest - under the goal, on one platform, at one mailbox size",
+          "document": "the project's design notes, the 0.19.0 Linux run",
+          "date": "2026-09-14"
+        }
+      ]
+    },
+    "upgrade-migration": {
+      "what": "the wall clock of a schema upgrade on a large store, in ms - the whole pass, and the slowest single migration inside it",
+      "ceilingMs": null,
+      "state": "no-origin-yet",
+      "origin": null,
+      "arm": "records",
+      "why": "NO NUMBER AT ALL, which is the honest state: nothing pins how long an upgrade may take, and a budget invented here would be a line nobody measured. The instrument now exists - `boot_phases` carries `slowestMigration`, `slowestMs` and a line per migration - so the figures a budget would be set FROM are produced on every upgrade. The perf rig owes the pin from a run on a large store.",
+      "readings": [
+        {
+          "value": "no run has measured one. The row is recorded here so the rig that does knows what it is filling in.",
+          "document": "the project's change notes",
+          "date": "2026-09-15"
+        }
+      ]
+    }
+  },
+  "contested": [
+    {
+      "reader": "kit:train-0161/perf-headline-guard.sh",
+      "symbol": "renderer_peak",
+      "valueKb": 1048576,
+      "spelling": "1048576",
+      "note": "MEASURED 2026-09-13: both hits are inside its selftest's fixtures, which are a release-candidate run's verdict file kept verbatim ('the rows are as written'). The file applies no ceiling of its own - it parses rows a rig produced. Deriving those rows from this table would rewrite a recorded measurement to agree with a later ruling, which is the one thing a record may never do.",
+      "state": "quoted"
+    },
+    {
+      "reader": "kit:perf/selftest.sh",
+      "symbol": "renderer_peak",
+      "valueKb": 1048576,
+      "spelling": "1074706 kB peak >= 1048576 kB",
+      "note": "MEASURED 2026-09-16: every hit is its own fixture or a sentence it asserts the reader printed - a sample file built at exactly 1 048 576 kB to prove the boundary is RED, one kB under it to prove the admit, and the macOS pair where one window is RED in the footprint unit and GREEN in RSS. It applies no ceiling itself; it drives read-p1.sh, which reads budgets.env, which is generated from this table.",
+      "state": "quoted"
+    },
+    {
+      "reader": "kit:perf/budgets.env",
+      "symbol": "PERF_RENDERER_PEAK_KB",
+      "valueKb": 1048576,
+      "spelling": "PERF_RENDERER_PEAK_KB=1048576",
+      "note": "WAS `applied` on 2026-09-16 and is now GENERATED from `kitBudgets` above: the same number, produced from this table rather than stated beside it. It kept its value because the kit decides at the 1 GB arm, which this table holds as the GOAL beside the ruled 1 433 600 kB ceiling - see that variable's note. `node scripts/gen-perf-budgets.mjs --check` is what holds the two together, and it runs in test/perf-budgets.test.ts.",
+      "state": "generated"
+    },
+    {
+      "reader": "apps/desktop/src-tauri/src/perf_budgets.rs",
+      "symbol": "RENDERER_BUDGET_KB",
+      "valueKb": 1433600,
+      "spelling": "pub const RENDERER_BUDGET_KB: u64 = 1_433_600;",
+      "note": "WAS the literal `1_500 * 1024` in vitals.rs - the product's own contract, written into every renderer_vitals line, and the reader a person actually sees. It is now GENERATED from the ruled ceiling, and vitals.rs re-exports it, so the shell declares the number this table states. The value MOVED DOWN, 1 536 000 -> 1 433 600, which is the ruling of 2026-09-13 reaching the product: the app no longer promises itself more than its gate allows.",
+      "state": "generated"
+    },
+    {
+      "reader": "scripts/perf-smoke-check.mjs",
+      "symbol": "BUDGETS",
+      "valueKb": 1433600,
+      "spelling": "rendererPeakKb: 1400 * 1024",
+      "note": "MEASURED 2026-09-16: a SIXTH reader, and it APPLIES ten budgets of its own - a renderer peak, the engine's 450 MB, and the eight latency and throughput lines, which are this table's numbers copied. MOVED 2026-09-24: its renderer ceiling is now renderer.peak-first-sync copied, and its own 400 MB derivation is printed beside it as a goal, because a hosted runner's EMPTY app read 452 MB in its web group; its open arm records, as the latency block rules it. MOVED 2026-09-28: its engine-ready and start-to-list arms DECIDE on ceilings measured for the smoke's own shape, 4 000 and 7 800 ms, with the plan's 2 000 ms printed as start-to-list's goal; the latency block's two rows stay cross-platform plan lines with no origin, and carry those readings. MOVED 2026-10-02: the two ceilings are derived from the release runs' own distribution, 5 900 and 9 900 ms, and a reading over one on a runner whose build step ran slower than its median, inside that factor, is CLASSIFY-ASK RUNNER rather than red.",
+      "state": "applied",
+      "whyNotGenerated": "STRUCTURAL, not an oversight: this file is PUBLISHED (scripts/perf-smoke-check.mjs is a payload row) and this table is not, so the check cannot read it at runtime in the mirror's CI - which is why it already treats an unreadable table as an unruled ceiling rather than a failure. Folding it needs either a generated block inside the published file or a payload row for a generated sibling, and scripts/lib/ is the private toolchain it may not import from. What HAS been done: the census literals now include its two memory spellings, so this reader is visible and a SEVENTH cannot arrive quietly, and its one table read (the derivation p95) reads this table's own state word.",
+      "gapRow": "PERF-SMOKE-SPELLS-ITS-OWN-BUDGETS-AND-CANNOT-READ-THE-TABLE"
+    }
+  ],
+  "drift": {
+    "$comment": [
+      "SLOPES, IN kB PER HOUR, over an idle window. Kept apart from the kB ceilings above so a",
+      "reader never budgets a rate against a size. Every slope is read TWICE - least squares over",
+      "the window, and the median of the first quarter against the median of the last - and over",
+      "budget on either is a fail: a window whose median ends higher has not plateaued whatever",
+      "the trend line says."
+    ],
+    "renderer-idle": {
+      "what": "the renderer group's RSS slope over a two-hour idle window",
+      "ceilingKbPerHour": 5120,
+      "state": "measured",
+      "arm": "decides",
+      "origin": "the 0.14.0 two-hour soak",
+      "readings": [
+        {
+          "value": "+1 083 MB/h at 5 000, and roughly seven times that at 25 000",
+          "document": "the project's design notes",
+          "date": "2026-09-11"
+        }
+      ]
+    },
+    "engine-idle": {
+      "what": "the engine's RSS slope over a two-hour idle window",
+      "ceilingKbPerHour": 2048,
+      "state": "measured",
+      "arm": "decides",
+      "origin": "the 0.14.0 two-hour soak",
+      "readings": [
+        {
+          "value": "-32 MB/h: the engine trims and holds",
+          "document": "the project's design notes",
+          "date": "2026-09-11"
+        },
+        {
+          "value": "+12.0 / +11.6 MB/h on the 0.19.0 Windows day-of-use cell - the arm failing on a real measurement, which is what makes it a deciding arm",
+          "document": "the project's design notes, the 0.19.0 Windows run",
+          "date": "2026-09-15"
+        },
+        {
+          "value": "current main holds 530.1 MB at idle for 118 minutes and RELEASES 190 MB at settle (slope -96 518 kB/h, largest single-sample rise +0.9 MB); the released 0.19.0 engine holds 720.7 MB on the same host, the same rig corpus and the same instrument, and never releases the import (721.1 -> 719.4 MB over 162.3 min). Main drains once every 118 s against 0.19.0's every 16.6 s.",
+          "document": "the engine-memory step's change notes and its run log",
+          "date": "2026-09-16"
+        }
+      ]
+    }
+  },
+  "cpu": {
+    "$comment": [
+      "PERCENT OF ONE CORE, never of the machine. A figure quoted against all cores reads a",
+      "pinned core as 3 % on a 32-core host, which is the shape that let an incident hold one",
+      "core at 93.7 % for 29 minutes while nothing looked wrong."
+    ],
+    "idle": {
+      "what": "the app group's CPU with the window open, synced, and no input",
+      "ceilingPctOfOneCore": 1,
+      "windowS": 300,
+      "state": "measured",
+      "arm": "decides",
+      "origin": "the 0.16.2 baseline's last idle samples",
+      "readings": [
+        {
+          "value": "9-17 % of a core with the window open and nothing happening; the incident held one core at 93.7 % for 29 minutes",
+          "document": "the project's design notes",
+          "date": "2026-09-11"
+        },
+        {
+          "value": "60.8 % over the last 5 min of a 3 003 s post-sync idle window (Windows, a release candidate); 9.0 % over 300 s on the 0.19.0 Mac",
+          "document": "the project's design notes",
+          "date": "2026-09-14"
+        }
+      ]
+    },
+    "post-sync-pinned": {
+      "what": "the longest run at or above 90 % of one core after the sync finishes",
+      "ceilingPctOfOneCore": 90,
+      "ceilingS": 60,
+      "state": "measured",
+      "arm": "records",
+      "origin": "the 0.16.2 baseline's fall from 325 % to 9 % within 60 s of the sync text clearing",
+      "why": "The arm ADMITS on the baseline, which is what makes it an arm rather than a wish. It RECORDS rather than decides because no run has yet watched it fail - and one has now sat exactly on it, which is the reading below and not a pass.",
+      "readings": [
+        {
+          "value": "the baseline fell from 325 % to 9 % within 60 s of the sync text clearing (21:47:48 -> 21:48:48)",
+          "document": "the project's design notes",
+          "date": "2026-09-11"
+        },
+        {
+          "value": "EXACTLY ON THE LINE (macOS, 0.19.0): the group held >= 90 % of one core for exactly 60 s after the sync, against a 60 s budget. A reading AT the budget with no margin is not a pass - it is the arm's first subject, and the next run decides whether the line or the build moves.",
+          "document": "the project's design notes, the 0.19.0 macOS run",
+          "date": "2026-09-14"
+        },
+        {
+          "value": "30 s longest post-sync run at 90 % of a core (Windows, 0.19.0) - half the budget, on the platform beside it",
+          "document": "the project's design notes, the 0.19.0 Windows run",
+          "date": "2026-09-15"
+        }
+      ]
+    }
+  },
+  "throughput": {
+    "first-sync": {
+      "what": "messages per second over a whole first sync, measured end to end",
+      "floorMsgPerS": 60,
+      "state": "measured",
+      "arm": "records",
+      "origin": "the 0.16.2 baseline's own import, corrected for what `totalMs` left out",
+      "why": "`totalMs` was not the import: the baseline's total left out a long first drain, and over the whole arrival the same mailbox ingested markedly faster than the released build. The arm RECORDS - every measured run is under it, so a deciding arm here would redden every build there has ever been.",
+      "readings": [
+        {
+          "value": "sidecar alone over the same rig corpus, measured end to end on this host: 26.0 msg/s",
+          "document": "the project's design notes",
+          "date": "2026-09-12"
+        },
+        {
+          "value": "14.85 msg/s over the rig corpus (Windows, a release candidate); 35.71 msg/s over it (macOS 0.19.0)",
+          "document": "the project's design notes",
+          "date": "2026-09-14"
+        },
+        {
+          "value": "NOT CONFIRMED, chase open: current main's first sync of the rig's full corpus took far longer than the released 0.19.0 engine's on the same host, a gap far larger than any fence accounts for.",
+          "document": "the project's run log",
+          "date": "2026-09-16"
+        }
+      ]
+    },
+    "sync-ui-stall": {
+      "what": "the longest the window may be unresponsive while a sync runs, in ms",
+      "ceilingMs": 1000,
+      "state": "no-origin-yet",
+      "origin": null,
+      "arm": "records",
+      "why": "No run has measured a UI stall during a sync at all: the instrument that would read it is the window's own `ui_vitals`, and the cells that drive a first sync do not drive the window while it runs. The number is the plan's line; the arm RECORDS by name until a run produces a figure."
+    }
+  },
+  "sampleShape": {
+    "$comment": [
+      "NOT BUDGETS - the shape every reader insists on before it will read anything at all.",
+      "A 60-second window once read the incident's renderer as FALLING while the session",
+      "quadrupled, so a reader refuses a shorter window BY NAME and names this line; `--min-span`",
+      "moves it for a reason that belongs in the run's notes. The 0.19.0 macOS run closed its idle",
+      "window at 3 060 s when another lane claimed the machine, and that is what a declared",
+      "override looks like."
+    ],
+    "minSamples": 20,
+    "minSpanS": 1800,
+    "sampleIntervalS": 30,
+    "origin": "the incident's own reading window",
+    "document": "the project's design notes",
+    "date": "2026-09-11"
+  },
+  "kitBudgets": {
+    "$comment": [
+      "THE PERF KIT'S budgets.env IS GENERATED FROM THIS FILE, AND THIS IS THE MAP.",
+      "",
+      "Measured 2026-09-16: the perf kit's budgets.env called itself 'the",
+      "budgets - ONE FILE, read by every reader and by nothing else' while this file called itself",
+      "the one place a ceiling is stated. Two tables, both true of themselves, disagreeing about",
+      "the renderer peak by 385 024 kB and about the engine by a whole size class.",
+      "",
+      "So the kit's file is now OUTPUT: `node scripts/gen-perf-budgets.mjs --check` regenerates it",
+      "from the rows below and refuses on any difference, and `--write` writes it. Every variable",
+      "names the row it comes from, so a number cannot be edited into the kit without editing the",
+      "table - and a number that moves here moves in the kit at the same commit.",
+      "",
+      "NO VALUE MOVED when this map was written. Where the kit's number was not the row's ceiling",
+      "it is pointed at the key it actually carried (a goal, a retired spelling), with the reason",
+      "on the variable - because a unification that quietly changed what a gate reddens on would",
+      "be a ruling wearing a refactor."
+    ],
+    "generatedBy": "scripts/gen-perf-budgets.mjs",
+    "outputs": [
+      "kit:perf/budgets.env",
+      "apps/desktop/src-tauri/src/perf_budgets.rs"
+    ],
+    "sections": [
+      {
+        "title": "memory, kB (kernel kB, never pages: a 4096 literal is 4x low on a 16 kB-page host)",
+        "note": [
+          "THE UNIT EACH NUMBER IS WRITTEN IN. On Linux and Windows these are RSS, which is what",
+          "they were measured in. On macOS they are the PHYSICAL FOOTPRINT: renderer_vitals",
+          "charges ri_phys_footprint, and on the Mac mini the renderer's footprint was 1.92x its",
+          "RSS in the same call (541,328 -> 1,040,290 kB, 2026-09-14, confirmed by vmmap at 1.0G).",
+          "read-common.sh picks the unit by platform and every reader prints which one it charged.",
+          "NO NUMBER MOVES for that: the same ceiling is asked of the right quantity."
+        ],
+        "vars": [
+          {
+            "name": "PERF_RENDERER_PEAK_KB",
+            "from": "surfaces.renderer.budgets.peak-first-sync.goalKb",
+            "note": [
+              "THE GOAL, NOT THE CEILING, and deliberately so. The ruled ceiling is 1,433,600 kB",
+              "and the kit has always decided at 1,048,576 - the 1 GB arm of 2026-09-11.",
+              "Pointing this at the ceiling would have made a candidate measured RED at",
+              "1,147,280 kB green, which is a ruling, not a unification. Origin of the 1 GB: the",
+              "0.16.2 baseline read a renderer group peak of 1,878,748 kB over the rig corpus in",
+              "the 8 GB guest."
+            ]
+          },
+          {
+            "name": "PERF_RENDERER_STEADY_KB",
+            "from": "surfaces.renderer.budgets.steady-75k.retiredSpellings.1.ceilingKb",
+            "note": [
+              "A RETIRED LINE THE READER HAS NOT LEFT. This table retired the one-number steady",
+              "line on 2026-09-15 - it passed or failed on how far the app had been driven and no",
+              "row said - and read-p2.sh still DECIDES on it, at the plan's 600/400 spelling",
+              "rather than the dispatcher's 700/600. Emitted so the reader keeps working and the",
+              "state is visible; the three by-drive rows are what replaces it."
+            ]
+          },
+          {
+            "name": "PERF_RENDERER_STEADY_GOAL_KB",
+            "from": "surfaces.renderer.budgets.steady-75k.retiredSpellings.1.goalKb",
+            "note": [
+              "The goal half of the same retired spelling."
+            ]
+          },
+          {
+            "name": "PERF_ENGINE_STEADY_KB",
+            "from": "surfaces.engine.budgets.25k.ceilingKb",
+            "note": [
+              "THE FLAT ENGINE CEILING, AND IT IS THE 25k CLASS'S NUMBER. Three readers decide on",
+              "this one variable - read-p2 engine_steady, read-p3 and read-p5 engine_peak - and",
+              "none of them picks a class, so a run over the rig corpus is judged against the 25,000",
+              "ceiling. The four class variables below are what a reader moves to; this line stays",
+              "until they do, at the value it has always carried",
+              "(a row of the project's ledger stays open on it)."
+            ]
+          },
+          {
+            "name": "PERF_ENGINE_STEADY_EMPTY_KB",
+            "from": "surfaces.engine.budgets.empty.ceilingKb",
+            "note": [
+              "400 MB at an empty install: the design notes measured 378.8 MB settled."
+            ]
+          },
+          {
+            "name": "PERF_ENGINE_STEADY_5K_KB",
+            "from": "surfaces.engine.budgets.5k.ceilingKb",
+            "note": [
+              "The per-class ceilings, new here. The 400-vs-450 contest is stated in the table's engine surface and is a maintainer's to read."
+            ]
+          },
+          {
+            "name": "PERF_ENGINE_STEADY_25K_KB",
+            "from": "surfaces.engine.budgets.25k.ceilingKb",
+            "note": []
+          },
+          {
+            "name": "PERF_ENGINE_STEADY_75K_KB",
+            "from": "surfaces.engine.budgets.75k.ceilingKb",
+            "note": [
+              "716,800 kB, ruled 2026-09-13 and applied in four run tables since. What it does and does not rest on is in that row's `why`."
+            ]
+          },
+          {
+            "name": "PERF_ENGINE_STEADY_75K_GOAL_KB",
+            "from": "surfaces.engine.budgets.75k.goalKb",
+            "note": [
+              "Printed beside the arm and never gated."
+            ]
+          },
+          {
+            "name": "PERF_SHELL_STEADY_KB",
+            "from": "surfaces.shell.budgets.steady.ceilingKb",
+            "note": [
+              "The shell was flat at 203 MB across a two-hour soak. A shell that moves is a finding on its own."
+            ]
+          }
+        ]
+      },
+      {
+        "title": "drift, kB per hour",
+        "note": [],
+        "vars": [
+          {
+            "name": "PERF_RENDERER_SLOPE_KB_H",
+            "from": "drift.renderer-idle.ceilingKbPerHour",
+            "note": [
+              "The 0.14.0 soak measured +1,083 MB/h at 5,000 and about seven times that at 25,000."
+            ]
+          },
+          {
+            "name": "PERF_ENGINE_SLOPE_KB_H",
+            "from": "drift.engine-idle.ceilingKbPerHour",
+            "note": [
+              "The same soak measured the engine at -32 MB/h: it trims and holds."
+            ]
+          }
+        ]
+      },
+      {
+        "title": "CPU, percent of ONE core",
+        "note": [],
+        "vars": [
+          {
+            "name": "PERF_IDLE_CPU_PCT",
+            "from": "cpu.idle.ceilingPctOfOneCore",
+            "note": [
+              "The baseline's last idle samples read 9-17 % of a core with nothing happening; the incident held one core at 93.7 % for 29 minutes."
+            ]
+          },
+          {
+            "name": "PERF_IDLE_CPU_WINDOW_S",
+            "from": "cpu.idle.windowS",
+            "note": []
+          },
+          {
+            "name": "PERF_POST_SYNC_PINNED_PCT",
+            "from": "cpu.post-sync-pinned.ceilingPctOfOneCore",
+            "note": [
+              "The arm ADMITS on the baseline, which is what makes it an arm. The 0.19.0 Mac then sat EXACTLY on it: 60 s against a 60 s budget, which is a reading at the line and not a pass."
+            ]
+          },
+          {
+            "name": "PERF_POST_SYNC_PINNED_S",
+            "from": "cpu.post-sync-pinned.ceilingS",
+            "note": []
+          }
+        ]
+      },
+      {
+        "title": "latency, ms - every one of these is NO-ORIGIN-YET",
+        "note": [
+          "The table states it the same way: `state: no-origin-yet`, `origin: null`, `arm: records`,",
+          "and test/perf-budgets.test.ts refuses an entry that claims an origin it does not have or",
+          "an arm that decides without one. The nearest real numbers are derivation costs, not",
+          "paints: one whole-mirror pass measured 67 ms at the small class, 297 ms at the middle class and 180-480 ms",
+          "over the rig's full corpus, and screenerSegments 57-68 ms per render with a long Screener queue. The first",
+          "A run that reads UNDER one of these gives it an origin; until then every reader",
+          "prints them as RECORDED."
+        ],
+        "vars": [
+          {
+            "name": "PERF_START_TO_LIST_MS",
+            "from": "latency.start-to-list.ceilingMs",
+            "note": []
+          },
+          {
+            "name": "PERF_ENGINE_READY_MS",
+            "from": "latency.engine-ready.ceilingMs",
+            "note": []
+          },
+          {
+            "name": "PERF_OPEN_P95_MS",
+            "from": "latency.open-message.p95Ms",
+            "note": []
+          },
+          {
+            "name": "PERF_OPEN_P99_MS",
+            "from": "latency.open-message.p99Ms",
+            "note": []
+          },
+          {
+            "name": "PERF_SWITCH_P95_MS",
+            "from": "latency.view-switch.p95Ms",
+            "note": []
+          },
+          {
+            "name": "PERF_SEARCH_FIRST_MS",
+            "from": "latency.search-first.ceilingMs",
+            "note": []
+          },
+          {
+            "name": "PERF_FRAME_GAP_MS",
+            "from": "latency.frame-gap.ceilingMs",
+            "note": []
+          },
+          {
+            "name": "PERF_LONG_TASK_MS",
+            "from": "latency.long-task.ceilingMs",
+            "note": []
+          },
+          {
+            "name": "PERF_LONG_TASK_MAX",
+            "from": "latency.long-task.maxCount",
+            "note": []
+          }
+        ]
+      },
+      {
+        "title": "the whole-mirror derivation, off the window's own ui_vitals line",
+        "note": [
+          "A GOAL AND NOT A BUDGET, and the reader prints it as one. 50 ms is ONE FRAME at 60 Hz:",
+          "the pass runs once per version bump and holds the thread while it does, so that is the",
+          "frame it has to fit inside to be invisible. Nothing has been measured AT it - the",
+          "figures that exist are 67 ms at the small class, 297 ms at the middle class and 180-480 ms over the rig's full corpus from a",
+          "rig, and the shipped 0.19.0 read a median of 8 ms on the Omarchy guest. The first green",
+          "run is what would give it an origin as a budget."
+        ],
+        "vars": [
+          {
+            "name": "PERF_DERIVE_P95_GOAL_MS",
+            "from": "latency.derive-p95.goalMs",
+            "note": []
+          }
+        ]
+      },
+      {
+        "title": "throughput",
+        "note": [],
+        "vars": [
+          {
+            "name": "PERF_SYNC_MSG_PER_S",
+            "from": "throughput.first-sync.floorMsgPerS",
+            "note": [
+              "60 msg/s is 2.3x the released build, and the arm is readable the moment first_sync_finished lands."
+            ]
+          },
+          {
+            "name": "PERF_SYNC_UI_STALL_MS",
+            "from": "throughput.sync-ui-stall.ceilingMs",
+            "note": [
+              "NO-ORIGIN-YET: no run has measured a UI stall during a sync at all."
+            ]
+          }
+        ]
+      },
+      {
+        "title": "the sample shape every reader insists on",
+        "note": [
+          "A 60-second window read the incident's renderer as FALLING while the session",
+          "quadrupled. PERF_MIN_SPAN_S is the WINDOW EVERY CELL NEEDS, not a plan: a reader",
+          "refuses a shorter one by name and names this line, and --min-span moves it for a reason",
+          "that belongs in the run's notes."
+        ],
+        "vars": [
+          {
+            "name": "PERF_MIN_SAMPLES",
+            "from": "sampleShape.minSamples",
+            "note": []
+          },
+          {
+            "name": "PERF_MIN_SPAN_S",
+            "from": "sampleShape.minSpanS",
+            "note": []
+          },
+          {
+            "name": "PERF_SAMPLE_INTERVAL_S",
+            "from": "sampleShape.sampleIntervalS",
+            "note": []
+          }
+        ]
+      }
+    ],
+    "rust": {
+      "file": "apps/desktop/src-tauri/src/perf_budgets.rs",
+      "consts": [
+        {
+          "name": "RENDERER_BUDGET_KB",
+          "from": "surfaces.renderer.budgets.peak-first-sync.ceilingKb",
+          "note": [
+            "The product's own declared renderer ceiling, written into every renderer_vitals line.",
+            "It used to be a literal here, and it was a FOURTH reader of a number three other readers",
+            "already disagreed about - the one a person actually sees in the log. It reads the ruled",
+            "ceiling now, which sits BELOW what the shell used to promise itself, so the app no longer",
+            "declares more headroom than its gate allows. A LOG LINE, never a limit: the shell does not",
+            "kill the window it is reporting on."
+          ]
+        }
+      ]
+    }
+  }
+}

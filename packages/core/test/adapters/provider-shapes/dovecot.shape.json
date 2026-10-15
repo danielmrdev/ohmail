@@ -1,0 +1,649 @@
+{
+  "kind": "ohmail-provider-shape",
+  "version": 1,
+  "provider": "dovecot",
+  "presetId": "imap",
+  "source": {
+    "kind": "recorded",
+    "tool": "probe-shapes.mjs",
+    "recordedOn": "2026-09-27",
+    "rescrubbed": {
+      "tool": "probe-shapes.mjs",
+      "on": "2026-09-27"
+    }
+  },
+  "endpoint": {
+    "host": "loopback",
+    "port": 21291,
+    "tls": "none"
+  },
+  "probes": {
+    "greeting": {
+      "answered": true,
+      "status": "OK",
+      "code": "CAPABILITY",
+      "text": "Dovecot ready."
+    },
+    "capability": {
+      "answered": true,
+      "status": "OK",
+      "code": null,
+      "text": "Pre-login capabilities listed, post-login capabilities have more.",
+      "list": [
+        "AUTH=LOGIN",
+        "AUTH=PLAIN",
+        "ENABLE",
+        "ID",
+        "IDLE",
+        "IMAP4REV1",
+        "LITERAL+",
+        "LOGIN-REFERRALS",
+        "SASL-IR"
+      ]
+    },
+    "login": {
+      "answered": true,
+      "mechanism": "LOGIN",
+      "status": "OK",
+      "code": null
+    },
+    "capabilityAfterLogin": {
+      "answered": true,
+      "status": "OK",
+      "code": null,
+      "text": "Capability completed (0.001 + 0.000 secs).",
+      "list": [
+        "BINARY",
+        "CATENATE",
+        "CHILDREN",
+        "CONDSTORE",
+        "CONTEXT=SEARCH",
+        "ENABLE",
+        "ESEARCH",
+        "ESORT",
+        "\u004918NLEVEL=<n>",
+        "ID",
+        "IDLE",
+        "IMAP4REV1",
+        "LIST-EXTENDED",
+        "LIST-STATUS",
+        "LITERAL+",
+        "LOGIN-REFERRALS",
+        "MOVE",
+        "MULTIAPPEND",
+        "NAMESPACE",
+        "NOTIFY",
+        "PREVIEW",
+        "PREVIEW=FUZZY",
+        "QRESYNC",
+        "SASL-IR",
+        "SAVEDATE",
+        "SEARCHRES",
+        "SNIPPET=FUZZY",
+        "SORT",
+        "SORT=DISPLAY",
+        "SPECIAL-USE",
+        "STATUS=SIZE",
+        "THREAD=ORDEREDSUBJECT",
+        "THREAD=REFERENCES",
+        "THREAD=REFS",
+        "UIDPLUS",
+        "UNSELECT",
+        "URL-PARTIAL",
+        "WITHIN"
+      ]
+    },
+    "id": {
+      "answered": true,
+      "advertised": true,
+      "status": "OK",
+      "code": null,
+      "text": "ID completed (0.001 + 0.000 secs).",
+      "fields": {
+        "name": "Dovecot"
+      }
+    },
+    "namespace": {
+      "answered": true,
+      "advertised": true,
+      "status": "OK",
+      "code": null,
+      "text": "Namespace completed (0.001 + 0.000 secs).",
+      "personal": [
+        {
+          "prefix": "",
+          "delimiter": "/"
+        }
+      ],
+      "other": null,
+      "shared": null
+    },
+    "list": {
+      "answered": true,
+      "status": "OK",
+      "code": null,
+      "text": "List completed (0.001 + 0.000 secs).",
+      "delimiters": [
+        "/"
+      ],
+      "derivedPrefix": "",
+      "rows": [
+        {
+          "name": "ohmail",
+          "special": [],
+          "flags": [
+            "\\HasChildren"
+          ],
+          "delimiter": "/",
+          "product": true
+        },
+        {
+          "name": "ohmail/_meta",
+          "special": [],
+          "flags": [
+            "\\HasNoChildren"
+          ],
+          "delimiter": "/",
+          "product": true
+        },
+        {
+          "name": "h:zyrysbbvpbyb",
+          "special": [
+            "\\Sent"
+          ],
+          "flags": [
+            "\\HasNoChildren",
+            "\\Sent"
+          ],
+          "delimiter": "/",
+          "product": false
+        },
+        {
+          "name": "INBOX",
+          "special": [],
+          "flags": [
+            "\\HasNoChildren"
+          ],
+          "delimiter": "/",
+          "product": false
+        }
+      ],
+      "others": "0"
+    },
+    "lsub": {
+      "answered": true,
+      "status": "OK",
+      "code": null,
+      "text": "Lsub completed (0.001 + 0.000 secs).",
+      "rows": [
+        "h:zyrysbbvpbyb",
+        "ohmail",
+        "ohmail/_meta"
+      ],
+      "others": "0"
+    },
+    "status": {
+      "answered": true,
+      "folders": [
+        {
+          "folder": "ohmail",
+          "status": "OK",
+          "code": null,
+          "text": "Status completed (0.011 + 0.000 + 0.010 secs).",
+          "messages": "zero",
+          "uidNext": "number",
+          "uidValidity": "number",
+          "unseen": "zero",
+          "highestModseq": "number"
+        },
+        {
+          "folder": "ohmail/_meta",
+          "status": "OK",
+          "code": null,
+          "text": "Status completed (0.001 + 0.000 secs).",
+          "messages": "nonzero",
+          "uidNext": "number",
+          "uidValidity": "number",
+          "unseen": "nonzero",
+          "highestModseq": "number"
+        },
+        {
+          "folder": "h:zyrysbbvpbyb",
+          "status": "OK",
+          "code": null,
+          "text": "Status completed (0.050 + 0.000 + 0.049 secs).",
+          "messages": "zero",
+          "uidNext": "number",
+          "uidValidity": "number",
+          "unseen": "zero",
+          "highestModseq": "number"
+        },
+        {
+          "folder": "INBOX",
+          "status": "OK",
+          "code": null,
+          "text": "Status completed (0.001 + 0.000 secs).",
+          "messages": "nonzero",
+          "uidNext": "number",
+          "uidValidity": "number",
+          "unseen": "nonzero",
+          "highestModseq": "number"
+        }
+      ]
+    },
+    "examine": {
+      "answered": true,
+      "folders": [
+        {
+          "folder": "ohmail",
+          "status": "OK",
+          "code": "READ-ONLY",
+          "text": "Examine completed (0.012 + 0.000 + 0.011 secs).",
+          "codes": [
+            "HIGHESTMODSEQ",
+            "PERMANENTFLAGS",
+            "READ-ONLY",
+            "UIDNEXT",
+            "UIDVALIDITY"
+          ],
+          "flags": [
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "permanentFlags": [],
+          "exists": "zero",
+          "uidValidity": "number",
+          "uidNext": "number",
+          "highestModseq": "number"
+        },
+        {
+          "folder": "ohmail/_meta",
+          "status": "OK",
+          "code": "READ-ONLY",
+          "text": "Examine completed (0.001 + 0.000 secs).",
+          "codes": [
+            "CLOSED",
+            "HIGHESTMODSEQ",
+            "PERMANENTFLAGS",
+            "READ-ONLY",
+            "UIDNEXT",
+            "UIDVALIDITY",
+            "UNSEEN"
+          ],
+          "flags": [
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "permanentFlags": [],
+          "exists": "nonzero",
+          "uidValidity": "number",
+          "uidNext": "number",
+          "highestModseq": "number"
+        },
+        {
+          "folder": "h:zyrysbbvpbyb",
+          "status": "OK",
+          "code": "READ-ONLY",
+          "text": "Examine completed (0.011 + 0.000 + 0.010 secs).",
+          "codes": [
+            "CLOSED",
+            "HIGHESTMODSEQ",
+            "PERMANENTFLAGS",
+            "READ-ONLY",
+            "UIDNEXT",
+            "UIDVALIDITY"
+          ],
+          "flags": [
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "permanentFlags": [],
+          "exists": "zero",
+          "uidValidity": "number",
+          "uidNext": "number",
+          "highestModseq": "number"
+        },
+        {
+          "folder": "INBOX",
+          "status": "OK",
+          "code": "READ-ONLY",
+          "text": "Examine completed (0.001 + 0.000 secs).",
+          "codes": [
+            "CLOSED",
+            "HIGHESTMODSEQ",
+            "PERMANENTFLAGS",
+            "READ-ONLY",
+            "UIDNEXT",
+            "UIDVALIDITY",
+            "UNSEEN"
+          ],
+          "flags": [
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "permanentFlags": [],
+          "exists": "nonzero",
+          "uidValidity": "number",
+          "uidNext": "number",
+          "highestModseq": "number"
+        }
+      ]
+    },
+    "search": {
+      "answered": true,
+      "total": "1-9",
+      "terms": {
+        "headerMessageIdEmpty": {
+          "status": "OK",
+          "rel": "all"
+        },
+        "headerMessageIdAt": {
+          "status": "OK",
+          "rel": "all"
+        },
+        "headerFromEmpty": {
+          "status": "OK",
+          "rel": "all"
+        },
+        "headerAbsentEmpty": {
+          "status": "OK",
+          "rel": "none"
+        },
+        "subjectEmpty": {
+          "status": "OK",
+          "rel": "all"
+        },
+        "charsetUtf8Subject": {
+          "status": "OK",
+          "rel": "none"
+        },
+        "charsetUtf8All": {
+          "status": "OK",
+          "rel": "all"
+        },
+        "uidOneToStar": {
+          "status": "OK",
+          "rel": "all"
+        },
+        "uidNextToStar": {
+          "status": "OK",
+          "rel": "one"
+        },
+        "uidBeyondRange": {
+          "status": "OK",
+          "rel": "none"
+        }
+      }
+    },
+    "metaSearch": {
+      "answered": true,
+      "total": "1-9",
+      "headers": {
+        "X-Ohmail-Lease": {
+          "empty": {
+            "status": "OK",
+            "rel": "none"
+          },
+          "value": {
+            "status": "OK",
+            "rel": "none"
+          },
+          "agree": true
+        },
+        "X-Ohmail-Request": {
+          "empty": {
+            "status": "OK",
+            "rel": "none"
+          },
+          "value": {
+            "status": "OK",
+            "rel": "none"
+          },
+          "agree": true
+        },
+        "X-Ohmail-Ack": {
+          "empty": {
+            "status": "OK",
+            "rel": "one"
+          },
+          "value": {
+            "status": "OK",
+            "rel": "one"
+          },
+          "agree": true
+        },
+        "X-Ohmail-Profile": {
+          "empty": {
+            "status": "OK",
+            "rel": "one"
+          },
+          "value": {
+            "status": "OK",
+            "rel": "one"
+          },
+          "agree": true
+        }
+      },
+      "subjectEmpty": {
+        "status": "OK",
+        "rel": "all"
+      }
+    },
+    "nonexistent": {
+      "answered": true,
+      "root": {
+        "status": {
+          "status": "NO",
+          "code": null,
+          "text": "Mailbox doesn't exist: {name} (0.001 + 0.000 secs)."
+        },
+        "examine": {
+          "status": "NO",
+          "code": null,
+          "text": "Mailbox doesn't exist: {name} (0.001 + 0.000 secs)."
+        },
+        "listByName": "empty"
+      },
+      "nested": {
+        "status": {
+          "status": "NO",
+          "code": null,
+          "text": "Mailbox doesn't exist: {name} (0.001 + 0.000 secs)."
+        },
+        "examine": {
+          "status": "NO",
+          "code": null,
+          "text": "Mailbox doesn't exist: {name} (0.001 + 0.000 secs)."
+        },
+        "listByName": "empty"
+      }
+    },
+    "fetchShape": {
+      "answered": true,
+      "status": "OK",
+      "code": null,
+      "text": "Fetch completed (0.001 + 0.000 secs).",
+      "flags": [
+        "\\Recent"
+      ],
+      "size": "number",
+      "internalDate": "<date>",
+      "envelope": {
+        "date": "<date>",
+        "subject": "h:cxssqxurdhum",
+        "from": [
+          {
+            "name": "h:mpbawbknxybf",
+            "adl": null,
+            "mailbox": "h:aasspmrstbzm",
+            "host": "h:qwrejezfattg"
+          }
+        ],
+        "sender": [
+          {
+            "name": "h:mpbawbknxybf",
+            "adl": null,
+            "mailbox": "h:aasspmrstbzm",
+            "host": "h:qwrejezfattg"
+          }
+        ],
+        "replyTo": [
+          {
+            "name": "h:mpbawbknxybf",
+            "adl": null,
+            "mailbox": "h:aasspmrstbzm",
+            "host": "h:qwrejezfattg"
+          }
+        ],
+        "to": [
+          {
+            "name": null,
+            "adl": null,
+            "mailbox": "h:ebjzquxbjwxc",
+            "host": "h:sbhzbyjvpxef"
+          }
+        ],
+        "cc": null,
+        "bcc": null,
+        "inReplyTo": null,
+        "messageId": "h:uuhxrccqcuky"
+      },
+      "bodystructure": {
+        "type": "text/plain",
+        "params": {
+          "charset": "utf-8"
+        },
+        "id": null,
+        "description": null,
+        "encoding": "7bit",
+        "size": "number",
+        "lines": "number",
+        "ext": 4
+      }
+    },
+    "emptyFolderFetch": {
+      "answered": true,
+      "folder": "ohmail",
+      "seqStar": {
+        "status": "BAD",
+        "code": null,
+        "text": "Error in IMAP command FETCH: Invalid messageset (0.001 + 0.000 secs)."
+      },
+      "uidStar": {
+        "status": "OK",
+        "code": null,
+        "text": "Fetch completed (0.001 + 0.000 secs)."
+      },
+      "searchAll": {
+        "status": "OK",
+        "rel": "empty-folder"
+      }
+    },
+    "idle": {
+      "answered": true,
+      "advertised": true,
+      "continuation": true,
+      "status": "OK",
+      "code": null,
+      "text": "Idle completed (0.403 + 0.403 + 0.402 secs)."
+    },
+    "logout": {
+      "answered": true,
+      "status": "OK",
+      "code": null,
+      "text": "Logout completed (0.001 + 0.000 secs).",
+      "bye": true
+    }
+  },
+  "semantics": {
+    "headerEmptyValue": "presence",
+    "headerEmptyValueStandard": "presence",
+    "headerValue": "substring",
+    "subjectEmpty": "all",
+    "subjectEmptyAnswer": null,
+    "uidBeyondEnd": "highest",
+    "charsetUtf8": "accepted",
+    "nonexistent": {
+      "status": {
+        "status": "NO",
+        "code": null,
+        "text": "Mailbox doesn't exist: {name} (0.001 + 0.000 secs)."
+      },
+      "examine": {
+        "status": "NO",
+        "code": null,
+        "text": "Mailbox doesn't exist: {name} (0.001 + 0.000 secs)."
+      },
+      "listByName": "empty"
+    },
+    "emptyFolderStarFetch": {
+      "status": "BAD",
+      "code": null,
+      "text": "Error in IMAP command FETCH: Invalid messageset (0.001 + 0.000 secs)."
+    },
+    "namespace": {
+      "prefix": "",
+      "delimiter": "/",
+      "announced": true
+    },
+    "specialUse": [
+      "\\Sent"
+    ],
+    "idle": "supported",
+    "capabilities": [
+      "BINARY",
+      "CATENATE",
+      "CHILDREN",
+      "CONDSTORE",
+      "CONTEXT=SEARCH",
+      "ENABLE",
+      "ESEARCH",
+      "ESORT",
+      "\u004918NLEVEL=<n>",
+      "ID",
+      "IDLE",
+      "IMAP4REV1",
+      "LIST-EXTENDED",
+      "LIST-STATUS",
+      "LITERAL+",
+      "LOGIN-REFERRALS",
+      "MOVE",
+      "MULTIAPPEND",
+      "NAMESPACE",
+      "NOTIFY",
+      "PREVIEW",
+      "PREVIEW=FUZZY",
+      "QRESYNC",
+      "SASL-IR",
+      "SAVEDATE",
+      "SEARCHRES",
+      "SNIPPET=FUZZY",
+      "SORT",
+      "SORT=DISPLAY",
+      "SPECIAL-USE",
+      "STATUS=SIZE",
+      "THREAD=ORDEREDSUBJECT",
+      "THREAD=REFERENCES",
+      "THREAD=REFS",
+      "UIDPLUS",
+      "UNSELECT",
+      "URL-PARTIAL",
+      "WITHIN"
+    ]
+  },
+  "transient": {
+    "of": 24
+  }
+}

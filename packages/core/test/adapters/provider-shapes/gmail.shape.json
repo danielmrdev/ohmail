@@ -1,0 +1,1202 @@
+{
+  "kind": "ohmail-provider-shape",
+  "version": 1,
+  "provider": "gmail",
+  "presetId": "gmail",
+  "source": {
+    "kind": "recorded",
+    "tool": "probe-shapes.mjs",
+    "recordedOn": "2026-09-27",
+    "rescrubbed": {
+      "tool": "probe-shapes.mjs",
+      "on": "2026-09-27"
+    }
+  },
+  "endpoint": {
+    "host": "imap.gmail.com",
+    "port": 993,
+    "tls": "implicit"
+  },
+  "probes": {
+    "greeting": {
+      "answered": true,
+      "status": "OK",
+      "code": null,
+      "text": "Gimap ready for requests from <ip> <token:38>"
+    },
+    "capability": {
+      "answered": true,
+      "status": "OK",
+      "code": null,
+      "text": "Thats all she wrote! <token:38>",
+      "list": [
+        "AUTH=OAUTHBEARER",
+        "AUTH=PLAIN",
+        "AUTH=PLAIN-CLIENTTOKEN",
+        "AUTH=XOAUTH2",
+        "CHILDREN",
+        "ID",
+        "IDLE",
+        "IMAP4REV1",
+        "NAMESPACE",
+        "QUOTA",
+        "SASL-IR",
+        "UNSELECT",
+        "X-GM-EXT-1",
+        "XLIST",
+        "XYZZY"
+      ]
+    },
+    "login": {
+      "answered": true,
+      "mechanism": "LOGIN",
+      "status": "OK",
+      "code": null
+    },
+    "capabilityAfterLogin": {
+      "answered": true,
+      "status": "OK",
+      "code": null,
+      "text": "Success",
+      "list": [
+        "APPENDLIMIT=<n>",
+        "CHILDREN",
+        "COMPRESS=DEFLATE",
+        "CONDSTORE",
+        "ENABLE",
+        "ESEARCH",
+        "ID",
+        "IDLE",
+        "IMAP4REV1",
+        "LIST-EXTENDED",
+        "LIST-STATUS",
+        "LITERAL-",
+        "MOVE",
+        "NAMESPACE",
+        "QUOTA",
+        "SPECIAL-USE",
+        "UIDPLUS",
+        "UNSELECT",
+        "UTF8=ACCEPT",
+        "X-GM-EXT-1",
+        "XLIST"
+      ],
+      "transient": [
+        "THROTTLED"
+      ]
+    },
+    "id": {
+      "answered": true,
+      "advertised": true,
+      "status": "OK",
+      "code": null,
+      "text": "Success",
+      "fields": {
+        "name": "GImap",
+        "vendor": "Google, Inc.",
+        "support-url": "<text:31>",
+        "version": "gmail.imap-server_20260922.07_p0",
+        "remote-host": "<text:15>"
+      },
+      "transient": [
+        "THROTTLED"
+      ]
+    },
+    "namespace": {
+      "answered": true,
+      "advertised": true,
+      "status": "OK",
+      "code": null,
+      "text": "Success",
+      "personal": [
+        {
+          "prefix": "",
+          "delimiter": "/"
+        }
+      ],
+      "other": null,
+      "shared": null,
+      "transient": [
+        "THROTTLED"
+      ]
+    },
+    "list": {
+      "answered": true,
+      "status": "OK",
+      "code": null,
+      "text": "Success",
+      "delimiters": [
+        "/"
+      ],
+      "derivedPrefix": "",
+      "rows": [
+        {
+          "name": "INBOX",
+          "special": [],
+          "flags": [
+            "\\HasNoChildren"
+          ],
+          "delimiter": "/",
+          "product": false
+        },
+        {
+          "name": "h:tpmdfqapaxmx",
+          "special": [
+            "\\All"
+          ],
+          "flags": [
+            "\\All",
+            "\\HasNoChildren"
+          ],
+          "delimiter": "/",
+          "product": false
+        },
+        {
+          "name": "h:qexnuveexxsa",
+          "special": [
+            "\\Drafts"
+          ],
+          "flags": [
+            "\\Drafts",
+            "\\HasNoChildren"
+          ],
+          "delimiter": "/",
+          "product": false
+        },
+        {
+          "name": "h:bprfqcvvgaum",
+          "special": [
+            "\\Important"
+          ],
+          "flags": [
+            "\\HasNoChildren",
+            "\\Important"
+          ],
+          "delimiter": "/",
+          "product": false
+        },
+        {
+          "name": "h:wupekjsskpfc",
+          "special": [
+            "\\Sent"
+          ],
+          "flags": [
+            "\\HasNoChildren",
+            "\\Sent"
+          ],
+          "delimiter": "/",
+          "product": false
+        },
+        {
+          "name": "h:stvqvfpwcmtd",
+          "special": [
+            "\\Junk"
+          ],
+          "flags": [
+            "\\HasNoChildren",
+            "\\Junk"
+          ],
+          "delimiter": "/",
+          "product": false
+        },
+        {
+          "name": "h:fcxfhjapemtf",
+          "special": [
+            "\\Flagged"
+          ],
+          "flags": [
+            "\\Flagged",
+            "\\HasNoChildren"
+          ],
+          "delimiter": "/",
+          "product": false
+        },
+        {
+          "name": "h:xcttvznpkgnn",
+          "special": [
+            "\\Trash"
+          ],
+          "flags": [
+            "\\HasNoChildren",
+            "\\Trash"
+          ],
+          "delimiter": "/",
+          "product": false
+        },
+        {
+          "name": "ohmail",
+          "special": [],
+          "flags": [
+            "\\HasChildren",
+            "\\Noselect"
+          ],
+          "delimiter": "/",
+          "product": true
+        },
+        {
+          "name": "ohmail/News",
+          "special": [],
+          "flags": [
+            "\\HasNoChildren"
+          ],
+          "delimiter": "/",
+          "product": true
+        },
+        {
+          "name": "ohmail/Quarantine",
+          "special": [],
+          "flags": [
+            "\\HasNoChildren"
+          ],
+          "delimiter": "/",
+          "product": true
+        },
+        {
+          "name": "ohmail/Receipts",
+          "special": [],
+          "flags": [
+            "\\HasNoChildren"
+          ],
+          "delimiter": "/",
+          "product": true
+        },
+        {
+          "name": "ohmail/Screened",
+          "special": [],
+          "flags": [
+            "\\HasNoChildren"
+          ],
+          "delimiter": "/",
+          "product": true
+        },
+        {
+          "name": "ohmail/Screener",
+          "special": [],
+          "flags": [
+            "\\HasNoChildren"
+          ],
+          "delimiter": "/",
+          "product": true
+        },
+        {
+          "name": "ohmail/_meta",
+          "special": [],
+          "flags": [
+            "\\HasNoChildren"
+          ],
+          "delimiter": "/",
+          "product": true
+        }
+      ],
+      "others": "1-9",
+      "transient": [
+        "THROTTLED"
+      ]
+    },
+    "lsub": {
+      "answered": true,
+      "status": "OK",
+      "code": null,
+      "text": "Success",
+      "rows": [
+        "INBOX",
+        "h:bprfqcvvgaum",
+        "h:fcxfhjapemtf",
+        "h:qexnuveexxsa",
+        "h:stvqvfpwcmtd",
+        "h:tpmdfqapaxmx",
+        "h:wupekjsskpfc",
+        "h:xcttvznpkgnn",
+        "ohmail",
+        "ohmail/News",
+        "ohmail/Quarantine",
+        "ohmail/Receipts",
+        "ohmail/Screened",
+        "ohmail/Screener"
+      ],
+      "others": "1-9",
+      "transient": [
+        "THROTTLED"
+      ]
+    },
+    "status": {
+      "answered": true,
+      "folders": [
+        {
+          "folder": "INBOX",
+          "status": "OK",
+          "code": null,
+          "text": "Success",
+          "messages": "nonzero",
+          "uidNext": "number",
+          "uidValidity": "number",
+          "unseen": "nonzero",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "h:tpmdfqapaxmx",
+          "status": "OK",
+          "code": null,
+          "text": "Success",
+          "messages": "nonzero",
+          "uidNext": "number",
+          "uidValidity": "number",
+          "unseen": "nonzero",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "h:qexnuveexxsa",
+          "status": "OK",
+          "code": null,
+          "text": "Success",
+          "messages": "zero",
+          "uidNext": "number",
+          "uidValidity": "number",
+          "unseen": "zero",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "h:bprfqcvvgaum",
+          "status": "OK",
+          "code": null,
+          "text": "Success",
+          "messages": "zero",
+          "uidNext": "number",
+          "uidValidity": "number",
+          "unseen": "zero",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "h:wupekjsskpfc",
+          "status": "OK",
+          "code": null,
+          "text": "Success",
+          "messages": "nonzero",
+          "uidNext": "number",
+          "uidValidity": "number",
+          "unseen": "nonzero",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "h:stvqvfpwcmtd",
+          "status": "OK",
+          "code": null,
+          "text": "Success",
+          "messages": "nonzero",
+          "uidNext": "number",
+          "uidValidity": "number",
+          "unseen": "nonzero",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "h:fcxfhjapemtf",
+          "status": "OK",
+          "code": null,
+          "text": "Success",
+          "messages": "zero",
+          "uidNext": "number",
+          "uidValidity": "number",
+          "unseen": "zero",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "h:xcttvznpkgnn",
+          "status": "OK",
+          "code": null,
+          "text": "Success",
+          "messages": "zero",
+          "uidNext": "number",
+          "uidValidity": "number",
+          "unseen": "zero",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "ohmail/News",
+          "status": "OK",
+          "code": null,
+          "text": "Success",
+          "messages": "nonzero",
+          "uidNext": "number",
+          "uidValidity": "number",
+          "unseen": "zero",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "ohmail/Quarantine",
+          "status": "OK",
+          "code": null,
+          "text": "Success",
+          "messages": "zero",
+          "uidNext": "number",
+          "uidValidity": "number",
+          "unseen": "zero",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "ohmail/Receipts",
+          "status": "OK",
+          "code": null,
+          "text": "Success",
+          "messages": "zero",
+          "uidNext": "number",
+          "uidValidity": "number",
+          "unseen": "zero",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "ohmail/Screened",
+          "status": "OK",
+          "code": null,
+          "text": "Success",
+          "messages": "zero",
+          "uidNext": "number",
+          "uidValidity": "number",
+          "unseen": "zero",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        }
+      ]
+    },
+    "examine": {
+      "answered": true,
+      "folders": [
+        {
+          "folder": "INBOX",
+          "status": "OK",
+          "code": "READ-ONLY",
+          "text": "INBOX selected. (Success)",
+          "codes": [
+            "HIGHESTMODSEQ",
+            "PERMANENTFLAGS",
+            "READ-ONLY",
+            "UIDNEXT",
+            "UIDVALIDITY"
+          ],
+          "flags": [
+            "$NotPhishing",
+            "$Phishing",
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "permanentFlags": [],
+          "exists": "nonzero",
+          "uidValidity": "number",
+          "uidNext": "number",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "h:tpmdfqapaxmx",
+          "status": "OK",
+          "code": "READ-ONLY",
+          "text": "{name} selected. (Success)",
+          "codes": [
+            "HIGHESTMODSEQ",
+            "PERMANENTFLAGS",
+            "READ-ONLY",
+            "UIDNEXT",
+            "UIDVALIDITY"
+          ],
+          "flags": [
+            "$NotPhishing",
+            "$Phishing",
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "permanentFlags": [],
+          "exists": "nonzero",
+          "uidValidity": "number",
+          "uidNext": "number",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "h:qexnuveexxsa",
+          "status": "OK",
+          "code": "READ-ONLY",
+          "text": "{name} selected. (Success)",
+          "codes": [
+            "HIGHESTMODSEQ",
+            "PERMANENTFLAGS",
+            "READ-ONLY",
+            "UIDNEXT",
+            "UIDVALIDITY"
+          ],
+          "flags": [
+            "$NotPhishing",
+            "$Phishing",
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "permanentFlags": [],
+          "exists": "zero",
+          "uidValidity": "number",
+          "uidNext": "number",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "h:bprfqcvvgaum",
+          "status": "OK",
+          "code": "READ-ONLY",
+          "text": "{name} selected. (Success)",
+          "codes": [
+            "HIGHESTMODSEQ",
+            "PERMANENTFLAGS",
+            "READ-ONLY",
+            "UIDNEXT",
+            "UIDVALIDITY"
+          ],
+          "flags": [
+            "$NotPhishing",
+            "$Phishing",
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "permanentFlags": [],
+          "exists": "zero",
+          "uidValidity": "number",
+          "uidNext": "number",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "h:wupekjsskpfc",
+          "status": "OK",
+          "code": "READ-ONLY",
+          "text": "{name} selected. (Success)",
+          "codes": [
+            "HIGHESTMODSEQ",
+            "PERMANENTFLAGS",
+            "READ-ONLY",
+            "UIDNEXT",
+            "UIDVALIDITY"
+          ],
+          "flags": [
+            "$NotPhishing",
+            "$Phishing",
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "permanentFlags": [],
+          "exists": "nonzero",
+          "uidValidity": "number",
+          "uidNext": "number",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "h:stvqvfpwcmtd",
+          "status": "OK",
+          "code": "READ-ONLY",
+          "text": "{name} selected. (Success)",
+          "codes": [
+            "HIGHESTMODSEQ",
+            "PERMANENTFLAGS",
+            "READ-ONLY",
+            "UIDNEXT",
+            "UIDVALIDITY"
+          ],
+          "flags": [
+            "$NotPhishing",
+            "$Phishing",
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "permanentFlags": [],
+          "exists": "nonzero",
+          "uidValidity": "number",
+          "uidNext": "number",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "h:fcxfhjapemtf",
+          "status": "OK",
+          "code": "READ-ONLY",
+          "text": "{name} selected. (Success)",
+          "codes": [
+            "HIGHESTMODSEQ",
+            "PERMANENTFLAGS",
+            "READ-ONLY",
+            "UIDNEXT",
+            "UIDVALIDITY"
+          ],
+          "flags": [
+            "$NotPhishing",
+            "$Phishing",
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "permanentFlags": [],
+          "exists": "zero",
+          "uidValidity": "number",
+          "uidNext": "number",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "h:xcttvznpkgnn",
+          "status": "OK",
+          "code": "READ-ONLY",
+          "text": "{name} selected. (Success)",
+          "codes": [
+            "HIGHESTMODSEQ",
+            "PERMANENTFLAGS",
+            "READ-ONLY",
+            "UIDNEXT",
+            "UIDVALIDITY"
+          ],
+          "flags": [
+            "$NotPhishing",
+            "$Phishing",
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "permanentFlags": [],
+          "exists": "zero",
+          "uidValidity": "number",
+          "uidNext": "number",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "ohmail/News",
+          "status": "OK",
+          "code": "READ-ONLY",
+          "text": "{name} selected. (Success)",
+          "codes": [
+            "HIGHESTMODSEQ",
+            "PERMANENTFLAGS",
+            "READ-ONLY",
+            "UIDNEXT",
+            "UIDVALIDITY"
+          ],
+          "flags": [
+            "$NotPhishing",
+            "$Phishing",
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "permanentFlags": [],
+          "exists": "nonzero",
+          "uidValidity": "number",
+          "uidNext": "number",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "ohmail/Quarantine",
+          "status": "OK",
+          "code": "READ-ONLY",
+          "text": "{name} selected. (Success)",
+          "codes": [
+            "HIGHESTMODSEQ",
+            "PERMANENTFLAGS",
+            "READ-ONLY",
+            "UIDNEXT",
+            "UIDVALIDITY"
+          ],
+          "flags": [
+            "$NotPhishing",
+            "$Phishing",
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "permanentFlags": [],
+          "exists": "zero",
+          "uidValidity": "number",
+          "uidNext": "number",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "ohmail/Receipts",
+          "status": "OK",
+          "code": "READ-ONLY",
+          "text": "{name} selected. (Success)",
+          "codes": [
+            "HIGHESTMODSEQ",
+            "PERMANENTFLAGS",
+            "READ-ONLY",
+            "UIDNEXT",
+            "UIDVALIDITY"
+          ],
+          "flags": [
+            "$NotPhishing",
+            "$Phishing",
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "permanentFlags": [],
+          "exists": "zero",
+          "uidValidity": "number",
+          "uidNext": "number",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        {
+          "folder": "ohmail/Screened",
+          "status": "OK",
+          "code": "READ-ONLY",
+          "text": "{name} selected. (Success)",
+          "codes": [
+            "HIGHESTMODSEQ",
+            "PERMANENTFLAGS",
+            "READ-ONLY",
+            "UIDNEXT",
+            "UIDVALIDITY"
+          ],
+          "flags": [
+            "$NotPhishing",
+            "$Phishing",
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "permanentFlags": [],
+          "exists": "zero",
+          "uidValidity": "number",
+          "uidNext": "number",
+          "highestModseq": "number",
+          "transient": [
+            "THROTTLED"
+          ]
+        }
+      ]
+    },
+    "search": {
+      "answered": true,
+      "total": "100+",
+      "terms": {
+        "headerMessageIdEmpty": {
+          "status": "NO",
+          "code": "SERVERBUG",
+          "text": "infeasible query (Failure)",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        "headerMessageIdAt": {
+          "status": "OK",
+          "rel": "none"
+        },
+        "headerFromEmpty": {
+          "status": "NO",
+          "code": "SERVERBUG",
+          "text": "infeasible query (Failure)",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        "headerAbsentEmpty": {
+          "status": "OK",
+          "rel": "none"
+        },
+        "subjectEmpty": {
+          "status": "NO",
+          "code": "SERVERBUG",
+          "text": "infeasible query (Failure)",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        "charsetUtf8Subject": {
+          "status": "OK",
+          "rel": "none"
+        },
+        "charsetUtf8All": {
+          "status": "OK",
+          "rel": "all"
+        },
+        "uidOneToStar": {
+          "status": "OK",
+          "rel": "all"
+        },
+        "uidNextToStar": {
+          "status": "OK",
+          "rel": "one"
+        },
+        "uidBeyondRange": {
+          "status": "OK",
+          "rel": "none"
+        }
+      }
+    },
+    "metaSearch": {
+      "answered": true,
+      "total": "1-9",
+      "headers": {
+        "X-Ohmail-Lease": {
+          "empty": {
+            "status": "OK",
+            "rel": "none"
+          },
+          "value": {
+            "status": "OK",
+            "rel": "none"
+          },
+          "agree": true
+        },
+        "X-Ohmail-Request": {
+          "empty": {
+            "status": "OK",
+            "rel": "none"
+          },
+          "value": {
+            "status": "OK",
+            "rel": "none"
+          },
+          "agree": true
+        },
+        "X-Ohmail-Ack": {
+          "empty": {
+            "status": "OK",
+            "rel": "some"
+          },
+          "value": {
+            "status": "OK",
+            "rel": "some"
+          },
+          "agree": true
+        },
+        "X-Ohmail-Profile": {
+          "empty": {
+            "status": "OK",
+            "rel": "one"
+          },
+          "value": {
+            "status": "OK",
+            "rel": "one"
+          },
+          "agree": true
+        }
+      },
+      "subjectEmpty": {
+        "status": "NO",
+        "code": "SERVERBUG",
+        "text": "infeasible query (Failure)",
+        "transient": [
+          "THROTTLED"
+        ]
+      }
+    },
+    "nonexistent": {
+      "answered": true,
+      "root": {
+        "status": {
+          "status": "NO",
+          "code": "NONEXISTENT",
+          "text": "Invalid folder: {name} (Failure)",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        "examine": {
+          "status": "NO",
+          "code": "NONEXISTENT",
+          "text": "Unknown Mailbox: {name} (now in authenticated state) (Failure)",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        "listByName": "empty"
+      },
+      "nested": {
+        "status": {
+          "status": "NO",
+          "code": "NONEXISTENT",
+          "text": "Invalid folder: {name} (Failure)",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        "examine": {
+          "status": "NO",
+          "code": "NONEXISTENT",
+          "text": "Unknown Mailbox: {name} (Failure)",
+          "transient": [
+            "THROTTLED"
+          ]
+        },
+        "listByName": "empty"
+      }
+    },
+    "fetchShape": {
+      "answered": true,
+      "status": "OK",
+      "code": null,
+      "text": "Success",
+      "flags": [
+        "\\Seen"
+      ],
+      "size": "number",
+      "internalDate": "<date>",
+      "envelope": {
+        "date": "<date>",
+        "subject": "h:mktjrnvpzpsw",
+        "from": [
+          {
+            "name": null,
+            "adl": null,
+            "mailbox": "h:zatejpkurjzd",
+            "host": "h:tqekqyqvvceg"
+          }
+        ],
+        "sender": [
+          {
+            "name": null,
+            "adl": null,
+            "mailbox": "h:zatejpkurjzd",
+            "host": "h:tqekqyqvvceg"
+          }
+        ],
+        "replyTo": [
+          {
+            "name": null,
+            "adl": null,
+            "mailbox": "h:zatejpkurjzd",
+            "host": "h:tqekqyqvvceg"
+          }
+        ],
+        "to": [
+          {
+            "name": null,
+            "adl": null,
+            "mailbox": "h:dtuxaawjmbmr",
+            "host": "h:rhmyanmgrmrb"
+          }
+        ],
+        "cc": null,
+        "bcc": null,
+        "inReplyTo": "h:rfhnpegszrxp",
+        "messageId": "h:vmvbcaptrxsc"
+      },
+      "bodystructure": {
+        "type": "text/plain",
+        "params": {
+          "charset": "utf-8"
+        },
+        "id": null,
+        "description": null,
+        "encoding": "7bit",
+        "size": "number",
+        "lines": "number",
+        "ext": 3
+      },
+      "transient": [
+        "THROTTLED"
+      ]
+    },
+    "emptyFolderFetch": {
+      "answered": true,
+      "folder": "h:qexnuveexxsa",
+      "seqStar": {
+        "status": "OK",
+        "code": null,
+        "text": "Success",
+        "transient": [
+          "THROTTLED"
+        ]
+      },
+      "uidStar": {
+        "status": "OK",
+        "code": null,
+        "text": "Success",
+        "transient": [
+          "THROTTLED"
+        ]
+      },
+      "searchAll": {
+        "status": "OK",
+        "rel": "empty-folder"
+      }
+    },
+    "idle": {
+      "answered": true,
+      "advertised": true,
+      "continuation": true,
+      "status": "OK",
+      "code": null,
+      "text": "IDLE terminated (Success)",
+      "transient": [
+        "THROTTLED"
+      ]
+    },
+    "logout": {
+      "answered": true,
+      "status": "OK",
+      "code": null,
+      "text": "73 good day (Success)",
+      "bye": true,
+      "transient": [
+        "THROTTLED"
+      ]
+    }
+  },
+  "semantics": {
+    "headerEmptyValue": "presence",
+    "headerEmptyValueStandard": "refused",
+    "headerValue": "not-substring",
+    "subjectEmpty": "refused",
+    "subjectEmptyAnswer": {
+      "status": "NO",
+      "code": "SERVERBUG",
+      "text": "infeasible query (Failure)"
+    },
+    "uidBeyondEnd": "highest",
+    "charsetUtf8": "accepted",
+    "nonexistent": {
+      "status": {
+        "status": "NO",
+        "code": "NONEXISTENT",
+        "text": "Invalid folder: {name} (Failure)"
+      },
+      "examine": {
+        "status": "NO",
+        "code": "NONEXISTENT",
+        "text": "Unknown Mailbox: {name} (now in authenticated state) (Failure)"
+      },
+      "listByName": "empty"
+    },
+    "emptyFolderStarFetch": {
+      "status": "OK",
+      "code": null,
+      "text": "Success"
+    },
+    "namespace": {
+      "prefix": "",
+      "delimiter": "/",
+      "announced": true
+    },
+    "specialUse": [
+      "\\All",
+      "\\Drafts",
+      "\\Flagged",
+      "\\Important",
+      "\\Junk",
+      "\\Sent",
+      "\\Trash"
+    ],
+    "idle": "supported",
+    "capabilities": [
+      "APPENDLIMIT=<n>",
+      "CHILDREN",
+      "COMPRESS=DEFLATE",
+      "CONDSTORE",
+      "ENABLE",
+      "ESEARCH",
+      "ID",
+      "IDLE",
+      "IMAP4REV1",
+      "LIST-EXTENDED",
+      "LIST-STATUS",
+      "LITERAL-",
+      "MOVE",
+      "NAMESPACE",
+      "QUOTA",
+      "SPECIAL-USE",
+      "UIDPLUS",
+      "UNSELECT",
+      "UTF8=ACCEPT",
+      "X-GM-EXT-1",
+      "XLIST"
+    ]
+  },
+  "transient": {
+    "of": 44,
+    "THROTTLED": 42
+  }
+}

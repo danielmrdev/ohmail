@@ -1,0 +1,22 @@
+{
+  "entitlements": {
+    "mailboxLimit": 0, "canAddMailbox": false, "aiEnabled": false, "syncEnabled": false,
+    "storageBytesLimit": 0, "reason": "canceled"
+  },
+  "balance": 0,
+  "setupCredits": { "remaining": 0, "expiresAt": null },
+  "storageUsedBytes": 0,
+  "invoiceGranted": false,
+  "manageUrl": "https://account.ohmail.app/manage?token=…",
+  "lifecycle": {
+    "state": "closed",
+    "closedReason": "trial_ended",
+    "trialEndsAt": null,
+    "graceUntil": null,
+    "closedAt": "2026-09-16T00:00:00.000Z",
+    "erasureAt": "2026-10-22T00:00:00.000Z",
+    "erasedAt": null,
+    "formerlyPaid": false,
+    "lifecycleEpoch": "2026-09-22T00:00:00.000Z"
+  }
+}

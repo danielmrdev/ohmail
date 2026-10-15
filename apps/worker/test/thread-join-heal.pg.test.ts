@@ -1,0 +1,587 @@
+import { describe, it, expect, beforeAll } from "vitest";
+import { randomUUID } from "node:crypto";
+import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
+import { brandDialect } from "@trafficflow/db/dialect";
+import { asc, eq } from "drizzle-orm";
+import { runMigrations } from "@trafficflow/db/admin";
+import { PG_TEST_URL, realPgAvailable } from "@trafficflow/db/testing";
+import { accounts, changeLog, drafts, mailboxes, messages, threadNotes, threads, type Tx } from "@trafficflow/db";
+import { schema } from "@trafficflow/db/cloud";
+import { MAX_THREAD_PARTICIPANTS } from "@trafficflow/core/mail";
+import { threadJoinHealPass } from "../src/thread-join-heal.js";
+
+/**
+ * THE THREAD-JOIN HEAL, AGAINST REAL POSTGRES.
+ *
+ * Real Postgres rather than PGlite because the merge is a transaction whose whole point is its
+ * shape: message moves, the surviving thread's update, the absorbed thread's DELETE (an FK
+ * target — the moves must precede it or the delete is refused) and the change-log appends
+ * commit together or not at all, under the seq allocation's account row lock. PGlite green says
+ * nothing about any of that.
+ *
+ * The first fixture is the SHAPE PRODUCTION HAD on 2026-08-26, addresses anonymized: the
+ * user's outbound message threaded alone, because the correspondent's reply landed at the
+ * user's old provider and re-entered as a FORWARD — a fresh Message-ID, no References — onto
+ * which the user's next reply and the correspondent's "AW:" reply then chained correctly.
+ * Four messages, one human conversation, two header chains, two threads.
+ */
+
+const AVAILABLE = await realPgAvailable();
+
+const t0 = Date.UTC(2026, 7, 24, 14, 42, 49);
+const DAY = 24 * 60 * 60 * 1000;
+const OWNER = "owner@own.example";
+const COUNTERPART = "counterpart@partner.example";
+
+describe.skipIf(!AVAILABLE)("thread-join heal", () => {
+  let db: ReturnType<typeof drizzle<typeof schema>>;
+  let sql: ReturnType<typeof postgres>;
+
+  beforeAll(async () => {
+    await runMigrations(PG_TEST_URL);
+    sql = postgres(PG_TEST_URL, { max: 2, onnotice: () => {} });
+    db = brandDialect(drizzle(sql, { schema }), "pg");
+  }, 120_000);
+
+  interface Seeded { accountId: string; mailboxId: string }
+
+  async function seedAccount(): Promise<Seeded> {
+    const accountId = randomUUID();
+    await db.insert(accounts).values({ id: accountId, name: `join-${accountId.slice(0, 8)}` });
+    const [mb] = await db.insert(mailboxes).values({
+      accountId, provider: "imap", address: OWNER,
+    }).returning({ id: mailboxes.id });
+    return { accountId, mailboxId: mb!.id };
+  }
+
+  async function seedThread(s: Seeded, subject: string, lastMessageAt: Date): Promise<string> {
+    const [t] = await db.insert(threads).values({
+      accountId: s.accountId, subject, lastMessageAt,
+      rootMessageIdHeader: `${randomUUID()}@seed.example`,
+      participants: [],
+    }).returning({ id: threads.id });
+    return t!.id;
+  }
+
+  /**
+   * The account's own outbound mail sits in the mailbox's SENT folder, and `native_locator` is
+   * where the pass reads that: it decides whether a message's `To`/`Cc` is OUR record of who we
+   * wrote to or a sender's claim about who else is involved. Seeding every row under INBOX would
+   * make the account's own messages read as inbound and starve every join in this file.
+   */
+  function locatorFor(from: string): { folder: string; ref: string } {
+    return {
+      folder: from === OWNER ? "Sent" : "INBOX",
+      ref: `1:${Math.floor(Math.random() * 1e6)}`,
+    };
+  }
+
+  async function seedMessage(s: Seeded, threadId: string, over: {
+    subject: string; date: Date; from: string; to?: string[]; cc?: string[];
+    /** `messages.auth_verdict` as the ingest wrote it. Absent ⇒ NULL, "nobody asked". */
+    authVerdict?: string;
+  }): Promise<string> {
+    const [m] = await db.insert(messages).values({
+      accountId: s.accountId, mailboxId: s.mailboxId, threadId,
+      messageIdHeader: `${randomUUID()}@seed.example`,
+      bodyHash: randomUUID(), dedupKey: randomUUID(),
+      subject: over.subject, fromAddress: over.from, date: over.date,
+      nativeLocator: locatorFor(over.from),
+      toAddresses: (over.to ?? []).map((address) => ({ name: null, address })),
+      ccAddresses: (over.cc ?? []).map((address) => ({ name: null, address })),
+      ...(over.authVerdict ? { authVerdict: over.authVerdict } : {}),
+    }).returning({ id: messages.id });
+    return m!.id;
+  }
+
+  /** The production shape. `reverseSeedOrder` seeds the forward chain FIRST — arrival order
+   * must not decide the survivor, the messages' own dates must. */
+  async function seedProductionSplit(reverseSeedOrder = false) {
+    const s = await seedAccount();
+    const seedOriginal = async () => {
+      const thread = await seedThread(s, "Web Banner - vendor - Partner", new Date(t0));
+      const message = await seedMessage(s, thread, {
+        subject: "Web Banner - vendor - Partner", date: new Date(t0),
+        from: OWNER, to: [COUNTERPART], cc: ["colleague@own.example"],
+      });
+      return { thread, message };
+    };
+    const seedForwardChain = async () => {
+      const thread = await seedThread(s, "Web Banner - vendor - Partner", new Date(t0 + 1.93 * DAY));
+      const fwd = await seedMessage(s, thread, {
+        subject: "Fwd: AW: Web Banner - vendor - Partner", date: new Date(t0 + 1.76 * DAY),
+        from: OWNER, to: [OWNER],
+      });
+      const reply = await seedMessage(s, thread, {
+        subject: "Re: Fwd: AW: Web Banner - vendor - Partner", date: new Date(t0 + 1.78 * DAY),
+        from: OWNER, to: [COUNTERPART],
+      });
+      const aw = await seedMessage(s, thread, {
+        subject: "AW: Fwd: AW: Web Banner - vendor - Partner", date: new Date(t0 + 1.93 * DAY),
+        from: COUNTERPART, to: [OWNER], cc: ["info@own.example"],
+      });
+      return { thread, messages: [fwd, reply, aw] };
+    };
+    const [a, b] = reverseSeedOrder
+      ? await (async () => { const fc = await seedForwardChain(); return [await seedOriginal(), fc] as const; })()
+      : await (async () => { const o = await seedOriginal(); return [o, await seedForwardChain()] as const; })();
+    return { s, original: a, forwardChain: b };
+  }
+
+  it("unites the four-message production shape onto the older thread, and tells the mirrors", async () => {
+    const { s, original, forwardChain } = await seedProductionSplit();
+
+    const r = await threadJoinHealPass({ db: db as unknown as Tx, apply: true, accountId: s.accountId });
+    expect(r.merged).toBe(1);
+    expect(r.messagesMoved).toBe(3);
+    expect(r.skipped).toBe(0);
+
+    // Every message now sits on the ORIGINAL thread — the conversation's true start survives.
+    const rows = await db.select({ id: messages.id, threadId: messages.threadId }).from(messages)
+      .where(eq(messages.accountId, s.accountId));
+    expect(rows).toHaveLength(4);
+    for (const row of rows) expect(row.threadId).toBe(original.thread);
+
+    // The forward chain's thread is gone; the survivor learned the union of what both knew.
+    const remaining = await db.select({
+      id: threads.id, lastMessageAt: threads.lastMessageAt, participants: threads.participants,
+    }).from(threads).where(eq(threads.accountId, s.accountId));
+    expect(remaining.map((t) => t.id)).toEqual([original.thread]);
+    expect(remaining[0]!.lastMessageAt).toEqual(new Date(t0 + 1.93 * DAY));
+
+    // The change log carries the full merge: one update per moved message, the survivor's
+    // update, the absorbed thread's delete — the exact rows `POST /threads/merge` would append.
+    const changes = await db.select({
+      entityType: changeLog.entityType, entityId: changeLog.entityId, op: changeLog.op,
+    }).from(changeLog).where(eq(changeLog.accountId, s.accountId)).orderBy(asc(changeLog.seq));
+    const key = (c: { entityType: string; entityId: string; op: string }) => `${c.entityType}:${c.op}:${c.entityId}`;
+    expect(new Set(changes.map(key))).toEqual(new Set([
+      ...forwardChain.messages.map((id) => `message:update:${id}`),
+      `thread:update:${original.thread}`,
+      `thread:delete:${forwardChain.thread}`,
+    ]));
+
+    // Idempotent: the merged group holds one thread and the second run selects nothing.
+    const again = await threadJoinHealPass({ db: db as unknown as Tx, apply: true, accountId: s.accountId });
+    expect(again.merged).toBe(0);
+    expect(again.messagesMoved).toBe(0);
+  });
+
+  it("arrival order does not pick the survivor — seeded in reverse, the OLDER-BY-DATE thread still wins", async () => {
+    const { s, original } = await seedProductionSplit(true);
+
+    const r = await threadJoinHealPass({ db: db as unknown as Tx, apply: true, accountId: s.accountId });
+    expect(r.merged).toBe(1);
+
+    const remaining = await db.select({ id: threads.id }).from(threads)
+      .where(eq(threads.accountId, s.accountId));
+    expect(remaining.map((t) => t.id)).toEqual([original.thread]);
+  });
+
+  it("unrelated mail sharing a subject is NOT merged — different counterparties", async () => {
+    const s = await seedAccount();
+    const a = await seedThread(s, "Invoice", new Date(t0));
+    await seedMessage(s, a, { subject: "Re: Invoice", date: new Date(t0), from: "billing@acme.example", to: [OWNER] });
+    const b = await seedThread(s, "Invoice", new Date(t0 + DAY));
+    await seedMessage(s, b, { subject: "Re: Invoice", date: new Date(t0 + DAY), from: "accounts@other.example", to: [OWNER] });
+
+    const r = await threadJoinHealPass({ db: db as unknown as Tx, apply: true, accountId: s.accountId });
+    expect(r.merged).toBe(0);
+
+    const remaining = await db.select({ id: threads.id }).from(threads).where(eq(threads.accountId, s.accountId));
+    expect(new Set(remaining.map((t) => t.id))).toEqual(new Set([a, b]));
+  });
+
+  it("a dry run takes the same verdicts and writes NOTHING", async () => {
+    const { s, original, forwardChain } = await seedProductionSplit();
+
+    const r = await threadJoinHealPass({ db: db as unknown as Tx, apply: false, accountId: s.accountId });
+    expect(r.merged).toBe(1);        // the verdict
+    expect(r.messagesMoved).toBe(0); // but no write
+
+    const remaining = await db.select({ id: threads.id }).from(threads).where(eq(threads.accountId, s.accountId));
+    expect(new Set(remaining.map((t) => t.id))).toEqual(new Set([original.thread, forwardChain.thread]));
+    const changes = await db.select({ seq: changeLog.seq }).from(changeLog).where(eq(changeLog.accountId, s.accountId));
+    expect(changes).toHaveLength(0);
+  });
+
+  it("a capped run hands back a cursor, and resuming skips the refusals already judged", async () => {
+    const s = await seedAccount();
+    // Group "Invoice": unrelated senders — every run refuses it, so it never leaves the
+    // candidate set. Group "Zebra budget": a real split. Subjects chosen so the refusal
+    // group sorts FIRST in the (account_id, subject) keyset order.
+    const a1 = await seedThread(s, "Invoice", new Date(t0));
+    await seedMessage(s, a1, { subject: "Re: Invoice", date: new Date(t0), from: "billing@acme.example", to: [OWNER] });
+    const a2 = await seedThread(s, "Invoice", new Date(t0 + DAY));
+    await seedMessage(s, a2, { subject: "Re: Invoice", date: new Date(t0 + DAY), from: "accounts@other.example", to: [OWNER] });
+
+    const b1 = await seedThread(s, "Zebra budget", new Date(t0));
+    await seedMessage(s, b1, { subject: "Zebra budget", date: new Date(t0), from: OWNER, to: [COUNTERPART] });
+    const b2 = await seedThread(s, "Zebra budget", new Date(t0 + DAY));
+    await seedMessage(s, b2, { subject: "AW: Zebra budget", date: new Date(t0 + DAY), from: COUNTERPART, to: [OWNER] });
+
+    const first = await threadJoinHealPass({ db: db as unknown as Tx, apply: true, accountId: s.accountId, maxGroups: 1 });
+    expect(first.groupsScanned).toBe(1);
+    expect(first.merged).toBe(0);        // it saw only the refusal group
+    expect(first.capped).toBe(true);
+    expect(first.cursor).toEqual({ accountId: s.accountId, subject: "Invoice" });
+
+    const second = await threadJoinHealPass({
+      db: db as unknown as Tx, apply: true, accountId: s.accountId, maxGroups: 1, cursor: first.cursor!,
+    });
+    expect(second.merged).toBe(1);       // resumed PAST the refusal group, straight to the split
+
+    const remaining = await db.select({ id: threads.id }).from(threads).where(eq(threads.accountId, s.accountId));
+    expect(new Set(remaining.map((t) => t.id))).toEqual(new Set([a1, a2, b1]));
+  });
+
+  it("an overlap consisting only of a PROMISCUOUS witness is no evidence — the mailbox owner's former identity cannot join threads", async () => {
+    const s = await seedAccount();
+    const oldSelf = "former-identity@own.example";
+
+    // The former identity participates in many unrelated threads — the footprint that
+    // disqualifies an address as a join witness. Bulk-seeded: one thread + one message each.
+    const noiseThreads = Array.from({ length: 200 }, (_, i) => ({
+      accountId: s.accountId, subject: `Noise ${i}`, lastMessageAt: new Date(t0 - (i + 1) * DAY),
+      rootMessageIdHeader: `noise-${i}-${s.accountId}@seed.example`, participants: [],
+    }));
+    const seededNoise = await db.insert(threads).values(noiseThreads).returning({ id: threads.id });
+    await db.insert(messages).values(seededNoise.map((t, i) => ({
+      accountId: s.accountId, mailboxId: s.mailboxId, threadId: t.id,
+      messageIdHeader: `noise-m-${i}-${s.accountId}@seed.example`,
+      bodyHash: `noise-${i}`, dedupKey: `noise-${i}-${s.accountId}`,
+      subject: `Noise ${i}`, fromAddress: oldSelf, date: new Date(t0 - (i + 1) * DAY),
+      // Imported history: it arrived FROM the old provider, so it is inbound mail here.
+      nativeLocator: locatorFor(oldSelf),
+      toAddresses: [{ name: null, address: OWNER }], ccAddresses: [],
+    })));
+
+    // Two UNRELATED vendors, same base subject, inside the window, later one prefixed — the
+    // only shared address is the former identity, as each vendor mails it separately.
+    const a = await seedThread(s, "Rechnung", new Date(t0));
+    await seedMessage(s, a, { subject: "Rechnung", date: new Date(t0), from: "billing@acme.example", to: [oldSelf] });
+    const b = await seedThread(s, "Rechnung", new Date(t0 + DAY));
+    await seedMessage(s, b, { subject: "AW: Rechnung", date: new Date(t0 + DAY), from: "accounts@other.example", to: [oldSelf] });
+
+    const r = await threadJoinHealPass({ db: db as unknown as Tx, apply: true, accountId: s.accountId });
+    expect(r.merged).toBe(0);
+
+    const remaining = await db.select({ id: threads.id }).from(threads).where(eq(threads.accountId, s.accountId));
+    expect(remaining).toHaveLength(202); // 200 noise + the two vendors, all untouched
+  });
+
+  /**
+   * A stranger's own thread shares one address with a trusted conversation because the stranger
+   * WROTE that address into their `Cc`. Every other guard passes — same base subject, the later
+   * chain claims continuation, well inside the window — so the verdict turns on who put the
+   * address there, and the refusal is counted apart so a rising count is readable.
+   */
+  it("a Cc the SENDER wrote cannot join two conversations, and the refusal is counted", async () => {
+    const s = await seedAccount();
+    const colleague = "colleague@own.example";
+
+    const a = await seedThread(s, "Zahlung Projekt", new Date(t0));
+    await seedMessage(s, a, {
+      subject: "Zahlung Projekt", date: new Date(t0), from: OWNER, to: [colleague],
+    });
+
+    const b = await seedThread(s, "Zahlung Projekt", new Date(t0 + DAY));
+    await seedMessage(s, b, {
+      subject: "AW: Zahlung Projekt", date: new Date(t0 + DAY),
+      from: "stranger@elsewhere.example", to: [OWNER], cc: [colleague],
+    });
+
+    const r = await threadJoinHealPass({ db: db as unknown as Tx, apply: true, accountId: s.accountId });
+    expect(r.merged).toBe(0);
+    expect(r.refusedUncorroborated).toBe(1);
+
+    const rows = await db.select({ id: threads.id }).from(threads).where(eq(threads.accountId, s.accountId));
+    expect(new Set(rows.map((t) => t.id))).toEqual(new Set([a, b]));
+  });
+
+  it("POSITIVE CONTROL: the same shape joins once the colleague has written to us on it", async () => {
+    const s = await seedAccount();
+    const colleague = "colleague@own.example";
+
+    const a = await seedThread(s, "Zahlung Projekt", new Date(t0));
+    await seedMessage(s, a, {
+      subject: "Zahlung Projekt", date: new Date(t0), from: OWNER, to: [colleague],
+    });
+
+    const b = await seedThread(s, "Zahlung Projekt", new Date(t0 + DAY));
+    await seedMessage(s, b, {
+      subject: "AW: Zahlung Projekt", date: new Date(t0 + DAY), from: colleague, to: [OWNER],
+    });
+
+    const r = await threadJoinHealPass({ db: db as unknown as Tx, apply: true, accountId: s.accountId });
+    expect(r.merged).toBe(1);
+    expect(r.refusedUncorroborated).toBe(0);
+  });
+
+  /**
+   * ═══ A FORGED `From` CANNOT JOIN TWO CONVERSATIONS ════════════════════════════════════════
+   *
+   * The merge above is corroborated by "the colleague wrote to us". That reading takes the
+   * delivery as evidence about the claimed author — so where the sending side's own check says
+   * the author is forged, it is evidence about nobody. Read through THIS pass's own select, not
+   * a hand-built array: the column has to reach the rule, and a leaf test cannot say whether it
+   * does.
+   */
+  it("an inbound message whose provider says the author is FORGED cannot corroborate a join", async () => {
+    const s = await seedAccount();
+    const colleague = "colleague@own.example";
+
+    const a = await seedThread(s, "Zahlung Projekt", new Date(t0));
+    await seedMessage(s, a, {
+      subject: "Zahlung Projekt", date: new Date(t0), from: OWNER, to: [colleague],
+    });
+
+    const b = await seedThread(s, "Zahlung Projekt", new Date(t0 + DAY));
+    await seedMessage(s, b, {
+      subject: "AW: Zahlung Projekt", date: new Date(t0 + DAY), from: colleague, to: [OWNER],
+      authVerdict: "fail",
+    });
+
+    const r = await threadJoinHealPass({ db: db as unknown as Tx, apply: true, accountId: s.accountId });
+    expect(r.merged, "a forged claim joined two conversations").toBe(0);
+    expect(r.refusedUncorroborated).toBe(1);
+  });
+
+  it("POSITIVE CONTROL — every other verdict still joins, `pass` is not required", async () => {
+    for (const verdict of ["pass", "unavailable", "unauthenticated"] as const) {
+      const s = await seedAccount();
+      const colleague = "colleague@own.example";
+      const a = await seedThread(s, "Zahlung Projekt", new Date(t0));
+      await seedMessage(s, a, {
+        subject: "Zahlung Projekt", date: new Date(t0), from: OWNER, to: [colleague],
+      });
+      const b = await seedThread(s, "Zahlung Projekt", new Date(t0 + DAY));
+      await seedMessage(s, b, {
+        subject: "AW: Zahlung Projekt", date: new Date(t0 + DAY), from: colleague, to: [OWNER],
+        authVerdict: verdict,
+      });
+      const r = await threadJoinHealPass({ db: db as unknown as Tx, apply: true, accountId: s.accountId });
+      expect(r.merged, `a ${verdict} verdict was treated as a refusal`).toBe(1);
+    }
+  });
+
+  it("a note, a draft and a tombstoned message on the absorbed thread survive the merge — repointed, silent, still deleted", async () => {
+    const { s, original, forwardChain } = await seedProductionSplit();
+
+    // The production foreign-key violation: an absorbed thread carrying rows in the OTHER tables that FK it.
+    const [note] = await db.insert(threadNotes).values({
+      accountId: s.accountId, threadId: forwardChain.thread, body: "call them tuesday",
+    }).returning({ id: threadNotes.id });
+    const [draft] = await db.insert(drafts).values({
+      accountId: s.accountId, mailboxId: s.mailboxId, threadId: forwardChain.thread, subject: "Re: …",
+    }).returning({ id: drafts.id });
+    // And a soft-deleted message: it must MOVE (the FK demands the thread empty) but its move
+    // must never be announced — a message:update materializes without consulting deleted_at,
+    // so announcing it would resurrect deleted mail on every mirror.
+    const tombstoned = await seedMessage(s, forwardChain.thread, {
+      subject: "Re: Fwd: AW: Web Banner - vendor - Partner", date: new Date(t0 + 1.8 * DAY),
+      from: OWNER, to: [COUNTERPART],
+    });
+    await db.update(messages).set({ deletedAt: new Date() }).where(eq(messages.id, tombstoned));
+
+    const r = await threadJoinHealPass({ db: db as unknown as Tx, apply: true, accountId: s.accountId });
+    expect(r.merged).toBe(1);
+    expect(r.skipped).toBe(0);           // the group COMMITTED — no 23503
+    expect(r.messagesMoved).toBe(4);     // all four rows moved, tombstone included
+
+    const noteRow = await db.select({ threadId: threadNotes.threadId }).from(threadNotes)
+      .where(eq(threadNotes.id, note!.id));
+    expect(noteRow[0]!.threadId).toBe(original.thread);
+    const draftRow = await db.select({ threadId: drafts.threadId }).from(drafts)
+      .where(eq(drafts.id, draft!.id));
+    expect(draftRow[0]!.threadId).toBe(original.thread);
+
+    const tomb = await db.select({ threadId: messages.threadId, deletedAt: messages.deletedAt })
+      .from(messages).where(eq(messages.id, tombstoned));
+    expect(tomb[0]!.threadId).toBe(original.thread);
+    expect(tomb[0]!.deletedAt).not.toBeNull();
+
+    const changes = await db.select({
+      entityType: changeLog.entityType, entityId: changeLog.entityId, op: changeLog.op,
+    }).from(changeLog).where(eq(changeLog.accountId, s.accountId));
+    const keys = new Set(changes.map((c) => `${c.entityType}:${c.op}:${c.entityId}`));
+    expect(keys.has(`message:update:${tombstoned}`)).toBe(false);   // the silent move
+    expect(keys.has(`draft:update:${draft!.id}`)).toBe(true);       // drafts are mirrored
+    for (const id of forwardChain.messages) expect(keys.has(`message:update:${id}`)).toBe(true);
+  });
+
+  it("lastMessageAt is exact past the correspondent sample cap, and a survivor never moves backwards", async () => {
+    const s = await seedAccount();
+    const a = await seedThread(s, "Big one", new Date(t0));
+    await seedMessage(s, a, { subject: "Big one", date: new Date(t0), from: OWNER, to: [COUNTERPART] });
+
+    // The absorbed thread: more living messages than the ascending sample reads, the NEWEST beyond it.
+    const b = await seedThread(s, "Big one", new Date(t0 + DAY));
+    await db.insert(messages).values(Array.from({ length: 501 }, (_, i) => ({
+      accountId: s.accountId, mailboxId: s.mailboxId, threadId: b,
+      messageIdHeader: `big-${i}-${s.accountId}@seed.example`,
+      bodyHash: `big-${i}`, dedupKey: `big-${i}-${s.accountId}`,
+      subject: i === 0 ? "AW: Big one" : "AW: AW: Big one",
+      fromAddress: i % 2 === 0 ? COUNTERPART : OWNER, date: new Date(t0 + DAY + i * 60_000),
+      nativeLocator: locatorFor(i % 2 === 0 ? COUNTERPART : OWNER),
+      toAddresses: [{ name: null, address: i % 2 === 0 ? OWNER : COUNTERPART }], ccAddresses: [],
+    })));
+    const trueMax = new Date(t0 + DAY + 500 * 60_000);
+
+    const r = await threadJoinHealPass({ db: db as unknown as Tx, apply: true, accountId: s.accountId });
+    expect(r.merged).toBe(1);
+
+    const surv = await db.select({ lastMessageAt: threads.lastMessageAt }).from(threads)
+      .where(eq(threads.id, a));
+    expect(surv[0]!.lastMessageAt).toEqual(trueMax);
+  });
+
+  it("a failed merge transaction counts as FAILED, not skipped — nothing committed, cursor still handed back", async () => {
+    const s = await seedAccount();
+    const a = await seedThread(s, "Retry me", new Date(t0));
+    await seedMessage(s, a, { subject: "Retry me", date: new Date(t0), from: OWNER, to: [COUNTERPART] });
+    const b = await seedThread(s, "Retry me", new Date(t0 + DAY));
+    await seedMessage(s, b, { subject: "AW: Retry me", date: new Date(t0 + DAY), from: COUNTERPART, to: [OWNER] });
+
+    // The clock is only read inside the merge transaction, so a throwing clock is a
+    // transaction failure. It throws on EVERY attempt, so the in-run retry fails too and the
+    // group lands in `failed` — the persistent case.
+    const r = await threadJoinHealPass({
+      db: db as unknown as Tx, apply: true, accountId: s.accountId,
+      now: () => { throw new Error("persistent"); },
+    });
+    expect(r.failed).toBe(1);
+    expect(r.skipped).toBe(0);   // over-bound groups only — a failure is not a refusal
+    expect(r.merged).toBe(0);
+    expect(r.cursor).toEqual({ accountId: s.accountId, subject: "Retry me" });
+
+    // Nothing committed: both threads still stand, and a healthy re-run heals the group.
+    const remaining = await db.select({ id: threads.id }).from(threads).where(eq(threads.accountId, s.accountId));
+    expect(remaining).toHaveLength(2);
+    const again = await threadJoinHealPass({ db: db as unknown as Tx, apply: true, accountId: s.accountId });
+    expect(again.merged).toBe(1);
+    expect(again.failed).toBe(0);
+  });
+
+  it("a TRANSIENT failure heals in the same run — one immediate retry, nothing counted failed", async () => {
+    const s = await seedAccount();
+    const a = await seedThread(s, "Blip", new Date(t0));
+    await seedMessage(s, a, { subject: "Blip", date: new Date(t0), from: OWNER, to: [COUNTERPART] });
+    const b = await seedThread(s, "Blip", new Date(t0 + DAY));
+    await seedMessage(s, b, { subject: "AW: Blip", date: new Date(t0 + DAY), from: COUNTERPART, to: [OWNER] });
+
+    // Throws exactly once — the first attempt's first clock read — then behaves: the shape of
+    // a competing writer whose transaction has committed by the time of the retry.
+    let thrown = false;
+    const r = await threadJoinHealPass({
+      db: db as unknown as Tx, apply: true, accountId: s.accountId,
+      now: () => {
+        if (!thrown) { thrown = true; throw new Error("transient"); }
+        return new Date();
+      },
+    });
+    expect(r.merged).toBe(1);
+    expect(r.failed).toBe(0);
+
+    const remaining = await db.select({ id: threads.id }).from(threads).where(eq(threads.accountId, s.accountId));
+    expect(remaining.map((t) => t.id)).toEqual([a]);
+  });
+
+  /**
+   * THE PREMISE ITSELF, re-read under the lock. The group is formed by grouping threads on
+   * `subject`, and `subject` is mutable — a person renames a thread, and `thread-subject-heal`
+   * rewrites one. A rename committed between the facts read and the transaction left this merging
+   * two conversations on a fact that no longer held, and DELETING one of them.
+   */
+  it("a rename committed while the merge is being taken stops it, and both threads survive", async () => {
+    const s = await seedAccount();
+    const a = await seedThread(s, "Rename race", new Date(t0));
+    await seedMessage(s, a, { subject: "Rename race", date: new Date(t0), from: OWNER, to: [COUNTERPART] });
+    const b = await seedThread(s, "Rename race", new Date(t0 + DAY));
+    await seedMessage(s, b, { subject: "AW: Rename race", date: new Date(t0 + DAY), from: COUNTERPART, to: [OWNER] });
+
+    const r = await threadJoinHealPass({
+      db: db as unknown as Tx, apply: true, accountId: s.accountId,
+      beforeMergeAttempt: async () => {
+        await db.update(threads).set({ subject: "Not this conversation after all" })
+          .where(eq(threads.id, b));
+      },
+    });
+
+    expect(r.merged).toBe(0);
+    expect(r.messagesMoved).toBe(0);
+    // SKIPPED, not FAILED: a rename is not a fault, so it may not spend the retry or be logged
+    // as one — and the walk comes back around to re-group them as they now are.
+    expect(r.skipped).toBe(1);
+    expect(r.failed).toBe(0);
+
+    // BOTH THREADS ALIVE. This is the assertion the row is about: the absorbed one is DELETED by
+    // a merge, and that delete is not recoverable.
+    const alive = await db.select({ id: threads.id }).from(threads)
+      .where(eq(threads.accountId, s.accountId)).orderBy(asc(threads.id));
+    expect(alive.map((t) => t.id).sort()).toEqual([a, b].sort());
+    // …and no message moved between them.
+    const homes = await db.select({ threadId: messages.threadId }).from(messages)
+      .where(eq(messages.accountId, s.accountId));
+    expect(homes.filter((m) => m.threadId === a)).toHaveLength(1);
+    expect(homes.filter((m) => m.threadId === b)).toHaveLength(1);
+  });
+
+  it("POSITIVE CONTROL — the same fixture with no rename in that window merges", async () => {
+    const s = await seedAccount();
+    const a = await seedThread(s, "Rename race", new Date(t0));
+    await seedMessage(s, a, { subject: "Rename race", date: new Date(t0), from: OWNER, to: [COUNTERPART] });
+    const b = await seedThread(s, "Rename race", new Date(t0 + DAY));
+    await seedMessage(s, b, { subject: "AW: Rename race", date: new Date(t0 + DAY), from: COUNTERPART, to: [OWNER] });
+
+    const r = await threadJoinHealPass({ db: db as unknown as Tx, apply: true, accountId: s.accountId });
+
+    expect(r.merged).toBe(1);
+    expect(r.skipped).toBe(0);
+    const alive = await db.select({ id: threads.id }).from(threads)
+      .where(eq(threads.accountId, s.accountId));
+    expect(alive.map((t) => t.id)).toEqual([a]);
+  });
+
+  it("the survivor's participants come from the locked thread rows — what ingest folded in mid-flight survives the merge", async () => {
+    const s = await seedAccount();
+    const a = await seedThread(s, "Rows win", new Date(t0));
+    await seedMessage(s, a, { subject: "Rows win", date: new Date(t0), from: OWNER, to: [COUNTERPART] });
+    const b = await seedThread(s, "Rows win", new Date(t0 + DAY));
+    await seedMessage(s, b, { subject: "AW: Rows win", date: new Date(t0 + DAY), from: COUNTERPART, to: [OWNER] });
+    // The shape a racing ingest leaves: a participant folded into the THREAD ROW after the
+    // facts read but before the merge transaction. The seam commits it in exactly that
+    // window, so the union must come from the rows the transaction locks — stale facts would
+    // drop the late joiner from the surviving conversation.
+    const r = await threadJoinHealPass({
+      db: db as unknown as Tx, apply: true, accountId: s.accountId,
+      beforeMergeAttempt: async () => {
+        await db.update(threads).set({
+          participants: [{ name: null, address: "late-joiner@partner.example" }],
+        }).where(eq(threads.id, b));
+      },
+    });
+    expect(r.merged).toBe(1);
+
+    const [surv] = await db.select({ participants: threads.participants }).from(threads).where(eq(threads.id, a));
+    const addrs = (surv!.participants as Array<{ address: string }>).map((x) => x.address);
+    expect(addrs).toContain("late-joiner@partner.example");
+  });
+
+  it("the survivor lists at most the bound of people: its own first, then the absorbed thread's", async () => {
+    const s = await seedAccount();
+    const a = await seedThread(s, "Wide rows", new Date(t0));
+    await seedMessage(s, a, { subject: "Wide rows", date: new Date(t0), from: OWNER, to: [COUNTERPART] });
+    const b = await seedThread(s, "Wide rows", new Date(t0 + DAY));
+    await seedMessage(s, b, { subject: "AW: Wide rows", date: new Date(t0 + DAY), from: COUNTERPART, to: [OWNER] });
+    const people = (n: number, p: string) => Array.from({ length: n }, (_, i) => ({ name: null, address: `${p}${i}@wide.example` }));
+    await db.update(threads).set({ participants: people(60, "a") }).where(eq(threads.id, a));
+    await db.update(threads).set({ participants: people(60, "b") }).where(eq(threads.id, b));
+    const r = await threadJoinHealPass({ db: db as unknown as Tx, apply: true, accountId: s.accountId });
+    expect(r.merged).toBe(1);
+    const [surv] = await db.select({ participants: threads.participants }).from(threads).where(eq(threads.id, a));
+    expect((surv!.participants as Array<{ address: string }>).map((x) => x.address))
+      .toEqual([...people(60, "a"), ...people(MAX_THREAD_PARTICIPANTS - 60, "b")].map((p) => p.address));
+  });
+});
