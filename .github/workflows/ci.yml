@@ -129,7 +129,7 @@ jobs:
         run: |
           set -euo pipefail
           docker run -d --name minio -p 127.0.0.1:3902:9000 -e MINIO_ROOT_USER -e MINIO_ROOT_PASSWORD \
-            quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e \
+            ghcr.io/trafficflowhq/mirror-minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e \
             server /data
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:3902/minio/health/live >/dev/null 2>&1; then echo "minio up after ${i}s"; exit 0; fi
