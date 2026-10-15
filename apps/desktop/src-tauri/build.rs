@@ -122,6 +122,9 @@ const WINDOW_COMMANDS: &[&str] = &[
     // somebody's mail every day. `src/updater.rs` carries the reasoning.
     "update_poll",
     "window_ready",
+    // SETTINGS → TEXT SIZE (`src/text_scale.rs`): one of five percentages, which the shell turns
+    // into the main window's page zoom and keeps for the next launch. Any other number is refused.
+    "set_text_size",
 ];
 
 fn main() {

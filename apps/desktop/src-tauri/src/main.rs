@@ -108,6 +108,10 @@ mod webview_budget;
 #[cfg(target_os = "linux")]
 mod gtk_text_dpi;
 
+// Settings → Text size as the webview's zoom everywhere, and the text DPI pin held for the run on
+// Linux. Always compiled: every build opens the same window (issue #14).
+mod text_scale;
+
 // The window opens hidden and is shown on its own canvas once the page has composed its first
 // frame, or at a bound. Always compiled: every build opens the same hidden window.
 mod launch_window;
@@ -142,6 +146,9 @@ fn main() {
             }
         }
     }
+    // …and held there for the run: GTK re-reads the desktop's text scale live, and a change was
+    // measured to shrink a running window. `text_scale.rs` re-applies the same policy on notify.
+    text_scale::keep_text_dpi_pinned();
 
     let mut builder = tauri::Builder::default();
     // The commands the window may call, registered in `engine.rs` so that this file names none
