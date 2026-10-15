@@ -4,9 +4,9 @@
 
    Extracted 1:1 from design/proposals/blanc/index.html — the canonical
    design reference. Every custom-property value in this file is diffed
-   against the prototype's <style> block by test/fidelity.test.ts; the
-   suite fails if they drift. Change the prototype first, then mirror
-   the change here.
+   against the prototype's <style> block by the fidelity test (private, as
+   the prototype is); the suite fails if they drift. Change the prototype
+   first, then mirror the change here.
 
    The light block also carries the [data-theme="light"] selector so a
    subtree can be forced light inside a dark page (showcase, previews).

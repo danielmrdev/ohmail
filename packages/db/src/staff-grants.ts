@@ -17,10 +17,10 @@ export const STAFF_ROLE = "ohmail_admin";
  * it flips. The harden script is hand-run; nothing provisions `ohmail_admin` automatically, so
  * today the isolation is an APPLICATION property, and the FAQ and privacy policy say exactly
  * that. The day the role is provisioned, both become false-by-understatement. Claims are
- * contracts: a statement a shipping change makes false is fixed in the SAME change. Two
- * mechanisms couple the flag to the copy: `test/staff-role-copy-gate.test.ts` fails unless the
- * flag and the two copy sites agree, and `provision-staff-role.ts` refuses `--apply` while this
- * is `false`. Flip it in the deploy that provisions the role — never ahead, never after.
+ * contracts: a statement a shipping change makes false is fixed in the SAME change. Two mechanisms
+ * couple the flag to the copy: `staff-role-copy-gate.test.ts` (the FAQ; the policy's half is a private
+ * test) fails unless they agree, and `provision-staff-role.ts` refuses `--apply` while this is `false`.
+ * Flip it in the deploy that provisions the role — never ahead, never after.
  */
 export const STAFF_ROLE_LIVE_IN_PRODUCTION = false;
 
