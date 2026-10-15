@@ -45,6 +45,7 @@ import { Icon } from "@ohmail/ui";
 import { hueOf } from "../shell/format";
 import { LanguageRow } from "../shell/LanguageRow";
 import { FaceRow, type ApplyFaceAllDevices } from "../shell/FaceRow";
+import { TextSizeRow } from "../shell/TextSizeRow";
 import { ImageQualityRow } from "../shell/ImageQualityRow";
 import { AfterVerbRow } from "../shell/AfterVerbRow";
 import { PANE_IDS, type PaneId } from "../shell/routing";
@@ -1099,6 +1100,9 @@ export function SettingsView({
                   the language above (both surfaces have a face); only the account-wide scope
                   affordance is host-dependent, and it arrives as a nullable callback. */}
               <FaceRow applyAllDevices={applyFaceAllDevices} />
+              {/* HOW LARGE THE WHOLE APP IS DRAWN — the third appearance axis, per device and
+                  drawn by the shared file: every surface has a screen. See `TextSizeRow`. */}
+              <TextSizeRow />
               {/* WHAT LEAVES THIS BROWSER WHEN A PICTURE IS ATTACHED. Drawn by the shared file
                   rather than injected, like the language above and unlike everything below: the
                   level is kept in this browser and no host has to supply anything, so a standalone

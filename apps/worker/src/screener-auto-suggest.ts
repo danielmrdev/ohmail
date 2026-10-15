@@ -1,10 +1,10 @@
-import { and, asc, desc, eq, isNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, notInArray, sql } from "drizzle-orm";
 import { dialect } from "@trafficflow/db/dialect";
 import {
   accountSettings, folderState, messages,
   resolveCutline, senderIsActiveSql, senderIsDecidedSql, senderIsOwnSql, heldSortKey, type ResolvedCutline,
   screenerAttemptKey, storeScreenerSuggestion,
-  screenerSuggestedSenderExists, hasScreenerSuggestionForSender,
+  screenerSuggestedSenderExists, hasScreenerSuggestionForSender, automaticAiAdmits,
   decisionCanBeApplied, readRequestEligibility, reverseCharge,
   type AiUsageLine, type RefundObligationPort, type RefundObligationReason, type ReverseChargeFact, type SpendPort,
   type Tx,
@@ -654,15 +654,10 @@ async function selectCandidates(
       // aliases, no user action after opt-in — ten senders a cycle until the balance was gone, at the
       // choosing of anyone who can email the account.
       sql`not ${screenerSuggestedSenderExists(dialect(db), opts.accountId, sql`lower(${reps.fromAddress})`)}`,
-      // (3) THE SENSITIVITY EXCLUSION — a flagged representative is not a candidate.
-      //
-      // Both halves, because they are two different answers and only one of them is "we saw an
-      // OTP": `sensitivity_category` is the detector's positive class, and `no_ai` additionally
-      // carries its INDETERMINATE outcome — `no_ai` true with a NULL category is "we could not
-      // read this confidently", which `sensitive.ts` routes here on purpose. An automatic pass
-      // must take the stricter reading of both.
-      eq(reps.noAi, false),
-      isNull(reps.sensitivityCategory),
+      // (3) THE SENSITIVITY EXCLUSION — a flagged representative is not a candidate. Both columns,
+      // the stricter reading of each, through the ONE predicate the suggest route's automatic batch
+      // reads too (`automaticAiAdmits`); asked before the LIMIT, so the page reaches the senders behind.
+      automaticAiAdmits({ noAi: reps.noAi, sensitivityCategory: reps.sensitivityCategory }),
       // (4) THE CUTLINE — the same expression `GET /consent` counts through and `GET /screener`
       // now lists through. Without it this pass bought advice about senders no surface shows,
       // which is money spent on a question nobody is being asked. Absent ⇒ inert, so a caller

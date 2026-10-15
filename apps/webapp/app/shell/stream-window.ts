@@ -32,6 +32,7 @@
  * jumps drive through `ensure` exactly as in a browser.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { cssRect } from "@ohmail/ui";
 
 /** The opening window: several viewports of collapsed cards, mounted before first paint. */
 export const STREAM_MOUNT_INITIAL = 60;
@@ -159,7 +160,8 @@ export function useStreamWindow({
         const cur = rangeRef.current;
         let padTop = 0;
         for (let i = 0; i < cur.start && i < n; i++) padTop += heightOf(order[i]!);
-        const rel = first.getBoundingClientRect().top - el.getBoundingClientRect().top + scrollTop;
+        // CSS px, the units of `scrollTop` (`ui-zoom.ts` in @ohmail/ui).
+        const rel = cssRect(first).top - cssRect(el).top + scrollTop;
         headPx = Math.max(0, rel - padTop);
       }
       const above = scrollTop - headPx - viewport * LOOKBEHIND_VIEWPORTS;

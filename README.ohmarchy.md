@@ -862,6 +862,29 @@ OHMAIL_NODE_ARCHIVES=/path/to/archives node scripts/vendor-node.mjs
 cd apps/desktop && npm run app:build:engine
 ```
 
+On Linux, a source-built AppImage bundles GTK from the build host, which may
+use a different GTK version than the release artifact. The shell pins GTK's
+text DPI to 96, so the desktop's `text-scaling-factor` does not resize the
+whole webview; monitor scaling remains unchanged.
+
+On Arch Linux, pin Tauri's GTK hook before building an AppImage. Tauri's
+uncached hook forces `GDK_BACKEND=x11`, sending HiDPI Wayland sessions through
+XWayland at 1×. `NO_STRIP=1` avoids Tauri's bundled `linuxdeploy` strip rejecting
+the host's `.relr.dyn` sections.
+
+From the repository root:
+
+```bash
+install -m 755 apps/desktop/src-tauri/linux/linuxdeploy-plugin-gtk.sh \
+  ~/.cache/tauri/linuxdeploy-plugin-gtk.sh
+```
+
+Then from `apps/desktop`:
+
+```bash
+NO_STRIP=1 npm run app:build:engine -- --bundles appimage
+```
+
 The result carries the engine at `engine/bin/ohmail-engine.mjs` and the runtime
 at `runtime/node`, both under the app's resource directory. The build prints
 the engine's SHA-256, and so does every CI run — and
@@ -882,7 +905,7 @@ host section above describes, and nothing else.
 is `connect-src 'none'`, so `fetch`, XHR and WebSocket are refused before they
 are attempted. In the interface-only build the main window's capability list
 is literally empty (`"permissions": []`). In the build you download, the
-window can call twenty-seven commands and nothing else, every one declared in
+window can call thirty-five commands and nothing else, every one declared in
 `src-tauri/build.rs`: the bridge to the mail engine and its restart, a
 notification and the icon's badge, the window's own performance numbers,
 opening a link, a link from a message or an attachment outside the app and
@@ -890,8 +913,9 @@ saving an attachment to your Downloads folder (validated by the shell, never
 fetched by the page), host mode's controls — reading its state, probing and
 arming Tailscale, start-at-login, and opening Tailscale's download page as one
 more fixed address the shell owns — the probe a pairing link starts, the
-default-mail-app registration, the active Omarchy theme, and the updater's
-state, press and daily check. Mail does not travel
+default-mail-app registration, the active Omarchy theme, the updater's
+state, press and daily check, the window's first-frame report and its text
+size. Mail does not travel
 over the network from the page — it travels down a pipe to a process on the
 same machine. The engine holds the IMAP connection; the page holds no
 credential.

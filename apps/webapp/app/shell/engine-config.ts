@@ -202,14 +202,12 @@ export function createEngine(
   return registerSyncGate(
     new OhmailEngine({
       /**
-       * `stageAttachments: true` — THE HOSTED BROWSER CLIENT, and only it. A send whose attachment bytes exceed what
-       * the inline transport can carry mints an upload ticket per file, PUTs the bytes straight into storage, and
-       * sends references. That is what lets this window's compose form promise the sending mailbox's own announced
-       * limit rather than the ~4.5 MB serverless request cap expressed as 3 MB of raw bytes. It is set HERE and
-       * nowhere else. The desktop builds its adapter in `apps/desktop/src/bridge-fetch.ts` with a base URL, a bridge
-       * fetch and a sink for its own failed pulls — no staging option — so neither of its doors stages: the standalone door has no hosted storage behind
-       * it and no business writing into one, and the Cloud door forwards this request verbatim to the hosted API — a
-       * shipped build must keep sending the shape it has always sent.
+       * `stageAttachments: true` — A send whose attachment bytes exceed what the inline transport can carry mints an
+       * upload ticket per file, PUTs the bytes straight into storage, and sends references. That is what lets this
+       * window's compose form promise the sending mailbox's own announced limit rather than the ~4.5 MB serverless
+       * request cap expressed as 3 MB of raw bytes. The desktop's hosted door stages too (`bridge-fetch.ts`), its
+       * PUT carried by the local engine; its standalone and paired doors never do — no hosted storage stands
+       * behind them. The server still accepts the inline shape older builds send.
        */
       /*
        * `mayAsk` — THE ENGINE'S HALF OF THE DEAD-SESSION GATE. The sync gate above answers "is this

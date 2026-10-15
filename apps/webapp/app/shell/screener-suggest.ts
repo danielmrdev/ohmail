@@ -87,13 +87,14 @@ export interface SenderSuggestion {
 }
 
 /**
- * The skip reasons a ROW can show — every one except `not_held`.
+ * The skip reasons a ROW can show — every one except `not_held` and `no_auto_ai`.
  *
  * Narrowed rather than reusing the wire enum whole, because `not_held` means the sender has left
- * the gate, so there is no row on screen to put it on. Naming that in the type is what stops a
- * later change quietly rendering a chip for a sender who is not there.
+ * the gate, so there is no row on screen to put it on; and `no_auto_ai` answers only the unpressed
+ * batch, while the row speaks from the mirror's own `no_ai` flag (`noSuggestionReason`). Naming
+ * both in the type is what stops a later change quietly rendering a chip nothing should carry.
  */
-export type SuggestSkipShown = Exclude<ScreenerSkipReason, "not_held">;
+export type SuggestSkipShown = Exclude<ScreenerSkipReason, "not_held" | "no_auto_ai">;
 
 /** Suggestions known so far, keyed by {@link senderKey}. */
 export type SuggestionOverlay = ReadonlyMap<string, SenderSuggestion>;
@@ -322,11 +323,12 @@ export interface SuggestWire {
    *
    * `idempotencyKey` belongs to ONE request and is the caller's, never this transport's: the thing
    * being made idempotent is one chunk of one purchase, so a transport that minted its own key
-   * would make a retry of a lost answer into a second charge.
+   * would make a retry of a lost answer into a second charge. `automatic` is the opt-in's unpressed
+   * batch saying so, forwarded like `dryRun`: the server holds that request to the automatic rule.
    */
   suggest: (
     senders: string[],
-    opts?: { dryRun?: boolean; idempotencyKey?: string; maxCredits?: number },
+    opts?: { dryRun?: boolean; idempotencyKey?: string; maxCredits?: number; automatic?: boolean },
   ) => Promise<ScreenerSuggestWire>;
   /**
    * The sentence to show for a refusal this transport produced.
@@ -449,6 +451,11 @@ export const HYDRATE_DEBOUNCE_MS = 10_000;
  * a person opening the Screener can spend automatically, at most this much per open.
  */
 export const AUTO_BATCH_SIZE = 10;
+
+/** The next automatic batch: the queue's front, past the senders held out of automatic AI. */
+function autoBatchOf(queue: readonly string[], heldOut: ReadonlySet<string>): string[] {
+  return queue.filter((a) => !heldOut.has(senderKey(a))).slice(0, AUTO_BATCH_SIZE);
+}
 
 /* The spend announcement. A purchase changes a number OTHER surfaces show —
  * the remaining AI allowance, one line under the control that spent it.
@@ -676,6 +683,13 @@ export function useScreenerSuggestions(opts: {
      * independent keys; neither result may discard the other.
      */
     autoRun: 0,
+    /**
+     * SENDERS THE SERVER ANSWERED `no_auto_ai`, by {@link senderKey} — held out of every later
+     * automatic batch and opt-in quote for this mount. Without it they stay unsuggested at the front
+     * of the queue and each visit's batch re-posts them: ten of them and it never buys again. The
+     * server's verdict remembered, not a second rule; a press still asks about them.
+     */
+    autoHeldOut: new Set<string>(),
   });
 
   /**
@@ -932,7 +946,7 @@ export function useScreenerSuggestions(opts: {
     if (!autoSuggest || !link.current.wire.configured()) return;
     if (!hydrateSettled) return;
     if (io.current.autoFired || io.current.autoDisarmed) return;
-    const set = io.current.queue.slice(0, AUTO_BATCH_SIZE);
+    const set = autoBatchOf(io.current.queue, io.current.autoHeldOut);
     if (set.length === 0) return;
     // LATCHED BEFORE THE AWAIT. Set after it, two effect passes racing each other both read
     // false and both buy — and the second batch is money nobody asked for.
@@ -944,8 +958,14 @@ export function useScreenerSuggestions(opts: {
     flying(setInFlight, set, true);
     void (async () => {
       try {
-        const res = await link.current.wire.suggest(set, { idempotencyKey: newKey() })
+        // `automatic`: NOBODY PRESSED THIS, and the server holds it to the automatic rule — a sender
+        // whose mail is kept out of automatic AI comes back `no_auto_ai`, unasked and uncharged.
+        const res = await link.current.wire.suggest(set, { idempotencyKey: newKey(), automatic: true })
           .finally(() => flying(setInFlight, set, false));
+        // Remembered even from a stale answer: the verdict is about the sender, not this run.
+        for (const s of res.skipped) {
+          if (s.reason === "no_auto_ai") io.current.autoHeldOut.add(senderKey(s.sender));
+        }
         if (io.current.autoRun !== run) return;
         merge([
           ...res.suggestions.map((s) => ({ address: s.sender, suggestion: toSuggestion(s) })),
@@ -1345,7 +1365,8 @@ export function useScreenerSuggestions(opts: {
    */
   const autoOptIn = (addresses: string[]): AutoOptInControl => {
     const open = () => {
-      const set = addresses.slice(0, AUTO_BATCH_SIZE);
+      // The batch's own set and the batch's own rule, so the quote prices exactly what it buys.
+      const set = autoBatchOf(addresses, io.current.autoHeldOut);
       // NOTHING TO BUY IS ANSWERED LOCALLY, not by the server. `parseSenderSet` 400s on an empty
       // list, so asking would turn "your Screener is empty" into "that setting did not save".
       // The setting is still turnable on from here — an empty queue today says nothing about the
@@ -1359,7 +1380,7 @@ export function useScreenerSuggestions(opts: {
       setOptIn({ phase: "pricing", quote: null, notice: null });
       void (async () => {
         try {
-          const res = await wire.suggest(set, { dryRun: true });
+          const res = await wire.suggest(set, { dryRun: true, automatic: true });
           if (io.current.optInRun !== run) return;
           // NO PRICE, NO CONSENT — the same rule the manual control states, and it has to be
           // restated here rather than shared because this is the flow that authorises EVERY
@@ -1490,7 +1511,8 @@ export function toSuggestion(a: {
  * The senders a run could not answer for, as overlay entries.
  *
  * `not_held` is deliberately absent: that sender is no longer at the gate, so their row is not on
- * screen to carry a chip. Every other reason describes a row the person is still looking at.
+ * screen to carry a chip. So is `no_auto_ai` — see {@link SuggestSkipShown}. Every other reason
+ * describes a row the person is still looking at.
  */
 /**
  * THE SENDERS A STOPPED RUN NEVER REACHED — the reason, on their own rows.
@@ -1522,7 +1544,7 @@ export function toStopped(
 
 export function toSkips(skipped: Array<{ sender: string; reason: ScreenerSkipReason }>) {
   return skipped
-    .filter((s) => s.reason !== "not_held")
+    .filter((s) => s.reason !== "not_held" && s.reason !== "no_auto_ai")
     .map((s) => ({
       address: s.sender,
       suggestion: {

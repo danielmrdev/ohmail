@@ -1,11 +1,17 @@
 /** @vitest-environment jsdom */
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
-  composeAttachBudgetFor, composeAttachCap,
-  COMPOSE_ATTACH_MAX_TOTAL_BYTES,
+  composeAttachBudgetFor, composeAttachCap, composeAttachCapBinding,
+  COMPOSE_ATTACH_MAX_TOTAL_BYTES, COMPOSE_ATTACH_STAGED_SURFACE_BYTES,
+  COMPOSE_ATTACH_UNMEASURED_MESSAGE_BYTES,
 } from "../../webapp/app/components/ComposeAttach";
+import type { EngineStatus } from "../src/bridge-fetch.js";
+import { CLOUD_URL } from "../src/doors.js";
+import {
+  DESKTOP_WINDOW_SEND_MAX_TOTAL_BYTES, desktopSendSurface, stagesAttachments,
+} from "../src/desktop-send-surface.js";
 
 /**
  * ═══ THE WINDOW'S HALF OF "THE FORM'S PROMISE AND THE SEND'S REFUSAL ARE ONE RULE" ═════════
@@ -18,26 +24,16 @@ import {
  * desktop tests in both publish variants, and the send rule's package is in neither's client
  * half, so an import of it from here is one the published tree could not compile.
  *
- * What IS this window's own is the DECLARATION: the standalone door runs the send in the same
- * process as the SMTP dial (the mail engine declares `sendSurfaceMaxTotalBytes: null` on its
- * service bag, asserted from source by the engine's own suite), and this window makes the SAME
- * declaration to the shared shell. Both halves are asserted here from source, the engine
- * guard's own method, because what regressed in this family before is a property missing from
- * a literal.
+ * What IS this window's own is the DECLARATION, per door (`desktop-send-surface.ts`): what one
+ * send from this window carries, and whether the door stages its bytes to the account's storage.
  *
  * ── THE MUTATIONS THESE CASES WERE WATCHED AGAINST ──────────────────────────────────────────
  *
- *  · make `composeAttachCap` read a `null` surface as "not declared" → the acceptance pair
- *    below goes red (and the parity suite's matrix with it);
- *  · make it read an unmeasured SIZE as "unbounded" under a null surface → red the same way;
- *  · drop the local-door guard in `DesktopGate` (declare both doors uncapped) → the door guard
- *    goes red — the CLOUD door forwards `POST /drafts/:id/send` verbatim to the hosted API
- *    (the engine's `cloud-proxy.ts`), so an uncapped promise there is one the forwarded
- *    send must refuse;
- *  · declare a number instead of `null` → the no-number guard goes red;
- *  · stop forwarding `smtpMaxSizeBytes` in `readMailboxFacts` → the probe cases go red, which
- *    is the wire this slice had to add: the engine has announced the value all along
- *    (`mailbox-service.ts`, mail 0055) and the desktop's probe simply dropped it.
+ *  · make `composeAttachCap` read an unmeasured SIZE as 3 MB again → the 4 MB cases go red;
+ *  · declare the standalone door `null` again → the standalone and binding cases go red;
+ *  · stage on every cloud door → the self-hosted and paired staging cases go red;
+ *  · raise the window's ceiling past the outbox door's bound → the fit case goes red;
+ *  · stop forwarding `smtpMaxSizeBytes` in `readMailboxFacts` → the probe cases go red.
  */
 
 const MIB = 1024 * 1024;
@@ -49,7 +45,7 @@ describe("what the declaration buys, in the form's own rule", () => {
     // derivation and is pinned against the send's own copy by the repository's parity suite.
     expect(composeAttachCap(25 * MIB, null)).toBe(composeAttachBudgetFor(25 * MIB));
     expect(composeAttachBudgetFor(25 * MIB)).toBeGreaterThan(COMPOSE_ATTACH_MAX_TOTAL_BYTES);
-    expect(composeAttachCap(null, null)).toBe(COMPOSE_ATTACH_MAX_TOTAL_BYTES);
+    expect(composeAttachCap(null, null)).toBe(composeAttachBudgetFor(COMPOSE_ATTACH_UNMEASURED_MESSAGE_BYTES));
   });
 
   it("an undeclared surface keeps the strict constant, whatever the mailbox announces", () => {
@@ -59,16 +55,95 @@ describe("what the declaration buys, in the form's own rule", () => {
 });
 
 /* ─────────────────────────────────────────────────────────────────────────────────────────
-   THE WINDOW'S OWN DECLARATION — from source, the sidecar guard's own method and reasons.
-   `DesktopGate` is JSX glue around an engine, a shell channel and a menu; observing one prop
-   of one spread would take an engine's worth of setup, and the regression this family has
-   already had is a property missing from a literal. Comments are stripped first — the prose
-   here quotes the code it describes, and a guard a comment can satisfy is worth nothing.
+   THE WINDOW'S OWN DECLARATION, per door (`desktop-send-surface.ts`), and where the gate hands
+   it to the shared shell. Every send's attachments cross the bridge as base64 inside the queued
+   change the window records before anything leaves this computer, so the window has a ceiling of
+   its own on every door; the hosted door also stages its bytes to storage.
    ───────────────────────────────────────────────────────────────────────────────────────── */
 
-/* `import.meta.url` is not a `file:` URL under the jsdom environment, so the gate's source is
-   resolved from the repo root the suite runs in — the same fallback pair `compose-cancel.
-   test.tsx` uses for the identical reason. */
+const local = { state: "serving", mode: "local" } as EngineStatus;
+const managed = { state: "serving", mode: "cloud", cloudUrl: CLOUD_URL } as EngineStatus;
+const selfhost = { state: "serving", mode: "cloud", cloudUrl: "https://mail.example.org" } as EngineStatus;
+const paired = { state: "serving", mode: "cloud", flavor: "desktop-host", cloudUrl: "https://10.0.0.2:4848" } as EngineStatus;
+
+describe("each door declares what one send from this window carries", () => {
+  it("the standalone door: the window's own ceiling, never uncapped", () => {
+    expect(desktopSendSurface(local)).toBe(DESKTOP_WINDOW_SEND_MAX_TOTAL_BYTES);
+  });
+
+  it("the hosted door: the window's ceiling or the staging bound, whichever is smaller", () => {
+    expect(desktopSendSurface(managed))
+      .toBe(Math.min(DESKTOP_WINDOW_SEND_MAX_TOTAL_BYTES, COMPOSE_ATTACH_STAGED_SURFACE_BYTES));
+  });
+
+  it("the self-hosted and paired doors declare nothing: the strict inline constant, as before", () => {
+    expect(desktopSendSurface(selfhost)).toBeUndefined();
+    expect(desktopSendSurface(paired)).toBeUndefined();
+    expect(desktopSendSurface(null)).toBeUndefined();
+    expect(composeAttachCap(25 * MIB, desktopSendSurface(selfhost))).toBe(COMPOSE_ATTACH_MAX_TOTAL_BYTES);
+  });
+
+  it("only the hosted door stages to the account's storage", () => {
+    expect(stagesAttachments(managed)).toBe(true);
+    expect(stagesAttachments(local)).toBe(false);
+    expect(stagesAttachments(selfhost)).toBe(false);
+    expect(stagesAttachments(paired)).toBe(false);
+    expect(stagesAttachments(null)).toBe(false);
+  });
+
+  it("the reported refusal: a 4 MB file fits on the standalone door, unprobed or announced", () => {
+    expect(composeAttachCap(null, desktopSendSurface(local))).toBeGreaterThan(4 * MIB);
+    expect(composeAttachCap(25 * MIB, desktopSendSurface(local))).toBeGreaterThan(4 * MIB);
+  });
+
+  it("…and on the hosted door, where it used to read 3 MB", () => {
+    expect(composeAttachCap(25 * MIB, desktopSendSurface(managed))).toBeGreaterThan(4 * MIB);
+    expect(composeAttachCap(25 * MIB, undefined)).toBe(COMPOSE_ATTACH_MAX_TOTAL_BYTES);
+  });
+
+  it("a large announcement binds at the window's ceiling, and the form says why", () => {
+    // A 70 MiB SIZE budgets 51 MiB of files, more than one send from this window carries.
+    expect(composeAttachCap(70 * MIB, desktopSendSurface(local))).toBe(DESKTOP_WINDOW_SEND_MAX_TOTAL_BYTES);
+    expect(composeAttachCapBinding(70 * MIB, desktopSendSurface(local))).toBe("surface");
+    // Gmail's SIZE (26 MiB of files) is the mail server's own limit here, under the window's.
+    expect(composeAttachCapBinding(35_882_577, desktopSendSurface(local))).toBe("mailbox");
+  });
+
+  it("the hosted door states the browser's number for every mailbox", () => {
+    for (const announced of [null, 10 * MIB, 25 * MIB, 35_882_577, 57 * MIB, 70 * MIB]) {
+      expect(composeAttachCap(announced, desktopSendSurface(managed)))
+        .toBe(composeAttachCap(announced, COMPOSE_ATTACH_STAGED_SURFACE_BYTES));
+    }
+  });
+});
+
+/* WHY 40 MiB: the window records each send's change through the engine's outbox door before it
+   publishes it, attachments as base64, and that door refuses a write over its bound. Read from
+   the engine's source so the two cannot drift apart. */
+function sidecarOutboxBound(): number {
+  let src: string;
+  try {
+    src = readFileSync(resolve(process.cwd(), "apps/sidecar/src/window-outbox.ts"), "utf8");
+  } catch {
+    return Number.NaN;
+  }
+  const m = src.match(/const WINDOW_OUTBOX_MAX_BODY_BYTES = (\d+) \* 1024 \* 1024;/);
+  return m ? Number(m[1]) * MIB : Number.NaN;
+}
+
+describe("the window's ceiling fits the one write a send takes", () => {
+  it("40 MiB of files, base64, plus a megabyte of message, is under the outbox door's bound", () => {
+    const bound = sidecarOutboxBound();
+    // The client-half publish carries no engine source; the bound is then unread, not green.
+    if (Number.isNaN(bound)) return;
+    const base64 = Math.ceil(DESKTOP_WINDOW_SEND_MAX_TOTAL_BYTES / 3) * 4;
+    expect(base64 + MIB).toBeLessThan(bound);
+  });
+});
+
+/* The gate hands the declaration over and builds the engine with the staging decision — from
+   source, comments stripped: what regressed in this family before is a property missing from a
+   literal, and a guard a comment can satisfy is worth nothing. */
 function gateSource(): string {
   try {
     return readFileSync(resolve(process.cwd(), "apps/desktop/src/DesktopGate.tsx"), "utf8");
@@ -79,96 +154,22 @@ function gateSource(): string {
 const stripComments = (src: string): string =>
   src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[^\n]*?\/\/.*$/gm, "");
 
-describe("the desktop window declares the surface uncapped on the LOCAL door only", () => {
+describe("the gate passes each door's declaration and staging decision", () => {
   const src = stripComments(gateSource());
 
   it("resolved a real file", () => {
     expect(src).toContain("export function DesktopGate()");
   });
 
-  it("declares `sendSurfaceMaxTotalBytes: null`, exactly once", () => {
+  it("declares `sendSurfaceMaxTotalBytes` once, from the door", () => {
     expect(src.match(/sendSurfaceMaxTotalBytes/g) ?? []).toHaveLength(1);
-    expect(src).toMatch(/sendSurfaceMaxTotalBytes:\s*null/);
+    expect(src).toMatch(/sendSurfaceMaxTotalBytes:\s*desktopSendSurface\(status\)/);
+    expect(src).not.toMatch(/sendSurfaceMaxTotalBytes:\s*null/);
   });
 
-  it("…gated on the local door — the cloud door's sends ride the hosted body limit", () => {
-    expect(src).toMatch(/mode === "local"[\s\S]{0,200}?sendSurfaceMaxTotalBytes:\s*null/);
-  });
-
-  it("…and never declares a NUMBER, which would re-impose a limit that is not this host's", () => {
-    expect(src).not.toMatch(/sendSurfaceMaxTotalBytes:\s*\d/);
-  });
-});
-
-/* ─────────────────────────────────────────────────────────────────────────────────────────
-   NEITHER DOOR STAGES TO CLOUD STORAGE, AND THE PROOF IS THE ABSENCE OF ONE WORD.
-
-   The hosted browser client can now put a send's attachment bytes into object storage on a
-   signed URL and send references instead, which is what lets it promise the mailbox's real
-   limit. That capability is a constructor option on the shared wire client, defaulting OFF,
-   and this app must never turn it on:
-
-    · the STANDALONE door talks to an engine in this same process. There is no hosted storage
-      behind it, and a standalone install posting somebody's attachment bytes to the hosted
-      service would be the exact inversion of what this build is for;
-    · the CLOUD door forwards `POST /drafts/:id/send` verbatim to the hosted API. A build
-      already on somebody's machine must keep sending the shape it has always sent — which the
-      server still accepts, deliberately, and which is byte-identical to what it accepted before
-      staging existed.
-
-   ONE construction serves both doors, so one assertion covers both. Asserted from source and
-   over stripped comments for the same reason the block above is: the alternative is an
-   engine's worth of setup to observe one constructor argument, and the regression this family
-   has already had is a property missing from a literal.
-   ───────────────────────────────────────────────────────────────────────────────────────── */
-
-function bridgeSource(): string {
-  try {
-    return readFileSync(resolve(process.cwd(), "apps/desktop/src/bridge-fetch.ts"), "utf8");
-  } catch {
-    return readFileSync(resolve(process.cwd(), "src/bridge-fetch.ts"), "utf8");
-  }
-}
-
-describe("neither desktop door stages attachment bytes to Cloud storage", () => {
-  const src = stripComments(bridgeSource());
-
-  it("resolved a real file", () => {
-    expect(src).toContain("export function createEngineAdapter()");
-  });
-
-  it("the adapter is constructed with a base url, a fetch and its own two log sinks — no staging option", () => {
-    // The construction's PREFIX proves the census read the real site; the decision this file makes
-    // is the absence of `stageAttachments` (next case). `syncFailureSink` and `searchPhasesSink`
-    // carry the window's failed pull and a Search's timings to the local engine's log; neither stages.
-    expect(src).toContain('new HttpAdapter({ baseUrl: "", fetch: bridgeFetch, syncFailureSink: reportWindowSyncFailure, searchPhasesSink: reportWindowSearchPhases })');
-  });
-
-  it("the word `stageAttachments` does not appear anywhere in this app's source", () => {
-    // Widened past the one file on purpose: the option could be introduced through any other
-    // construction of the adapter, and what matters is that this application never asks for it.
-    const roots = ["apps/desktop/src", "src"];
-    let scanned = 0;
-    const hits: string[] = [];
-    const walk = (dir: string): void => {
-      let entries: Array<{ name: string; isDirectory(): boolean }>;
-      try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
-      for (const e of entries) {
-        const p = `${dir}/${e.name}`;
-        if (e.isDirectory()) { walk(p); continue; }
-        if (!/\.(ts|tsx)$/.test(e.name)) continue;
-        scanned += 1;
-        const text = stripComments(readFileSync(p, "utf8"));
-        // `no-http-adapter.ts` MIRRORS the option in its stub interface so a bundle that aliases
-        // the real module still type-checks; naming a field is not asking for the behaviour, and
-        // that file's `HttpAdapter` throws on construction.
-        if (e.name === "no-http-adapter.ts") continue;
-        if (text.includes("stageAttachments")) hits.push(p);
-      }
-    };
-    for (const r of roots) walk(r);
-    expect(scanned, "the scan found no desktop sources at all").toBeGreaterThan(5);
-    expect(hits, "a desktop surface asked the wire client to stage into Cloud storage").toEqual([]);
+  it("builds the window's engine with the door's staging decision", () => {
+    expect(src).toMatch(/createLocalEngine\(mount\.key, \{ stageAttachments: stage \}\)/);
+    expect(src).toMatch(/const stage = stagesAttachments\(/);
   });
 });
 
@@ -223,12 +224,13 @@ describe("readMailboxFacts forwards the announced SIZE", () => {
     expect(fact!.smtpMaxSizeBytes).toBe(25 * MIB);
   });
 
-  it("`null` (no announcement) arrives as null, and the cap then falls back to the constant", async () => {
+  it("`null` (no announcement) arrives as null, and the cap is the assumed provider SIZE", async () => {
     const { readMailboxFacts } = await import("../src/local-mailbox-facts.js");
     wireItems = [{ ...WIRE_ROW, smtpMaxSizeBytes: null }];
     const [fact] = await readMailboxFacts();
     expect(fact!.smtpMaxSizeBytes).toBeNull();
-    expect(composeAttachCap(fact!.smtpMaxSizeBytes, null)).toBe(COMPOSE_ATTACH_MAX_TOTAL_BYTES);
+    expect(composeAttachCap(fact!.smtpMaxSizeBytes, desktopSendSurface(local)))
+      .toBe(composeAttachBudgetFor(COMPOSE_ATTACH_UNMEASURED_MESSAGE_BYTES));
   });
 
   it("an ABSENT field (an engine that predates the column) stays absent, not null", async () => {

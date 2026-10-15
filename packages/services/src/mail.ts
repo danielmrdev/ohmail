@@ -302,7 +302,7 @@ export {
   SEND_ATTEMPT_CEILING_MS, SEND_TIMEOUT_SENTENCE, FORWARD_MAX_RAW_BYTES,
   SEND_ATTACHMENT_MAX_TOTAL_BYTES, SEND_ATTACHMENT_FIELD_MAX_CHARS,
   SEND_MAX_ATTACHMENT_PARTS, SEND_MAX_RECIPIENTS, dedupeStagedIds,
-  SEND_MIME_ENVELOPE_BYTES, SEND_STAGED_OBJECT_MAX_BYTES, attachmentBudgetFor,
+  SEND_MIME_ENVELOPE_BYTES, SEND_STAGED_OBJECT_MAX_BYTES, SEND_UNMEASURED_MESSAGE_BYTES, attachmentBudgetFor,
   effectiveAttachmentCap, sendSurfaceFor, mailServerRefusalOf,
   type SendDeps, type SendResult, type SendAttachment, type SendInput, type MailServerRefusalKind,
   type StagedAttachmentSource,

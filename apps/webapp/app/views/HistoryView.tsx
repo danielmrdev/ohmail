@@ -15,7 +15,7 @@ import {
   countWhen, listSurface, physicalFolderOf, saysEmpty,
   type EngineMessage, type OhmailEngine, type TagDTO,
 } from "@ohmail/client-engine";
-import { InfoNote, ListPane, ListRows, MessageRow } from "@ohmail/ui";
+import { InfoNote, ListPane, ListRows, MessageRow, cssRect } from "@ohmail/ui";
 import { MessagePane, type MessageAction } from "../shell/MessagePane";
 import { useListWindow } from "../shell/list-window";
 import { useColumnPick } from "../shell/column-pick";
@@ -265,7 +265,8 @@ export function HistoryView({
     const held = pin.current;
     const node = held ? el.querySelector<HTMLElement>(`.rows > [data-index="${held.slot}"]`) : null;
     if (node) {
-      const d = node.getBoundingClientRect().top - el.getBoundingClientRect().top - el.clientTop;
+      // CSS px, the units of `scrollTop` (`ui-zoom.ts` in @ohmail/ui).
+      const d = cssRect(node).top - cssRect(el).top - el.clientTop;
       if (Math.abs(d) >= 1) {
         el.scrollTop += d;
         el.dispatchEvent(new Event("scroll"));

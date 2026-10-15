@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Icon } from "../icons.js";
+import { cssRect, cssViewport } from "../ui-zoom.js";
 import "./date-picker.css";
 
 /**
@@ -186,8 +187,9 @@ export function DatePicker({
     const el = rootRef.current;
     if (!el) return;
     const place = () => {
-      const a = anchor?.getBoundingClientRect() ?? { top: 0, bottom: 0, left: DP_EDGE, right: DP_EDGE };
-      const next = placeDatePicker(a, { width: el.offsetWidth, height: el.offsetHeight }, { width: window.innerWidth, height: window.innerHeight });
+      // CSS px, like the card's offset size and the placement it writes (`ui-zoom.ts`).
+      const a = anchor ? cssRect(anchor) : { top: 0, bottom: 0, left: DP_EDGE, right: DP_EDGE };
+      const next = placeDatePicker(a, { width: el.offsetWidth, height: el.offsetHeight }, cssViewport());
       setPos((p) => (p && p.top === next.top && p.left === next.left && p.side === next.side ? p : next));
     };
     place();

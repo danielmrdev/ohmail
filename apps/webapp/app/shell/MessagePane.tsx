@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useTranslations } from "next-intl";
 import { FOLDER_OF_VIEW, forwardOffered, isResurfaced, type EngineMessage, type OhmailView, type TagDTO } from "@ohmail/client-engine";
-import { Button, Chip, DatePicker, Icon, InfoNote, Kbd, ReadingPane } from "@ohmail/ui";
+import { Button, Chip, DatePicker, Icon, InfoNote, Kbd, ReadingPane, cssRect } from "@ohmail/ui";
 import { MessageFiles } from "./MessageFiles";
 import { MessageBody } from "../components/MessageBody";
 import { ConversationPanels } from "./Conversation";
@@ -1552,8 +1552,9 @@ export function MessagePane({
        * to square (and jsdom, which reports zero-height rects, takes that branch and stays inert).
        */
       last.style.paddingBottom = "0px";
-      const stackH = conv.getBoundingClientRect().height;
-      const portH = scroller.getBoundingClientRect().height;
+      // CSS px, the units of the padding and of `scrollTop` (`ui-zoom.ts` in @ohmail/ui).
+      const stackH = cssRect(conv).height;
+      const portH = cssRect(scroller).height;
       if (stackH > portH) {
         const residue = (stackH - portH) % 1;
         let pad = (1 - residue) % 1;
@@ -1562,7 +1563,7 @@ export function MessagePane({
       }
       scrollProgrammatically(
         scroller,
-        opened.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 14,
+        cssRect(opened).top - cssRect(scroller).top + scroller.scrollTop - 14,
       );
     };
 

@@ -859,7 +859,8 @@ export interface ScreenerWirePage {
 }
 
 export type ScreenerSkipReason =
-  | "not_held" | "out_of_credits" | "over_quote" | "spend_unavailable" | "model_unavailable" | "model_declined";
+  | "not_held" | "out_of_credits" | "over_quote" | "spend_unavailable" | "model_unavailable" | "model_declined"
+  | "no_auto_ai";
 
 export interface ScreenerSuggestWire {
     dryRun: boolean;
@@ -896,6 +897,8 @@ export const screener: {
     suggest: (senders: string[], opts?: {
         dryRun?: boolean;
         idempotencyKey?: string;
+        maxCredits?: number;
+        automatic?: boolean;
     }) => Promise<ScreenerSuggestWire>;
     junkList: (opts?: {
         cursor?: string;

@@ -26,6 +26,35 @@ In the Linux desktop app, clicking a text field in a dialog, such as the address
 Mailboxes > Add mailbox, no longer sends focus back to the dialog's first control, so what you type
 reaches the field. Contributed by Daniel Muñoz in #13.
 
+### Screener purchases in the desktop app stop at the price you confirmed
+<!-- changes: one-oh-desktop-suggest-quote-ceiling.md -->
+
+In the desktop app on ohmail Cloud, a Screener suggestion purchase did not carry the price you confirmed, so it could
+cost more than that price. It carries it now, as in the browser, and the purchase stops there.
+
+### Automatic suggestions skip mail kept out of automatic AI
+<!-- changes: one-oh-screener-no-ai-auto.md -->
+
+With automatic suggestions on, opening the Screener no longer asks the model about a sender whose mail is kept out of
+automatic AI, such as a message with a sign-in code; pressing Suggest still asks, with the code removed.
+
+### Text size, and the same size on every Linux build
+<!-- changes: one-oh-ui-scale.md -->
+
+Settings → General → Text size scales the whole app, from 90% to 150%, on this device. It applies before
+the first frame, in the desktop app and in the browser. On Linux the desktop app no longer follows the
+desktop's text-scaling factor, which newer GTK versions applied to the whole window: a distro, AUR or
+self-built package now draws at the same size as the AppImage. (#14, #7)
+
+### Larger attachments from the desktop app
+<!-- changes: one-oh-desktop-cloud-staged-attach.md -->
+
+The desktop app signed in to a hosted account sends attachments the way the browser does: a file too large
+for one request is uploaded to the account's storage first, so the compose form states the same limit as the
+browser, up to 42 MB per message. On your own mail server the limit is your server's, up to the same 42 MB.
+A mail server that announces no size limit is no longer held to 3 MB of attachments: the form allows about
+19 MB, a typical provider's limit, and the server's own answer decides.
+
 ### Still to come
 
 Signed installers — a real Apple Developer ID and an Authenticode certificate. See

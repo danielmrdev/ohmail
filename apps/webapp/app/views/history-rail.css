@@ -16,7 +16,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: calc(100vh - 220px);
+  max-height: calc(100vh / var(--ui-zoom, 1) - 220px);
   overflow-y: auto;
   padding: 4px;
   border-radius: var(--r-control, 8px);

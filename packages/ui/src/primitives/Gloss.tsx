@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { Icon } from "../icons.js";
+import { cssRect, cssViewport } from "../ui-zoom.js";
 import "./gloss.css";
 
 /**
@@ -102,11 +103,11 @@ export function Gloss({ text, caption, placement = "meta", className }: GlossPro
       return;
     }
     const place = (): void => {
-      const a = triggerRef.current?.getBoundingClientRect();
+      // CSS px, like the card's offset size and the placement it writes (`ui-zoom.ts`).
+      const a = triggerRef.current ? cssRect(triggerRef.current) : undefined;
       const card = cardRef.current;
       if (!a || !card) return;
-      setPos(placeGloss(a, { width: card.offsetWidth, height: card.offsetHeight },
-        { width: window.innerWidth, height: window.innerHeight }));
+      setPos(placeGloss(a, { width: card.offsetWidth, height: card.offsetHeight }, cssViewport()));
     };
     place();
     window.addEventListener("resize", place);

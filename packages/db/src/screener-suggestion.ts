@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql, type Column, type SQL } from "drizzle-orm";
 import { messages, routingDecisions } from "./schema-mail.js";
 import { recordChanges, type Tx } from "./change-log.js";
 import type { Dialect } from "./dialect/index.js";
@@ -123,6 +123,18 @@ export function screenerSuggestedSenderExists(
      where sm.account_id = ${account}
        and lower(sm.from_address) = ${senderExpr}
   )`;
+}
+
+/**
+ * MAY AN AUTOMATIC PATH ASK A MODEL ABOUT THIS MESSAGE — the one predicate every automatic Screener
+ * buyer reads: the always-on pass's candidate query and the suggest route's automatic batch. Both
+ * stored columns, the stricter reading of each: `sensitivity_category` is the detector's positive
+ * class, and `no_ai` also carries its INDETERMINATE outcome (a NULL category). A press asks about
+ * every held sender; nobody pressed here. Positive on purpose — a caller reads the ADMITTED set,
+ * so a row it cannot read is left out. Columns, not a table: the pass tests a window's projection.
+ */
+export function automaticAiAdmits(row: { noAi: Column; sensitivityCategory: Column }): SQL {
+  return and(eq(row.noAi, false), isNull(row.sensitivityCategory))!;
 }
 
 /** One sender's most recent stored verdict, and which of their messages it was bought about. */

@@ -192,4 +192,6 @@ export type { CommandPaletteState } from "./hooks/useCommandPalette.js";
 
 /* format */
 export { formatFileSize } from "./format/file-size.js";
+export { uiZoom, cssRect, cssPoint, cssViewport, UI_ZOOM_VAR } from "./ui-zoom.js";
+export type { CssRect } from "./ui-zoom.js";
 export { BODY_PAGE_CHARS, BODY_PAGE_LINES, pageEnd, pageEnds } from "./format/long-text.js";

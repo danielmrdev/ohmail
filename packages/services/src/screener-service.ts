@@ -10,6 +10,7 @@ import {
   screenerAttemptKey,
   storeScreenerSuggestion,
   screenerSuggestionsBySender,
+  automaticAiAdmits,
   SCREENER_SUGGESTION_PROVENANCE,
   UNPRICED,
   reverseCharge, type ReverseChargeFact,
@@ -567,6 +568,14 @@ export interface ScreenerSuggestBody {
    * ignored field — a money bound that silently disappears is worse than none claimed.
    */
   maxCredits?: unknown;
+  /**
+   * NOBODY PRESSED THIS ONE — the opt-in's automatic batch says so with `true`. Such a request asks
+   * only about held mail {@link automaticAiAdmits} passes, the always-on pass's own rule; a flagged
+   * sender is skipped `no_auto_ai`, unpriced, uncharged and never sent. ABSENT or `false` is a press,
+   * which asks about every held sender. Any other value is a 400: a privacy bound that silently
+   * disappears is worse than none claimed.
+   */
+  automatic?: unknown;
 }
 
 export interface ScreenerSuggestion {
@@ -625,7 +634,8 @@ export type ScreenerSuggestSkip =
   | "over_quote"          // the run reached the number the person confirmed — see `maxCredits`
   | "spend_unavailable"   // see below — every "not now, ask again" the gate can produce
   | "model_unavailable"   // charged, the model faulted; the free retry honours it
-  | "model_declined";     // the model declined this sender (a refusal, a cut-off); refunded
+  | "model_declined"      // the model declined this sender (a refusal, a cut-off); refunded
+  | "no_auto_ai";         // an AUTOMATIC request, and this sender's mail is kept out of automatic AI
 /**
  * `spend_unavailable` COVERS ONE MORE THING since the double-buy fix, deliberately not a new wire
  * value: another caller holds the exclusive claim on this sender's message and did not finish
@@ -1882,6 +1892,8 @@ export class ScreenerService extends ScreenerReadService {
     const dryRun = body?.dryRun === true;
     /* Read here, beside `dryRun`, so a malformed ceiling refuses before any read or spend. */
     const ceiling = parseConfirmedCeiling(body);
+    /* A press, or the opt-in's automatic batch — the same place, for the same reason. */
+    const automatic = parseAutomatic(body);
     const classifier = this.classifier;
     if (!classifier) {
       // The same grammar as `drafter_unconfigured`: a host with no model is not broken,
@@ -2000,6 +2012,11 @@ export class ScreenerService extends ScreenerReadService {
       );
     }
 
+    // AN AUTOMATIC REQUEST ASKS ONLY ABOUT WHAT THE AUTOMATIC RULE ADMITS — one read for the set,
+    // answered per sender in pass 1 as a skip, never by emptying `rep` (that reads as
+    // `organized_elsewhere`). `null` on a press, which asks about every held sender.
+    const autoAdmitted = automatic ? await automaticallyAskable(ctx, [...rep.values()]) : null;
+
     // What is already bought. Read ONCE for the set, and the reason it is read at all is that a
     // `duplicate` costs the user nothing and costs US a model call.
     const stored = await this.storedSuggestions(ctx, [...rep.values()].map((r) => r.messageId), ohboxPolicy);
@@ -2052,7 +2069,13 @@ export class ScreenerService extends ScreenerReadService {
     senders.forEach((sender, index) => {
       const r = rep.get(sender);
       if (!r) { refused[index] = { sender, reason: "not_held" }; return; }
-      // THERE IS NO SENSITIVITY GATE HERE ANY MORE — THAT IS THE FEATURE. This line read `if
+      // NOBODY PRESSED AN AUTOMATIC REQUEST: a representative the automatic rule does not admit is
+      // skipped here, before the store, the price and the gate — no credit, no model call.
+      if (autoAdmitted && !autoAdmitted.has(r.messageId)) {
+        refused[index] = { sender, reason: "no_auto_ai" };
+        return;
+      }
+      // ON A PRESS THERE IS NO SENSITIVITY GATE — THAT IS THE FEATURE. This line read `if
       // (!r.aiEligible) { skipped … "withheld" }` and was the whole of the withholding on the
       // user-requested path; it is gone under AI-OPEN and nothing replaces it: every held sender
       // named is priced, charged and asked about, the credential handled by REDACTING at the sink
@@ -2575,6 +2598,23 @@ async function markCorrespondents(
 }
 
 /**
+ * THE REPRESENTATIVES AN AUTOMATIC REQUEST MAY ASK A MODEL ABOUT — those {@link automaticAiAdmits}
+ * passes, the always-on pass's own rule over the same two columns. One read for the set, and it
+ * returns the ADMITTED ids: a representative this read does not answer for is not asked about.
+ */
+async function automaticallyAskable(
+  ctx: ServiceContext, rows: readonly ScreenerRow[],
+): Promise<ReadonlySet<string>> {
+  if (rows.length === 0) return new Set();
+  const admitted = await ctx.db.select({ id: messages.id }).from(messages).where(and(
+    eq(messages.accountId, ctx.accountId),
+    inArray(messages.id, rows.map((r) => r.messageId)),
+    automaticAiAdmits(messages),
+  ));
+  return new Set(admitted.map((m) => m.id));
+}
+
+/**
  * THE FACTS, APPLIED TO WHAT IS ON RECORD. The worker's pass caps the row it STORES; this caps
  * what is SHOWN, and both call the same `capSuggestion`, so the two can never disagree about a
  * verdict — the cap is idempotent, and running it here is what lets a suggestion bought before
@@ -2643,6 +2683,14 @@ function parseConfirmedCeiling(body: ScreenerSuggestBody): number | null {
     );
   }
   return raw;
+}
+
+/** Was this request the automatic batch? See {@link ScreenerSuggestBody.automatic}. */
+function parseAutomatic(body: ScreenerSuggestBody): boolean {
+  const raw = body?.automatic;
+  if (raw === undefined || raw === false) return false;
+  if (raw === true) return true;
+  throw new ServiceError("validation_failed", 400, "automatic must be true or false");
 }
 
 /**

@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import type { TagDTO } from "@ohmail/client-engine";
-import { TagDot, TextField } from "@ohmail/ui";
+import { TagDot, TextField, cssRect, cssViewport } from "@ohmail/ui";
 import { hueOf } from "./format";
 import { useFocusFollows } from "./focus-follows";
 
@@ -33,17 +33,19 @@ export function placePicker(anchor: HTMLElement | null): {
   anchorTop: number;
   anchorBottom: number;
 } {
-  const r = anchor?.getBoundingClientRect() ?? {
-    left: window.innerWidth / 2 - 120,
-    bottom: window.innerHeight / 3,
-    top: window.innerHeight / 3,
+  /* CSS px throughout: the result is written as `left`/`top` (`ui-zoom.ts` in @ohmail/ui). */
+  const view = cssViewport();
+  const r = anchor ? cssRect(anchor) : {
+    left: view.width / 2 - 120,
+    bottom: view.height / 3,
+    top: view.height / 3,
   };
   const w = 240;
   const pad = 10;
   const h = 190;
-  const x = Math.min(Math.max(r.left, pad), window.innerWidth - w - pad);
+  const x = Math.min(Math.max(r.left, pad), view.width - w - pad);
   let y = r.bottom + 8;
-  if (y + h > window.innerHeight - pad) y = Math.max(pad, r.top - h - 8);
+  if (y + h > view.height - pad) y = Math.max(pad, r.top - h - 8);
   return { x, y, anchorTop: r.top, anchorBottom: r.bottom };
 }
 

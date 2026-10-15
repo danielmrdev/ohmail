@@ -5160,6 +5160,10 @@ export function outboundToMail(msg: OutboundMessage, messageId: string): Mail.Op
             content: Buffer.from(a.content),
             contentType: a.contentType,
             ...(a.cid ? { cid: a.cid } : {}),
+            // A message/* part goes out base64. From nodemailer 7 it would go 8bit and as it is, and a
+            // forward re-attaches somebody else's bytes: a NUL, a bare CR or a line over 998 octets
+            // would reach SMTP DATA and the Sent copy unencoded.
+            ...(/^message\//i.test(a.contentType) ? { contentTransferEncoding: "base64" as const } : {}),
           })),
         }
       : {}),

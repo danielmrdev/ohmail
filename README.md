@@ -900,7 +900,7 @@ host section above describes, and nothing else.
 is `connect-src 'none'`, so `fetch`, XHR and WebSocket are refused before they
 are attempted. In the interface-only build the main window's capability list
 is literally empty (`"permissions": []`). In the build you download, the
-window can call twenty-seven commands and nothing else, every one declared in
+window can call thirty-five commands and nothing else, every one declared in
 `src-tauri/build.rs`: the bridge to the mail engine and its restart, a
 notification and the icon's badge, the window's own performance numbers,
 opening a link, a link from a message or an attachment outside the app and
@@ -908,8 +908,9 @@ saving an attachment to your Downloads folder (validated by the shell, never
 fetched by the page), host mode's controls — reading its state, probing and
 arming Tailscale, start-at-login, and opening Tailscale's download page as one
 more fixed address the shell owns — the probe a pairing link starts, the
-default-mail-app registration, the active Omarchy theme, and the updater's
-state, press and daily check. Mail does not travel
+default-mail-app registration, the active Omarchy theme, the updater's
+state, press and daily check, the window's first-frame report and its text
+size. Mail does not travel
 over the network from the page — it travels down a pipe to a process on the
 same machine. The engine holds the IMAP connection; the page holds no
 credential.

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, type RefObject } from "react";
 import { DWELL_MS, EVIDENCE_WINDOW_MS, READING_LINE, atScrollEnd, atScrollTop, dwellCommits } from "@ohmail/client-engine";
-import { SCROLL_KEYS } from "@ohmail/ui";
+import { SCROLL_KEYS, cssRect } from "@ohmail/ui";
 import { stampLive } from "./programmatic-scroll";
 
 /**
@@ -85,7 +85,8 @@ export function createReaderSeen(o: ReaderSeenOptions): ReaderSeen {
   let dwell: ReturnType<typeof setTimeout> | null = null;
 
   const view = (): { top: number; bottom: number; line: number } => {
-    const top = scroller.getBoundingClientRect().top;
+    // CSS px, the units of `clientHeight` (`ui-zoom.ts` in @ohmail/ui).
+    const top = cssRect(scroller).top;
     return { top, bottom: top + scroller.clientHeight, line: top + line * scroller.clientHeight };
   };
   const unseen = (): HTMLElement[] =>
@@ -97,7 +98,7 @@ export function createReaderSeen(o: ReaderSeenOptions): ReaderSeen {
     const y = view().line;
     for (const el of unseen()) {
       const id = el.dataset.convId!;
-      if (el.getBoundingClientRect().bottom > y) {
+      if (cssRect(el).bottom > y) {
         seenBelow.add(id);
         continue;
       }
@@ -116,7 +117,7 @@ export function createReaderSeen(o: ReaderSeenOptions): ReaderSeen {
       dwell = null;
       if (!visible()) return;
       const boxes = unseen().map((el) => {
-        const r = el.getBoundingClientRect();
+        const r = cssRect(el);
         return { id: el.dataset.convId!, top: r.top, bottom: r.bottom };
       });
       const end = atScrollEnd(scroller.scrollTop, scroller.clientHeight, scroller.scrollHeight);

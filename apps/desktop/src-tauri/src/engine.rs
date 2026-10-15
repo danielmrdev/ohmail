@@ -132,7 +132,7 @@ pub(crate) mod keystore_double {
 const PROTOCOL_VERSION: u64 = 1;
 const PREAMBLE_BYTES: usize = 8;
 const MAX_HEADER_BYTES: u32 = 64 * 1024;
-const MAX_BODY_BYTES: u32 = 32 * 1024 * 1024;
+const MAX_BODY_BYTES: u32 = 64 * 1024 * 1024;
 
 /// The engine's file name inside the app's own resources.
 ///
@@ -3746,6 +3746,28 @@ pub struct EngineRequest {
     pub body: Vec<u8>,
 }
 
+/// THE WINDOW'S REQUEST BODY, in whichever of its three spellings arrived. The command channel is
+/// JSON, so an ordinary body crosses as an array of byte values; a large one as its text
+/// (`bodyText`) or as base64 (`body64`), because the array costs several bytes of renderer memory
+/// per byte sent. More than one spelling, or base64 that does not decode, is refused by name.
+#[cfg_attr(not(feature = "local-engine"), allow(dead_code))]
+fn window_request_body(
+    body: Option<Vec<u8>>,
+    body_text: Option<String>,
+    body64: Option<String>,
+) -> Result<Vec<u8>, String> {
+    use base64::Engine as _;
+    match (body, body_text, body64) {
+        (None, None, None) => Ok(Vec::new()),
+        (Some(bytes), None, None) => Ok(bytes),
+        (None, Some(text), None) => Ok(text.into_bytes()),
+        (None, None, Some(b64)) => base64::engine::general_purpose::STANDARD
+            .decode(b64.as_bytes())
+            .map_err(|err| format!("the window's request body is not base64: {err}")),
+        _ => Err("the window's request carried its body in more than one form".to_string()),
+    }
+}
+
 /// What the engine answered. A status of any kind means the app ran; a transport failure is an
 /// `Err` out of [`Engine::request`] instead, which is the shape a dead socket gives a browser.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -5587,8 +5609,11 @@ fn engine_request(
     method: String,
     url: String,
     headers: Vec<(String, String)>,
-    body: Vec<u8>,
+    body: Option<Vec<u8>>,
+    body_text: Option<String>,
+    body64: Option<String>,
 ) -> Result<tauri::ipc::Response, String> {
+    let body = window_request_body(body, body_text, body64)?;
     // Read ONCE, into an `Arc` this request holds for its whole life. A reconfigure can replace the
     // engine while this is in flight, and the answer must come from the engine the question went to
     // — re-reading the slot for the reply would deliver it against a different child's bookkeeping.
@@ -7254,9 +7279,9 @@ fn deliver_popup<R: tauri::Runtime>(app: &tauri::AppHandle<R>, route: PopupRoute
 #[cfg(feature = "local-engine")]
 const LOCAL_ENGINE_CAPABILITY: &str = r#"{
   "identifier": "local-engine",
-  "description": "The window may ask the shell about the local engine, send it one request at a time, choose which mailbox this install is for (a pairing's choice provisionally, then kept or undone by one of two commands that name nothing — the shell's own record says which door was replaced), sign out of it, press the failure card's one recovery (the shell removes the engine's own data-directory lock — a path the shell resolves and the window never names — and starts the engine again, refused outright unless the shell has already given up on the engine), press its Try again (the shell starts an engine it has given up on again and removes nothing, refused unless it has given up), ask the engine whether the computer at a pasted pairing link's address is the one that link came from (the window hands over the ORIGIN and the PIN the link carried and no token; on an install that has no door the shell starts an engine for that CANDIDATE in a directory of its own, asks it, and removes that directory afterwards, configuring nothing), post one notification, set the icon's badge, report its own startup and interaction timings as numbers the shell turns into a log line, read the platform's name and the newest lines of the log (no argument), hand back one diagnostic file of the app's own JSON shape for the shell to write beside that log under a name the shell chooses (the shell refuses any other text, and nothing is sent), open one of a fixed list of ohmail.app pages in the user's own browser (naming the page and, for the sign-in page alone, a 43-character commitment the shell validates and appends itself), hand the shell ONE http/https address a person clicked in a message for that same browser to open, hand it the BYTES of one attachment and a display name so the shell can write that file under its own directory and open it in this computer's usual viewer, or save that same file into this computer's Downloads folder (the shell picks the folder and composes every part of the name; a name already taken is numbered, never overwritten), and listen for the shell's own events — including the handoff code an ohmail:// activation carried. It may also drive HOST MODE, entirely through this shell's own commands: read its state, probe the user's own tailnet (tailscale status), arm or disarm publishing the engine's loopback door to that tailnet (tailscale serve — never funnel, pinned by test), read and set this install's start-at-login registration, and open Tailscale's download page — one more constant address the shell owns, the window still naming no URL. It may also CLAIM a mailto: activation the shell is holding (take-once, so a link seeds one compose form and never two), and ask about the OS's DEFAULT MAIL APP through two commands that name nothing: a read of the current handler's state, and a request that takes each platform's own sanctioned path — macOS's consent dialog, the Windows Settings page (one more constant address), xdg-settings on Linux — never a registry write. It may read the app's UPDATE state, press the same button the menu item is, and ask for the check the app makes at launch — a read of the installed version and of what the last check found, a press that checks or restarts into an already-verified payload, and a scheduled check that is silent unless it finds something (a press is a person asking and is answered out loud, which is right for a button and wrong once a day for ever); it may not name a feed, see a payload or install anything, and the request, the signature check and the version guard stay in the shell. It may ask for the DESKTOP'S OWN THEME through one read-only command: on an Omarchy system the shell answers the active theme's raw material (the theme's colors.toml, the system's font and gap facts — paths the SHELL names, never the window), and everywhere else it answers nothing. It may REPORT that its first frame is composed, with that frame's background colour as one #rrggbb string the shell parses strictly: the shell paints the still-hidden window that colour, keeps it for the next launch in one file it names itself, and shows the window. Nothing else: no filesystem path the window may name, no arbitrary shell command, no network, and no other Tauri core API.",
+  "description": "The window may ask the shell about the local engine, send it one request at a time, choose which mailbox this install is for (a pairing's choice provisionally, then kept or undone by one of two commands that name nothing — the shell's own record says which door was replaced), sign out of it, press the failure card's one recovery (the shell removes the engine's own data-directory lock — a path the shell resolves and the window never names — and starts the engine again, refused outright unless the shell has already given up on the engine), press its Try again (the shell starts an engine it has given up on again and removes nothing, refused unless it has given up), ask the engine whether the computer at a pasted pairing link's address is the one that link came from (the window hands over the ORIGIN and the PIN the link carried and no token; on an install that has no door the shell starts an engine for that CANDIDATE in a directory of its own, asks it, and removes that directory afterwards, configuring nothing), post one notification, set the icon's badge, report its own startup and interaction timings as numbers the shell turns into a log line, read the platform's name and the newest lines of the log (no argument), hand back one diagnostic file of the app's own JSON shape for the shell to write beside that log under a name the shell chooses (the shell refuses any other text, and nothing is sent), open one of a fixed list of ohmail.app pages in the user's own browser (naming the page and, for the sign-in page alone, a 43-character commitment the shell validates and appends itself), hand the shell ONE http/https address a person clicked in a message for that same browser to open, hand it the BYTES of one attachment and a display name so the shell can write that file under its own directory and open it in this computer's usual viewer, or save that same file into this computer's Downloads folder (the shell picks the folder and composes every part of the name; a name already taken is numbered, never overwritten), and listen for the shell's own events — including the handoff code an ohmail:// activation carried. It may also drive HOST MODE, entirely through this shell's own commands: read its state, probe the user's own tailnet (tailscale status), arm or disarm publishing the engine's loopback door to that tailnet (tailscale serve — never funnel, pinned by test), read and set this install's start-at-login registration, and open Tailscale's download page — one more constant address the shell owns, the window still naming no URL. It may also CLAIM a mailto: activation the shell is holding (take-once, so a link seeds one compose form and never two), and ask about the OS's DEFAULT MAIL APP through two commands that name nothing: a read of the current handler's state, and a request that takes each platform's own sanctioned path — macOS's consent dialog, the Windows Settings page (one more constant address), xdg-settings on Linux — never a registry write. It may read the app's UPDATE state, press the same button the menu item is, and ask for the check the app makes at launch — a read of the installed version and of what the last check found, a press that checks or restarts into an already-verified payload, and a scheduled check that is silent unless it finds something (a press is a person asking and is answered out loud, which is right for a button and wrong once a day for ever); it may not name a feed, see a payload or install anything, and the request, the signature check and the version guard stay in the shell. It may ask for the DESKTOP'S OWN THEME through one read-only command: on an Omarchy system the shell answers the active theme's raw material (the theme's colors.toml, the system's font and gap facts — paths the SHELL names, never the window), and everywhere else it answers nothing. It may REPORT that its first frame is composed, with that frame's background colour as one #rrggbb string the shell parses strictly: the shell paints the still-hidden window that colour, keeps it for the next launch in one file it names itself, and shows the window. It may set its own TEXT SIZE as one of five percentages, which the shell makes the main window's zoom and keeps for the next launch in one more file it names itself; any other number is refused. Nothing else: no filesystem path the window may name, no arbitrary shell command, no network, and no other Tauri core API.",
   "windows": ["main"],
-  "permissions": ["allow-engine-status", "allow-engine-request", "allow-engine-configure", "allow-engine-switch-commit", "allow-engine-switch-restore", "allow-engine-logout", "allow-engine-unlock-retry", "allow-engine-start-over", "allow-engine-retry", "allow-host-candidate-probe", "allow-notify", "allow-set-badge", "allow-ui-vitals", "allow-diagnostic-facts", "allow-diagnostic-save", "allow-open-link", "allow-open-external", "allow-open-attachment", "allow-save-attachment", "allow-host-state", "allow-tailscale-status", "allow-tailscale-serve-arm", "allow-tailscale-serve-disarm", "allow-autostart-get", "allow-autostart-set", "allow-open-tailscale-download", "allow-mailto-claim", "allow-default-mail-status", "allow-default-mail-request", "allow-omarchy-theme", "allow-update-state", "allow-update-press", "allow-update-poll", "allow-window-ready", "core:event:allow-listen"]
+  "permissions": ["allow-engine-status", "allow-engine-request", "allow-engine-configure", "allow-engine-switch-commit", "allow-engine-switch-restore", "allow-engine-logout", "allow-engine-unlock-retry", "allow-engine-start-over", "allow-engine-retry", "allow-host-candidate-probe", "allow-notify", "allow-set-badge", "allow-ui-vitals", "allow-diagnostic-facts", "allow-diagnostic-save", "allow-open-link", "allow-open-external", "allow-open-attachment", "allow-save-attachment", "allow-host-state", "allow-tailscale-status", "allow-tailscale-serve-arm", "allow-tailscale-serve-disarm", "allow-autostart-get", "allow-autostart-set", "allow-open-tailscale-download", "allow-mailto-claim", "allow-default-mail-status", "allow-default-mail-request", "allow-omarchy-theme", "allow-update-state", "allow-update-press", "allow-update-poll", "allow-window-ready", "allow-set-text-size", "core:event:allow-listen"]
 }"#;
 
 /// The commands `build.rs` declared to the ACL manifest, baked in at compile time.
@@ -7433,7 +7458,9 @@ pub fn attach<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R
             crate::updater::update_poll,
             // The page's report that its first frame is composed, with that frame's canvas: the
             // hidden window is painted that colour and shown. `launch_window.rs` has why.
-            crate::launch_window::window_ready
+            crate::launch_window::window_ready,
+            // Settings → Text size: the main window's zoom, kept for the next launch.
+            crate::text_scale::set_text_size
         ])
 }
 

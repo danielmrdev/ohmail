@@ -24,6 +24,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
+import { cssPoint, cssRect } from "@ohmail/ui";
 import {
   applyColumnVars,
   clampList,
@@ -86,7 +87,8 @@ function Handle({ kind, label, state }: HandleProps) {
   const measure = useCallback((): number => {
     const col = document.querySelector<HTMLElement>(kind === "rail" ? RAIL_SEL : LIST_SEL);
     if (col) {
-      const w = col.getBoundingClientRect().width;
+      // CSS px: the width is written back as `--rail-w`/`--split-user` (`ui-zoom.ts` in @ohmail/ui).
+      const w = cssRect(col).width;
       if (w > 0) return Math.round(w);
     }
     return state.current[kind] ?? (kind === "rail" ? RAIL.dflt : LIST.dflt);
@@ -158,7 +160,7 @@ function Handle({ kind, label, state }: HandleProps) {
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
-    drag.current = { x: e.clientX, from: measure() };
+    drag.current = { x: cssPoint(e).x, from: measure() };
     // Wrapped: a browser that refuses capture must still get a working drag — the class and the
     // move handler do the work, and `lostpointercapture`/unmount are what clean up after it.
     try {
@@ -180,7 +182,7 @@ function Handle({ kind, label, state }: HandleProps) {
     if (!d) return;
     // Live, NOT persisted: a drag writes the store once, on release, rather than on every
     // frame of a gesture somebody may still be changing their mind about.
-    set(d.from + (e.clientX - d.x), false);
+    set(d.from + (cssPoint(e).x - d.x), false);
   };
 
   const onPointerUp = () => endDrag(true);

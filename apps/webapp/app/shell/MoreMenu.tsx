@@ -11,6 +11,7 @@
  * no questions: Resurface and Move keep their sub-row — their items close the menu and open the panel.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { cssRect, cssViewport } from "@ohmail/ui";
 import type { BarVerb } from "./bar-density";
 import { useFocusFollows } from "./focus-follows";
 import { OVERLAY_EDGE, OVERLAY_GAP } from "./overlay-clamp";
@@ -28,11 +29,13 @@ import { OVERLAY_EDGE, OVERLAY_GAP } from "./overlay-clamp";
 export function fitUpwardMenu(el: HTMLElement, anchor: HTMLElement | null): { down: boolean; maxHeight: number | null } {
   const s = getComputedStyle(el);
   if (s.position !== "absolute" || s.bottom === "auto") return { down: false, maxHeight: null };
-  const r = el.getBoundingClientRect();
+  // CSS px throughout, the units of `scrollHeight` and the cap (`ui-zoom.ts` in @ohmail/ui).
+  const r = cssRect(el);
   if (r.top >= OVERLAY_EDGE) return { down: false, maxHeight: null };
-  const bar = (anchor?.closest(".abar") ?? el.parentElement)?.getBoundingClientRect();
+  const barEl = anchor?.closest(".abar") ?? el.parentElement;
+  const bar = barEl ? cssRect(barEl) : null;
   if (!bar) return { down: false, maxHeight: null };
-  const below = window.innerHeight - OVERLAY_EDGE - (bar.bottom + OVERLAY_GAP);
+  const below = cssViewport().height - OVERLAY_EDGE - (bar.bottom + OVERLAY_GAP);
   if (el.scrollHeight <= below) return { down: true, maxHeight: null };
   const above = bar.top - OVERLAY_GAP - OVERLAY_EDGE;
   return { down: false, maxHeight: Math.max(120, above) };

@@ -1,5 +1,7 @@
 "use client";
 
+import { cssRect } from "@ohmail/ui";
+
 /**
  * A window over a long list — render the rows somebody can see, reserve the height of the rest.
  * History is the one pile with no upper bound, and a 5 000-row mirror window still holds far more
@@ -85,9 +87,10 @@ export const WINDOW_TOP = "data-window-top";
 export function listOrigin(el: HTMLElement): number {
   const top = el.querySelector<HTMLElement>(`[${WINDOW_TOP}]`);
   if (!top) return 0;
-  const box = el.getBoundingClientRect();
+  const box = cssRect(el);
   if (box.width === 0 && box.height === 0) return 0;
-  return top.getBoundingClientRect().top - box.top - el.clientTop + el.scrollTop;
+  // CSS px throughout, the units of `scrollTop` (`ui-zoom.ts` in @ohmail/ui).
+  return cssRect(top).top - box.top - el.clientTop + el.scrollTop;
 }
 
 /**
@@ -97,21 +100,23 @@ export function listOrigin(el: HTMLElement): number {
  * under. A row taller than the list shows its top.
  */
 export function revealInScroller(scroller: HTMLElement, row: HTMLElement): void {
-  const box = scroller.getBoundingClientRect();
+  // The list's own scroll is in CSS px, so its half reads CSS px (`ui-zoom.ts` in @ohmail/ui).
+  const box = cssRect(scroller);
   let top = box.top + scroller.clientTop;
   const bottom = top + scroller.clientHeight;
   for (const child of Array.from(scroller.children)) {
     if (child === row || child.contains(row)) continue;
     if (getComputedStyle(child).position !== "sticky") continue;
-    const at = child.getBoundingClientRect();
+    const at = cssRect(child);
     if (at.height > 0 && at.top <= top + 1) top = Math.max(top, at.bottom);
   }
-  const r = row.getBoundingClientRect();
+  const r = cssRect(row);
   // Rounded outward: the browser snaps `scrollTop` to a device pixel and a fraction short clips.
   if (r.top < top) scroller.scrollTop = Math.floor(scroller.scrollTop - (top - r.top));
   else if (r.bottom > bottom) scroller.scrollTop = Math.ceil(scroller.scrollTop + Math.min(r.bottom - bottom, r.top - top));
   /* A SHORT VIEWPORT SCROLLS THE PAGE TOO (app.css, 200 % zoom): the list's box can run past the
-     window, so the row is then kept inside the window the same minimal way. */
+     window, so the row is then kept inside the window the same minimal way. The ROOT scroller
+     answers in viewport px under a stamped zoom (measured), so this half stays in viewport px. */
   const page = scroller.ownerDocument.scrollingElement;
   const tall = scroller.ownerDocument.defaultView?.innerHeight ?? 0;
   if (!page || tall <= 0) return;

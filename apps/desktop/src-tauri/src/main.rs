@@ -124,6 +124,10 @@ mod inherited_fds;
 // command in `engine.rs`, never to this process — `allocator_arenas.rs` has the measurement.
 mod allocator_arenas;
 
+// Settings → Text size as the webview's zoom everywhere, and the text DPI pin held for the run on
+// Linux. Always compiled: every build opens the same window (issue #14).
+mod text_scale;
+
 fn main() {
     // WHEN WEBKIT SHOULD GIVE MEMORY BACK. Process-global and read when the FIRST web context is
     // created, which wry does while the runtime is built — so it is set here, beside the arena
@@ -144,6 +148,9 @@ fn main() {
     }
 
     let mut builder = tauri::Builder::default();
+    // The pin above, held for the run: GTK re-reads the desktop's text scale live, and a change was
+    // measured to shrink a running window. `text_scale.rs` re-applies the same policy on notify.
+    text_scale::keep_text_dpi_pinned();
     // The commands the window may call, registered in `engine.rs` so that this file names none
     // of them. With the feature off the line is not compiled and the builder is untouched.
     #[cfg(feature = "local-engine")]

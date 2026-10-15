@@ -629,7 +629,7 @@ describe("the Rust side", () => {
    * describe would stay green while the shell grew a capability. Adding a file therefore fails
    * this test until somebody decides which rules it lives under.
    */
-  it("is these thirty-two files and no others", () => {
+  it("is these thirty-six files and no others", () => {
     const files = fs.readdirSync(path.join(APP, "src-tauri/src")).sort();
     expect(files).toEqual([
       // HOW MANY ALLOCATOR ARENAS THIS APP'S PROCESSES MAY HAVE. glibc gives a contending
@@ -662,6 +662,12 @@ describe("the Rust side", () => {
       // own GNOME one, and `menu.rs` performs it from the binary's single `setup`.
       "frame.rs",
       "frame_tests.rs",
+      // GTK'S TEXT DPI, PINNED AT 96 IN BOTH DIRECTIONS (issue #14): the policy as a pure function,
+      // applied from `main` once GTK is up and before the first web context, so the desktop's
+      // text-scaling-factor never reaches WebKit's canvas. Linux only; the monitor's scale is not
+      // touched. Reads and writes one GTK setting and nothing else.
+      "gtk_text_dpi.rs",
+      "gtk_text_dpi_tests.rs",
       // Host mode: publishing the engine's loopback door to the user's own tailnet — the
       // setting, the tailscale invocations (serve, never funnel — mutation-pinned in its own
       // tests), the tray and close-to-hide lifecycle, start-at-login. Compiled only under
@@ -712,6 +718,13 @@ describe("the Rust side", () => {
       // own address again, and asks through the dialog plugin the updater already carries.
       "renderer_recovery.rs",
       "renderer_recovery_tests.rs",
+      // THE APP OWNS ITS SCALE. ALWAYS compiled: on Linux it holds `gtk_text_dpi`'s pin from a
+      // `notify::gtk-xft-dpi` handler, so a live change of the desktop's text scale never reaches
+      // the canvas either, and every build applies the kept Text size as the main window's zoom.
+      // It writes one file, the kept size, under the app's own data directory; `set_text_size`
+      // is engine-build only.
+      "text_scale.rs",
+      "text_scale_tests.rs",
       "updater.rs",
       "updater_tests.rs",
       // WHAT THE RENDERER COSTS. `engine_vitals` measures the sidecar, which is the process that
@@ -925,6 +938,8 @@ describe("the Rust side", () => {
     const updaterModule = read("src-tauri/src/updater.rs");
     // The launch window's report is defined beside the show gate it opens.
     const launchModule = read("src-tauri/src/launch_window.rs");
+    // …and Settings → Text size beside the GTK pin it completes.
+    const textScaleModule = read("src-tauri/src/text_scale.rs");
     const COMMANDS = [
       "engine_status",
       "engine_request",
@@ -1043,6 +1058,9 @@ describe("the Rust side", () => {
       // `#rrggbb` string the shell parses strictly. The window is created hidden; this paints it
       // that colour and shows it. `launch_window.rs` has the measurement.
       "window_ready",
+      // Settings → Text size: one of five percentages, made the main window's zoom and kept for
+      // the next launch. `text_scale.rs` refuses any other number.
+      "set_text_size",
     ];
 
     expect(build).toMatch(/CARGO_FEATURE_LOCAL_ENGINE/);
@@ -1078,7 +1096,7 @@ describe("the Rust side", () => {
       // `[<(]` because several are generic over the runtime: a command taking an `AppHandle`
       // has to name the runtime it belongs to, or the handler cannot be built for one.
       expect(
-        engine + hostModule + defaultMailModule + omarchyModule + updaterModule + launchModule,
+        engine + hostModule + defaultMailModule + omarchyModule + updaterModule + launchModule + textScaleModule,
         `${command} is not defined`,
       ).toMatch(new RegExp(`fn ${command}[<(]`));
       expect(engine, `${command} is not registered`).toMatch(
@@ -2917,7 +2935,9 @@ describe("the UI bundle's build config", () => {
     // `fetch` appears only as the NAME of the option it satisfies, never as a call.
     expect(bridge).not.toMatch(/(?<![\w.])fetch\s*\(/);
     // The adapter it builds is addressed relative to the engine, so no base URL is composed here.
-    expect(bridge).toMatch(/new HttpAdapter\(\{ baseUrl: "", fetch: bridgeFetch, syncFailureSink: reportWindowSyncFailure, searchPhasesSink: reportWindowSearchPhases \}\)/);
+    // The hosted door's staged upload rides the same bridge, with its own longer deadline.
+    expect(bridge).toMatch(/new HttpAdapter\(\{\s*baseUrl: "", fetch: bridgeFetch,\s*syncFailureSink: reportWindowSyncFailure, searchPhasesSink: reportWindowSearchPhases,/);
+    expect(bridge).toMatch(/url\.startsWith\(STAGED_UPLOAD_PATH_PREFIX\) \? \{ ms: STAGED_UPLOAD_DEADLINE_MS \}/);
   });
 
   it("the no-fixtures stub declares every SYMBOL the barrel re-exports from fixtures-adapter", () => {

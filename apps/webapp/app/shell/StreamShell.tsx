@@ -19,7 +19,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useSeenOnScroll } from "@ohmail/ui";
+/* Every rect here meets `scrollTop`, so every rect is read in CSS px (`ui-zoom.ts`). */
+import { cssRect, useSeenOnScroll } from "@ohmail/ui";
 
 /**
  * THE COLUMN WIDTH THE MOUNTED CARDS SHARE, measured once per stream.
@@ -202,8 +203,8 @@ export const StreamShell = forwardRef<
     const el = divRef.current;
     const c = el?.querySelector<HTMLElement>(`.scast[data-sid="${CSS.escape(id)}"]`);
     if (!el || !c) return false;
-    const root = el.getBoundingClientRect();
-    const r = c.getBoundingClientRect();
+    const root = cssRect(el);
+    const r = cssRect(c);
     return root.height > 0 && r.bottom > root.top && r.top < root.bottom;
   };
   const settleOffScreen = () => {
@@ -254,12 +255,12 @@ export const StreamShell = forwardRef<
     if (!el) return;
     const cards = Array.from(el.querySelectorAll<HTMLElement>(".scast[data-sid]"));
     if (cards.length === 0) return;
-    const rootRect = el.getBoundingClientRect();
+    const rootRect = cssRect(el);
     if (rootRect.height <= 0) return; // detached or unlaid-out: keep what we know
     let topVisible: string | null = null;
     let bottomVisible: string | null = null;
     for (const c of cards) {
-      const r = c.getBoundingClientRect();
+      const r = cssRect(c);
       if (r.bottom <= rootRect.top || r.top >= rootRect.bottom) continue;
       if (topVisible === null) topVisible = c.dataset.sid!;
       bottomVisible = c.dataset.sid!;
@@ -440,12 +441,12 @@ export const StreamShell = forwardRef<
     const pick = (rootTop: number): HTMLElement | null => {
       if (opened) {
         const c = el.querySelector<HTMLElement>(`.scast[data-sid="${CSS.escape(opened.sid)}"]`);
-        const r = c?.getBoundingClientRect();
+        const r = c ? cssRect(c) : undefined;
         const live = Date.now() <= opened.until || !!c?.classList.contains("pend");
         if (live && c && r && r.top < rootTop - 0.5 && r.bottom > rootTop) return c;
       }
       for (const c of el.querySelectorAll<HTMLElement>(".scast[data-sid]")) {
-        if (c.getBoundingClientRect().top >= rootTop - 0.5) return c;
+        if (cssRect(c).top >= rootTop - 0.5) return c;
       }
       return null;
     };
@@ -461,7 +462,7 @@ export const StreamShell = forwardRef<
     const remember = (rootTop: number) => {
       const c = pick(rootTop);
       holdRef.current = c
-        ? { sid: c.dataset.sid!, offset: c.getBoundingClientRect().top - rootTop, scrollTop: el.scrollTop }
+        ? { sid: c.dataset.sid!, offset: cssRect(c).top - rootTop, scrollTop: el.scrollTop }
         : null;
     };
 
@@ -480,7 +481,7 @@ export const StreamShell = forwardRef<
     const frame = () => {
       if (hidden() || Date.now() > activeUntil) { holdRafRef.current = 0; return; }
       holdRafRef.current = requestAnimationFrame(frame);
-      const rootRect = el.getBoundingClientRect();
+      const rootRect = cssRect(el);
       if (rootRect.height <= 0) return; // detached, or a hidden tab: nothing to hold
       const held = holdRef.current;
       if (!held) { remember(rootRect.top); return; }
@@ -489,7 +490,7 @@ export const StreamShell = forwardRef<
          than compensate against a card that is not there. `stream-window.ts` reserves what it
          unmounts, so nothing has moved. */
       if (!card) { holdAccRef.current = 0; remember(rootRect.top); return; }
-      const offset = card.getBoundingClientRect().top - rootRect.top;
+      const offset = cssRect(card).top - rootRect.top;
       const scrolled = el.scrollTop - held.scrollTop;
       const drift = offset - (held.offset - scrolled);
       /**
@@ -508,7 +509,7 @@ export const StreamShell = forwardRef<
       }
       if (opened) {
         const oc = el.querySelector<HTMLElement>(`.scast[data-sid="${CSS.escape(opened.sid)}"]`);
-        const oh = oc ? oc.getBoundingClientRect().height : -1;
+        const oh = oc ? cssRect(oc).height : -1;
         if (Math.abs(oh - opened.h) > 0.5) opened = { ...opened, h: oh, until: Date.now() + HOLD_QUIET_MS };
         else if (Date.now() > opened.until && !oc?.classList.contains("pend")) opened = null;
       }
@@ -545,11 +546,11 @@ export const StreamShell = forwardRef<
     /* The press, before its commit — see {@link opened}. The anchor is taken NOW, from the
        geometry the change moves away from; the loop measures the change against it. */
     toggledRef.current = (sid, open) => {
-      const rootRect = el.getBoundingClientRect();
+      const rootRect = cssRect(el);
       if (rootRect.height <= 0) return;
       if (open) {
         const c = el.querySelector<HTMLElement>(`.scast[data-sid="${CSS.escape(sid)}"]`);
-        opened = { sid, until: Date.now() + HOLD_QUIET_MS, h: c ? c.getBoundingClientRect().height : -1 };
+        opened = { sid, until: Date.now() + HOLD_QUIET_MS, h: c ? cssRect(c).height : -1 };
       } else if (opened?.sid === sid) {
         opened = null;
       }
@@ -596,7 +597,7 @@ export const StreamShell = forwardRef<
             ? null
             : el.querySelector<HTMLElement>(`.scast[data-sid="${CSS.escape(jump.id)}"]`);
           if (card) {
-            const atLine = card.getBoundingClientRect().top - el.getBoundingClientRect().top <= 90;
+            const atLine = cssRect(card).top - cssRect(el).top <= 90;
             const atEnd = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
             if (!atLine && !atEnd) return; // still travelling — emit nothing
             jumpRef.current = null;
@@ -619,9 +620,9 @@ export const StreamShell = forwardRef<
         if (el.scrollTop + el.clientHeight >= el.scrollHeight - 2) {
           current = cards[cards.length - 1]!; // pinned to the end — the last card is current
         } else {
-          const top = el.getBoundingClientRect().top;
+          const top = cssRect(el).top;
           for (const c of cards) {
-            if (c.getBoundingClientRect().top - top <= 90) current = c;
+            if (cssRect(c).top - top <= 90) current = c;
             else break;
           }
         }
@@ -681,7 +682,7 @@ export const StreamShell = forwardRef<
 
       /** How far below the top of the scrollport the card sits right now. */
       const lineOf = (c: HTMLElement): number =>
-        c.getBoundingClientRect().top - el.getBoundingClientRect().top;
+        cssRect(c).top - cssRect(el).top;
 
       /** The offset that would put the card exactly at the reading line. May be unreachable. */
       const rawTop = (c: HTMLElement): number => lineOf(c) + el.scrollTop - LANDING_LEAD_PX;
@@ -746,7 +747,7 @@ export const StreamShell = forwardRef<
         const aim = aimTop(c);
         const line = lineOf(c);
         const atLine = Math.abs(rawTop(c) - el.scrollTop) <= ANCHOR_TOLERANCE_PX;
-        const onScreen = line < el.clientHeight - 1 && line + c.getBoundingClientRect().height > 1;
+        const onScreen = line < el.clientHeight - 1 && line + cssRect(c).height > 1;
         const parked = Math.abs(aim - el.scrollTop) <= ANCHOR_TOLERANCE_PX && onScreen;
         if (atLine || parked) {
           if (++held >= ANCHOR_STABLE_FRAMES) {

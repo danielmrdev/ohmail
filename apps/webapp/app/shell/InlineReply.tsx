@@ -21,7 +21,7 @@ import type {
   EmailAddress,
   EngineMessage,
 } from "@ohmail/client-engine";
-import { Button, Kbd, TextField } from "@ohmail/ui";
+import { Button, Kbd, TextField, cssPoint, cssViewport } from "@ohmail/ui";
 import {
   ComposeAttach, composeAttachCap, composeAttachCapBinding,
 } from "../components/ComposeAttach";
@@ -113,7 +113,7 @@ function readStoredReplyHeight(): number | null {
   try {
     const raw = window.sessionStorage.getItem(REPLY_HEIGHT_KEY);
     const n = raw === null ? Number.NaN : Number(raw);
-    return Number.isFinite(n) ? clampReplyHeight(n, window.innerHeight) : null;
+    return Number.isFinite(n) ? clampReplyHeight(n, cssViewport().height) : null;
   } catch {
     return null;
   }
@@ -314,7 +314,8 @@ export function InlineReply({
     typeof window === "undefined" ? null : readStoredReplyHeight(),
   );
   const setPanelHeight = (px: number): void => {
-    const next = clampReplyHeight(px, window.innerHeight);
+    // CSS px, the units of the panel's height (`ui-zoom.ts` in @ohmail/ui).
+    const next = clampReplyHeight(px, cssViewport().height);
     setPanelPx(next);
     storeReplyHeight(next);
   };
@@ -327,7 +328,7 @@ export function InlineReply({
   const currentPanelPx = (): number => panelPx ?? box.current?.offsetHeight ?? 0;
   const dragFrom = useRef<{ y: number; h: number } | null>(null);
   const onGripPointerDown = (e: ReactPointerEvent<HTMLDivElement>): void => {
-    dragFrom.current = { y: e.clientY, h: currentPanelPx() };
+    dragFrom.current = { y: cssPoint(e).y, h: currentPanelPx() };
     // jsdom has no pointer capture; the window listeners below are the mechanism, capture is
     // only the nicety that keeps the cursor owned while it leaves the grip.
     e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -335,7 +336,7 @@ export function InlineReply({
       const from = dragFrom.current;
       if (!from || !box.current) return;
       // Up is taller: the grip is the TOP edge, so the height grows by how far the pointer rose.
-      setPanelHeight(from.h + (from.y - ev.clientY));
+      setPanelHeight(from.h + (from.y - cssPoint(ev).y));
     };
     const up = (): void => {
       dragFrom.current = null;
@@ -642,7 +643,7 @@ export function InlineReply({
         aria-valuemax={
           typeof window === "undefined"
             ? undefined
-            : Math.max(REPLY_PANEL_MIN_PX, window.innerHeight - REPLY_PANEL_VIEWPORT_MARGIN_PX)
+            : Math.max(REPLY_PANEL_MIN_PX, cssViewport().height - REPLY_PANEL_VIEWPORT_MARGIN_PX)
         }
         aria-valuenow={panelPx ?? undefined}
         onPointerDown={onGripPointerDown}

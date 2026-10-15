@@ -10,6 +10,7 @@
  * every clipping ancestor: a menu inside a scroller is cut at the scroller's edge.
  */
 import { useLayoutEffect, useState, type CSSProperties, type RefObject } from "react";
+import { cssRect, cssViewport } from "@ohmail/ui";
 import { OVERLAY_EDGE } from "./overlay-clamp";
 
 export interface RowMenuFit {
@@ -60,7 +61,7 @@ export function visibleBand(
     const o = getComputedStyle(e).overflowY;
     if (!o || o === "visible") continue;
     if (scroller == null && (o === "auto" || o === "scroll")) scroller = e as HTMLElement;
-    const r = e.getBoundingClientRect();
+    const r = cssRect(e);
     top = Math.max(top, r.top);
     bottom = Math.min(bottom, r.bottom);
   }
@@ -90,11 +91,12 @@ export function useRowMenuFit(
       const row = (el.offsetParent as HTMLElement | null) ?? el.parentElement;
       const btn = trigger.current;
       if (row == null || btn == null) return;
-      const rr = row.getBoundingClientRect();
-      const tr = btn.getBoundingClientRect();
+      // CSS px throughout, the units of the scroll reads and the cap (`ui-zoom.ts` in @ohmail/ui).
+      const rr = cssRect(row);
+      const tr = cssRect(btn);
       // `scrollHeight` is the content's natural height even while capped; the border is added back.
       const natural = el.scrollHeight + (el.offsetHeight - el.clientHeight);
-      const band = visibleBand(row.parentElement, window.innerHeight);
+      const band = visibleBand(row.parentElement, cssViewport().height);
       const sc = band.scroller;
       const can = sc != null && !scrolled;
       const roomDown = can ? Math.min(sc.scrollHeight - sc.clientHeight - sc.scrollTop, tr.top - (band.top + OVERLAY_EDGE)) : 0;

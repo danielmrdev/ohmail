@@ -67,8 +67,8 @@ export function adoptLegacyWindowOutbox(dataDir: string, ownerKey: string | null
 /** The client engine's `OUTBOX_TYPE` and `OUTBOX_ABANDONED_TYPE`, spelled here: this process does not link it. */
 export const WINDOW_OUTBOX_TYPES: readonly string[] = ["outbox_entry", "outbox_abandoned"];
 
-/** Under the shell's 32 MiB frame, so one send that crossed the bridge fits in one write. */
-const WINDOW_OUTBOX_MAX_BODY_BYTES = 31 * 1024 * 1024;
+/** Under the shell's 64 MiB frame, so one send that crossed the bridge fits in one write. */
+const WINDOW_OUTBOX_MAX_BODY_BYTES = 63 * 1024 * 1024;
 /** What one GET page carries at most, beside a single row larger than it, which goes alone. */
 const WINDOW_OUTBOX_PAGE_BYTES = 8 * 1024 * 1024;
 /** The whole set's ceiling. A write past it is refused, so the window says it could not record. */

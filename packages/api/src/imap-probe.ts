@@ -865,7 +865,7 @@ export function makeImapProbe(deps: ApiDeps, opts: ImapProbeOptions = {}): (i: I
  * IMAP walk, earned for THIS submission server on its own (an IMAP consent licenses nothing here).
  * The classifier reads sentences where the IMAP one reads codes, and that is nodemailer's doing:
  * `smtp-connection` wraps every TLS-layer failure in a fresh Error, so the OpenSSL code and the
- * `cert` object are gone and only the message text survives. Pinned to nodemailer@6.10.1; the
+ * `cert` object are gone and only the message text survives. Pinned to nodemailer@8.0.11; the
  * specimen table in the tests is what notices a version moving it.
  */
 

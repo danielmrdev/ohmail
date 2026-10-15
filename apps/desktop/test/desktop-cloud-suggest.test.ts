@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as React from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { NextIntlClientProvider } from "next-intl";
@@ -7,6 +7,7 @@ import { ThemeProvider, ToastHost } from "@ohmail/ui";
 
 import messages from "../../webapp/messages/en.json";
 import { CloudSuggest } from "../src/CloudSuggest.js";
+import { cloudSuggestWire } from "../src/cloud-suggest.js";
 import { suggestDoorFor } from "../src/doors.js";
 import type { EngineStatus } from "../src/bridge-fetch.js";
 import type { SenderSuggestion } from "../../webapp/app/shell/screener-suggest";
@@ -267,6 +268,25 @@ describe("the hosted door's suggest control", () => {
     for (const a of bought) expect((a.body as { senders: string[] }).senders.length).toBeLessThanOrEqual(15);
   });
 
+  /**
+   * EACH CHUNK CARRIES THE PRICE IT WAS QUOTED AS ITS CEILING, so the account stops a confirmed run
+   * at the figure on the button rather than charging whatever the set costs by the time it arrives.
+   * The stand-in prices two per sender, so the last, shorter chunk is quoted less than the others:
+   * a door that sent the sum, the first chunk's price, or nothing at all fails here.
+   */
+  it("hands each chunk's own quote back as its ceiling", async () => {
+    const engine = engineAnswering();
+    await mount();
+    await click("Suggest…");
+    await confirm();
+
+    const bought = engine.asked.filter(
+      (a) => a.url === "/screener/suggest" && (a.body as { dryRun?: boolean }).dryRun !== true,
+    ) as Array<Asked & { body: { senders: string[]; maxCredits?: number } }>;
+    expect(bought.map((a) => a.body.senders.length)).toEqual([15, 15, 10]);
+    expect(bought.map((a) => a.body.maxCredits)).toEqual([30, 30, 20]);
+  });
+
   it("lands what it bought in the overlay the rows read", async () => {
     engineAnswering();
     await mount(SENDERS.slice(0, 3));
@@ -309,6 +329,100 @@ describe("the hosted door's suggest control", () => {
     await mount([], SENDERS.slice(0, 7));
     expect(hostEl.textContent).toContain("7");
     expect(buttons().map((b) => b.textContent)).toContain("Suggest again…");
+  });
+});
+
+/**
+ * THE TRANSPORT CARRIES `automatic` — the shell's opt-in batch reaches the hosted server through it
+ * on this door. Dropped here, that batch would arrive as a press and ask about every held sender.
+ */
+describe("the hosted wire's body", () => {
+  afterEach(() => { delete host.__TAURI_INTERNALS__; });
+
+  it("says `automatic` for the unpressed batch and its quote, and never for a press", async () => {
+    const engine = engineAnswering();
+    await cloudSuggestWire.suggest(["a@example.com"], { dryRun: true, automatic: true });
+    await cloudSuggestWire.suggest(["a@example.com"], { idempotencyKey: "k-1", automatic: true });
+    await cloudSuggestWire.suggest(["a@example.com"], { idempotencyKey: "k-2" });
+    expect(engine.asked.filter((a) => a.url === "/screener/suggest").map((a) => a.body)).toEqual([
+      { senders: ["a@example.com"], dryRun: true, automatic: true },
+      { senders: ["a@example.com"], automatic: true },
+      { senders: ["a@example.com"] },
+    ]);
+  });
+
+  /**
+   * THE CONFIRMED FIGURE TRAVELS on a purchase, zero included: zero is a real ceiling, and a check
+   * on truthiness would drop it and buy the whole set. Never on a dry run, which has nothing to
+   * bound, and never made up where the caller has no figure.
+   */
+  it("hands back the confirmed figure on a purchase, and only there", async () => {
+    const engine = engineAnswering();
+    await cloudSuggestWire.suggest(["a@example.com"], { idempotencyKey: "k-1", maxCredits: 6 });
+    await cloudSuggestWire.suggest(["a@example.com"], { idempotencyKey: "k-2", maxCredits: 0, automatic: true });
+    await cloudSuggestWire.suggest(["a@example.com"], { dryRun: true, maxCredits: 6 });
+    await cloudSuggestWire.suggest(["a@example.com"], { idempotencyKey: "k-3" });
+    expect(engine.asked.filter((a) => a.url === "/screener/suggest").map((a) => a.body)).toEqual([
+      { senders: ["a@example.com"], maxCredits: 6 },
+      { senders: ["a@example.com"], maxCredits: 0, automatic: true },
+      { senders: ["a@example.com"], dryRun: true },
+      { senders: ["a@example.com"] },
+    ]);
+  });
+});
+
+/**
+ * ONE CALL, TWO WIRES, ONE REQUEST. The browser's client and this door ask the same account for
+ * the same purchase, so every field the browser sends — the sender set, the dry run, the
+ * automatic flag, the confirmed figure and the key — is sent here too, in the same words. Driven
+ * over every shape a price check, a confirm and the automatic batch produce.
+ */
+describe("the browser's wire and this door's", () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    delete host.__TAURI_INTERNALS__;
+    globalThis.fetch = realFetch;
+    vi.unstubAllEnvs();
+  });
+
+  it("send the same body and key for the same call", async () => {
+    // The browser's client reads its server address once, when it loads: load a fresh copy.
+    vi.stubEnv("NEXT_PUBLIC_API_BASE", "/api");
+    vi.resetModules();
+    const { screener } = await import("../../webapp/app/api-client.js");
+    const browser: Asked[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = Object.entries((init?.headers ?? {}) as Record<string, string>);
+      browser.push({
+        method: init?.method ?? "GET",
+        url: String(input).replace(/^\/api/, ""),
+        body: typeof init?.body === "string" ? JSON.parse(init.body) : null,
+        key: headers.find(([n]) => n.toLowerCase() === "idempotency-key")?.[1] ?? null,
+      });
+      return new Response(JSON.stringify({ dryRun: false, requested: 1, quoted: 1, charged: 0,
+        suggestions: [], skipped: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+    const engine = engineAnswering();
+
+    const calls: Array<[string[], Parameters<typeof cloudSuggestWire.suggest>[1]]> = [
+      [["a@example.com", "b@example.com"], { dryRun: true }],
+      [["a@example.com"], { dryRun: true, automatic: true }],
+      [["a@example.com"], { dryRun: true, maxCredits: 3 }],
+      [["a@example.com", "b@example.com"], { idempotencyKey: "k-1", maxCredits: 4 }],
+      [["a@example.com"], { idempotencyKey: "k-2", maxCredits: 0 }],
+      [["a@example.com"], { idempotencyKey: "k-3", maxCredits: 2, automatic: true }],
+      [["a@example.com"], { idempotencyKey: "k-4" }],
+    ];
+    for (const [senders, opts] of calls) {
+      await screener.suggest(senders, opts);
+      await cloudSuggestWire.suggest(senders, opts);
+    }
+
+    expect(browser).toHaveLength(calls.length);
+    expect(engine.asked).toEqual(browser);
+    // Not equal by being empty: the browser's own requests carry the figure on all three confirms.
+    expect(browser.map((a) => (a.body as { maxCredits?: number }).maxCredits))
+      .toEqual([undefined, undefined, undefined, 4, 0, 2, undefined]);
   });
 });
 
