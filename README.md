@@ -877,7 +877,7 @@ install -m 755 apps/desktop/src-tauri/linux/linuxdeploy-plugin-gtk.sh \
 Then from `apps/desktop`:
 
 ```bash
-NO_STRIP=1 mise exec node@22.23.1 -- npm run app:build:engine -- --bundles appimage
+NO_STRIP=1 npm run app:build:engine -- --bundles appimage
 ```
 
 The result carries the engine at `engine/bin/ohmail-engine.mjs` and the runtime
