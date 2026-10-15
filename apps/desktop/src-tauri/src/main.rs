@@ -105,6 +105,9 @@ mod perf_budgets;
 // preview opens the same window and asks for the same budget.
 mod webview_budget;
 
+#[cfg(target_os = "linux")]
+mod gtk_text_dpi;
+
 // The window opens hidden and is shown on its own canvas once the page has composed its first
 // frame, or at a bound. Always compiled: every build opens the same hidden window.
 mod launch_window;
@@ -134,8 +137,9 @@ fn main() {
     if gtk::is_initialized_main_thread() {
         use gtk::prelude::GtkSettingsExt;
         if let Some(settings) = gtk::Settings::default() {
-            const CSS_DPI: i32 = 96 * 1024; // GTK stores text DPI in 1024ths.
-            settings.set_gtk_xft_dpi(CSS_DPI);
+            if let Some(dpi) = gtk_text_dpi::pinned_dpi(settings.gtk_xft_dpi()) {
+                settings.set_gtk_xft_dpi(dpi);
+            }
         }
     }
 
