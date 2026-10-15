@@ -102,13 +102,22 @@ describe("each door declares what one send from this window carries", () => {
   });
 
   it("a large announcement binds at the window's ceiling, and the form says why", () => {
-    // Gmail's SIZE: its budget (26 MiB of files) is more than one send from this window carries.
-    expect(composeAttachCap(35_882_577, desktopSendSurface(local))).toBe(DESKTOP_WINDOW_SEND_MAX_TOTAL_BYTES);
-    expect(composeAttachCapBinding(35_882_577, desktopSendSurface(local))).toBe("surface");
+    // A 70 MiB SIZE budgets 51 MiB of files, more than one send from this window carries.
+    expect(composeAttachCap(70 * MIB, desktopSendSurface(local))).toBe(DESKTOP_WINDOW_SEND_MAX_TOTAL_BYTES);
+    expect(composeAttachCapBinding(70 * MIB, desktopSendSurface(local))).toBe("surface");
+    // Gmail's SIZE (26 MiB of files) is the mail server's own limit here, under the window's.
+    expect(composeAttachCapBinding(35_882_577, desktopSendSurface(local))).toBe("mailbox");
+  });
+
+  it("the hosted door states the browser's number for every mailbox", () => {
+    for (const announced of [null, 10 * MIB, 25 * MIB, 35_882_577, 57 * MIB, 70 * MIB]) {
+      expect(composeAttachCap(announced, desktopSendSurface(managed)))
+        .toBe(composeAttachCap(announced, COMPOSE_ATTACH_STAGED_SURFACE_BYTES));
+    }
   });
 });
 
-/* WHY 22 MiB: the window records each send's change through the engine's outbox door before it
+/* WHY 40 MiB: the window records each send's change through the engine's outbox door before it
    publishes it, attachments as base64, and that door refuses a write over its bound. Read from
    the engine's source so the two cannot drift apart. */
 function sidecarOutboxBound(): number {
@@ -123,7 +132,7 @@ function sidecarOutboxBound(): number {
 }
 
 describe("the window's ceiling fits the one write a send takes", () => {
-  it("22 MiB of files, base64, plus a megabyte of message, is under the outbox door's bound", () => {
+  it("40 MiB of files, base64, plus a megabyte of message, is under the outbox door's bound", () => {
     const bound = sidecarOutboxBound();
     // The client-half publish carries no engine source; the bound is then unread, not green.
     if (Number.isNaN(bound)) return;

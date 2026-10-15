@@ -2091,7 +2091,7 @@ fn frame_contract_is_the_engines() {
     assert_eq!(PROTOCOL_VERSION, 1);
     assert_eq!(PREAMBLE_BYTES, 8);
     assert_eq!(MAX_HEADER_BYTES, 64 * 1024);
-    assert_eq!(MAX_BODY_BYTES, 32 * 1024 * 1024);
+    assert_eq!(MAX_BODY_BYTES, 64 * 1024 * 1024);
 }
 
 #[test]

@@ -10,14 +10,18 @@
  */
 
 /**
- * The largest body one frame carries.
- *
- * Sized against what the API actually returns rather than "big enough": a `/sync` page and an
- * on-demand attachment fetch are the two large ones, and `DEFAULT_SYNC_BATCH_MAX_BYTES` in the
- * IMAP adapter is 32 MB. Match it and stop. Raising it is never the answer to a page that does
- * not fit — the page is what is wrong, and the next transport has its own number anyway.
+ * The largest body one frame carries. A send's attachments cross it twice as base64 — the change
+ * the window records, then the send itself — so it carries 40 MiB of files with room for the
+ * message; a `/sync` page is bounded apart, by {@link SYNC_PAGE_MAX_BYTES}, and this is never the
+ * answer to a page that does not fit.
  */
-export const TRANSPORT_FRAME_MAX_BODY_BYTES = 32 * 1024 * 1024;
+export const TRANSPORT_FRAME_MAX_BODY_BYTES = 64 * 1024 * 1024;
+
+/**
+ * What one `/sync` page may weigh on the wire. Sized against what the API returns rather than
+ * "big enough": `DEFAULT_SYNC_BATCH_MAX_BYTES` in the IMAP adapter is 32 MB. Match it and stop.
+ */
+export const SYNC_PAGE_MAX_BYTES = 32 * 1024 * 1024;
 
 /**
  * What a frame carries BESIDES the rows, held back from the page's own budget: the response
@@ -32,7 +36,7 @@ export const TRANSPORT_FRAME_ENVELOPE_RESERVE_BYTES = 128 * 1024;
 
 /**
  * What the ROWS of one page may weigh. The single number a paginator bounds itself by, and the
- * only correct way to spend {@link TRANSPORT_FRAME_MAX_BODY_BYTES}.
+ * only correct way to spend {@link SYNC_PAGE_MAX_BYTES}.
  */
 export const PAGE_MAX_ROW_BYTES =
-  TRANSPORT_FRAME_MAX_BODY_BYTES - TRANSPORT_FRAME_ENVELOPE_RESERVE_BYTES;
+  SYNC_PAGE_MAX_BYTES - TRANSPORT_FRAME_ENVELOPE_RESERVE_BYTES;

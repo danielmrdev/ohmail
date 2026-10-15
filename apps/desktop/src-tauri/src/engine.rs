@@ -132,7 +132,7 @@ pub(crate) mod keystore_double {
 const PROTOCOL_VERSION: u64 = 1;
 const PREAMBLE_BYTES: usize = 8;
 const MAX_HEADER_BYTES: u32 = 64 * 1024;
-const MAX_BODY_BYTES: u32 = 32 * 1024 * 1024;
+const MAX_BODY_BYTES: u32 = 64 * 1024 * 1024;
 
 /// The engine's file name inside the app's own resources.
 ///
