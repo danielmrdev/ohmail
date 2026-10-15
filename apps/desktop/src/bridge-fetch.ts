@@ -265,14 +265,21 @@ function asBytes(answer: unknown): Uint8Array {
   );
 }
 
-/** A request body, as the bytes the command takes. */
-function bodyBytes(body: unknown): number[] {
-  if (body === undefined || body === null || body === "") return [];
-  if (typeof body === "string") return Array.from(new TextEncoder().encode(body));
-  if (body instanceof ArrayBuffer) return Array.from(new Uint8Array(body));
-  if (ArrayBuffer.isView(body)) {
-    return Array.from(new Uint8Array(body.buffer, body.byteOffset, body.byteLength));
+/**
+ * A request body, in the field the command takes it in (`engine.rs` `window_request_body`). The
+ * command channel is JSON: an ordinary body crosses as an array of byte values, and from
+ * {@link LARGE_BODY_FROM_BYTES} on as its own text, or as base64 when it is bytes — the array
+ * costs several bytes of renderer memory per byte sent, which is most of a large attachment's.
+ */
+function bodyField(body: unknown): { body: number[] } | { bodyText: string } | { body64: string } {
+  if (body === undefined || body === null || body === "") return { body: [] };
+  if (typeof body === "string") {
+    return body.length >= LARGE_BODY_FROM_BYTES ? { bodyText: body } : { body: Array.from(new TextEncoder().encode(body)) };
   }
+  const bytes = body instanceof ArrayBuffer ? new Uint8Array(body)
+    : ArrayBuffer.isView(body) ? new Uint8Array(body.buffer, body.byteOffset, body.byteLength)
+    : null;
+  if (bytes) return bytes.byteLength >= LARGE_BODY_FROM_BYTES ? { body64: base64Of(bytes) } : { body: Array.from(bytes) };
   /* Deliberately a refusal rather than a `String(body)`. A `FormData` or a `ReadableStream`
      stringified into a request body is a corrupt request that reaches the engine and is answered
      with a puzzling 4xx; refusing here names the caller instead. Nothing in the client sends
@@ -362,6 +369,22 @@ function toResponse(bytes: Uint8Array, url: string): Response {
   });
 }
 
+/** From this size a body crosses as text or base64 rather than an array of byte values. */
+export const LARGE_BODY_FROM_BYTES = 64 * 1024;
+
+/**
+ * Standard base64, encoded slice by slice — a multiple of three bytes, so the pieces join into one
+ * valid string — and never as one binary string of the whole body, which would be a second copy of it.
+ */
+function base64Of(bytes: Uint8Array): string {
+  const SLICE = 3 * 0x2000;
+  const parts: string[] = [];
+  for (let i = 0; i < bytes.length; i += SLICE) {
+    parts.push(btoa(String.fromCharCode(...bytes.subarray(i, i + SLICE))));
+  }
+  return parts.join("");
+}
+
 interface BridgeInit {
   method?: string;
   headers?: unknown;
@@ -399,7 +422,7 @@ export const bridgeFetch: BridgeFetch = async (url, init) => {
       method: (options.method ?? "GET").toUpperCase(),
       url,
       headers: headerPairs(options.headers),
-      body: bodyBytes(options.body),
+      ...bodyField(options.body),
     }),
     {
       ...(options.signal ? { signal: options.signal } : {}),

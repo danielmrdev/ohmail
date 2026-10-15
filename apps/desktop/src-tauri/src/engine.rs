@@ -3746,6 +3746,28 @@ pub struct EngineRequest {
     pub body: Vec<u8>,
 }
 
+/// THE WINDOW'S REQUEST BODY, in whichever of its three spellings arrived. The command channel is
+/// JSON, so an ordinary body crosses as an array of byte values; a large one as its text
+/// (`bodyText`) or as base64 (`body64`), because the array costs several bytes of renderer memory
+/// per byte sent. More than one spelling, or base64 that does not decode, is refused by name.
+#[cfg_attr(not(feature = "local-engine"), allow(dead_code))]
+fn window_request_body(
+    body: Option<Vec<u8>>,
+    body_text: Option<String>,
+    body64: Option<String>,
+) -> Result<Vec<u8>, String> {
+    use base64::Engine as _;
+    match (body, body_text, body64) {
+        (None, None, None) => Ok(Vec::new()),
+        (Some(bytes), None, None) => Ok(bytes),
+        (None, Some(text), None) => Ok(text.into_bytes()),
+        (None, None, Some(b64)) => base64::engine::general_purpose::STANDARD
+            .decode(b64.as_bytes())
+            .map_err(|err| format!("the window's request body is not base64: {err}")),
+        _ => Err("the window's request carried its body in more than one form".to_string()),
+    }
+}
+
 /// What the engine answered. A status of any kind means the app ran; a transport failure is an
 /// `Err` out of [`Engine::request`] instead, which is the shape a dead socket gives a browser.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -5587,8 +5609,11 @@ fn engine_request(
     method: String,
     url: String,
     headers: Vec<(String, String)>,
-    body: Vec<u8>,
+    body: Option<Vec<u8>>,
+    body_text: Option<String>,
+    body64: Option<String>,
 ) -> Result<tauri::ipc::Response, String> {
+    let body = window_request_body(body, body_text, body64)?;
     // Read ONCE, into an `Arc` this request holds for its whole life. A reconfigure can replace the
     // engine while this is in flight, and the answer must come from the engine the question went to
     // — re-reading the slot for the reply would deliver it against a different child's bookkeeping.

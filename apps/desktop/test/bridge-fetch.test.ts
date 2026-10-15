@@ -4,7 +4,7 @@ import { HttpAdapter } from "@ohmail/client-engine";
 import {
   BRIDGE_DEADLINE_MS, bridgeFetch, createEngineAdapter, engineConfigure, engineLogout, engineRetry,
   engineStartOver, engineStatus, engineSwitchCommit, engineSwitchRestore, engineUnlockRetry, invokeShell,
-  WINDOW_SEARCH_PHASES_PATH,
+  LARGE_BODY_FROM_BYTES, WINDOW_SEARCH_PHASES_PATH,
 } from "../src/bridge-fetch.js";
 import { installOfflineGuard, isShellCommandChannel } from "../src/offline-guard.js";
 
@@ -91,6 +91,30 @@ describe("the bridge", () => {
     // THE CREDENTIAL IS NOT HERE, and that is the point of the whole arrangement: the shell adds
     // the engine's authorization on its own side, so the page holds nothing it could leak.
     expect(JSON.stringify(sent)).not.toMatch(/authorization/i);
+  });
+
+  it("a LARGE text body crosses as its own text, and a large byte body as base64 — never a number array", async () => {
+    // The command channel is JSON: an array of byte values costs the renderer several bytes per
+    // byte sent, which is most of a large attachment's cost. The shell takes either spelling.
+    const asked = shellAnswering(() => encode(200, "{}"));
+    const text = `{"a":"${"x".repeat(LARGE_BODY_FROM_BYTES)}"}`;
+    await bridgeFetch("/local/window/outbox", { method: "POST", body: text });
+    expect(asked[0]!.payload!.bodyText).toBe(text);
+    expect("body" in asked[0]!.payload!).toBe(false);
+
+    const bytes = new Uint8Array(LARGE_BODY_FROM_BYTES + 3);
+    for (let i = 0; i < bytes.length; i += 1) bytes[i] = (i * 7) & 0xff;
+    await bridgeFetch("/cloud/staged-upload/t-1", { method: "PUT", body: bytes });
+    const b64 = asked[1]!.payload!.body64 as string;
+    expect(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))).toEqual(bytes);
+    expect("body" in asked[1]!.payload!).toBe(false);
+  });
+
+  it("…and a body under the line keeps the shape every ordinary request has always had", async () => {
+    const asked = shellAnswering(() => encode(200, "{}"));
+    await bridgeFetch("/drafts", { method: "POST", body: "x".repeat(LARGE_BODY_FROM_BYTES - 1) });
+    expect(Array.isArray(asked[0]!.payload!.body)).toBe(true);
+    expect("bodyText" in asked[0]!.payload!).toBe(false);
   });
 
   it("puts the answer back together as a Response", async () => {

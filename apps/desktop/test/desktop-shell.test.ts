@@ -2935,7 +2935,9 @@ describe("the UI bundle's build config", () => {
     // `fetch` appears only as the NAME of the option it satisfies, never as a call.
     expect(bridge).not.toMatch(/(?<![\w.])fetch\s*\(/);
     // The adapter it builds is addressed relative to the engine, so no base URL is composed here.
-    expect(bridge).toMatch(/new HttpAdapter\(\{ baseUrl: "", fetch: bridgeFetch, syncFailureSink: reportWindowSyncFailure, searchPhasesSink: reportWindowSearchPhases \}\)/);
+    // The hosted door's staged upload rides the same bridge, with its own longer deadline.
+    expect(bridge).toMatch(/new HttpAdapter\(\{\s*baseUrl: "", fetch: stage \? stagedUploadAwareFetch : bridgeFetch,\s*syncFailureSink: reportWindowSyncFailure, searchPhasesSink: reportWindowSearchPhases,/);
+    expect(bridge).toMatch(/const stagedUploadAwareFetch: BridgeFetch = \(url, init\) =>\s*url\.startsWith\(STAGED_UPLOAD_PATH_PREFIX\)\s*\?\s*bridgeFetch\(/);
   });
 
   it("the no-fixtures stub declares every SYMBOL the barrel re-exports from fixtures-adapter", () => {

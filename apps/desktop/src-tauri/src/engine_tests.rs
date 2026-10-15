@@ -2095,6 +2095,22 @@ fn frame_contract_is_the_engines() {
 }
 
 #[test]
+fn the_window_request_body_reads_each_of_its_three_spellings() {
+    assert_eq!(window_request_body(None, None, None).unwrap(), Vec::<u8>::new());
+    assert_eq!(window_request_body(Some(vec![1, 2, 255]), None, None).unwrap(), vec![1, 2, 255]);
+    assert_eq!(window_request_body(None, Some("{\"a\":\"é\"}".into()), None).unwrap(), "{\"a\":\"é\"}".as_bytes());
+    // "AAEC/w==" is the bytes 0, 1, 2, 255.
+    assert_eq!(window_request_body(None, None, Some("AAEC/w==".into())).unwrap(), vec![0, 1, 2, 255]);
+}
+
+#[test]
+fn a_window_request_body_in_two_forms_or_bad_base64_is_refused() {
+    assert!(window_request_body(Some(vec![1]), Some("x".into()), None).unwrap_err().contains("more than one form"));
+    assert!(window_request_body(None, Some("x".into()), Some("eA==".into())).unwrap_err().contains("more than one form"));
+    assert!(window_request_body(None, None, Some("not base64!".into())).unwrap_err().contains("not base64"));
+}
+
+#[test]
 fn default_timings_are_the_shipped_ones() {
     let t = Timings::default();
     assert_eq!(t.stop_grace, STOP_GRACE);
