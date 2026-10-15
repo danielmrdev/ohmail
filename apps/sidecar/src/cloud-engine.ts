@@ -42,6 +42,7 @@ import {
   WINDOW_OUTBOX_ROUTE, adoptLegacyWindowOutbox, createWindowOutbox, windowOutboxFilesOf, windowOutboxOwnerKey,
 } from "./window-outbox.js";
 import { createWriteThroughProxy, type WriteThroughProxy } from "./cloud-proxy.js";
+import { createStagedUploads, STAGED_UPLOAD_PATH_PREFIX, type StagedUploads } from "./cloud-staged-upload.js";
 import {
   accountAnswer,
   accountIsForeign,
@@ -776,6 +777,8 @@ export async function createCloudSidecar(config: CloudSidecarConfig): Promise<Cl
       proxy: WriteThroughProxy;
       /** The `/events` subscription that kicks the mirror per commit. See `cloud-wake.ts`. */
       wake: CloudWake;
+      /** This session's staged-upload grants; a sign-out drops them with the session. */
+      staged: StagedUploads;
     }
     let authed: Authed | null = null;
     /** Pairing redeems between spending the token and keeping what came back — see `pair-undo.ts`. */
@@ -975,7 +978,10 @@ export async function createCloudSidecar(config: CloudSidecarConfig): Promise<Cl
       });
       wake = started;
 
-      authed = { auth, mirror, proxy, wake: started };
+      authed = {
+        auth, mirror, proxy, wake: started,
+        staged: createStagedUploads({ ...(injectedFetch ? { fetchImpl: injectedFetch } : {}), ...(log ? { log } : {}) }),
+      };
       return authed;
     };
 
@@ -1928,7 +1934,12 @@ export async function createCloudSidecar(config: CloudSidecarConfig): Promise<Cl
       }
       // Captured, not re-read: `authed` is written by `activate`, so TypeScript cannot keep a
       // narrowing across the awaits below and neither should a reader.
-      const { proxy, mirror: liveMirror } = authed;
+      const { proxy, mirror: liveMirror, staged } = authed;
+
+      // A STAGED SEND'S BYTES (`cloud-staged-upload.ts`): the relayed ticket's signed grant stays
+      // here and the window PUTs to this door, which carries the bytes to it.
+      if (req.method === "PUT" && path.startsWith(STAGED_UPLOAD_PATH_PREFIX)) return staged.upload(req);
+      if (req.method === "POST" && path === "/attachments/staging") return staged.rewriteMint(await proxy.forward(req));
 
       if (req.method === "GET" && path === "/sync") {
         const since = url.searchParams.get("since") ?? undefined;

@@ -833,9 +833,42 @@ function endsAtServer(press: SignOutPress): boolean {
  * aliases the module to a stub whose constructor throws, and nothing in the preview calls
  * this — a preview reaching for the Cloud protocol fails loudly instead of opening a socket.
  */
-export function createEngineAdapter(): HttpAdapter {
-  return new HttpAdapter({ baseUrl: "", fetch: bridgeFetch, syncFailureSink: reportWindowSyncFailure, searchPhasesSink: reportWindowSearchPhases });
+export function createEngineAdapter(options: EngineAdapterOptions = {}): HttpAdapter {
+  const stage = options.stageAttachments === true;
+  return new HttpAdapter({
+    baseUrl: "", fetch: stage ? stagedUploadAwareFetch : bridgeFetch,
+    syncFailureSink: reportWindowSyncFailure, searchPhasesSink: reportWindowSearchPhases,
+    ...(stage ? { stageAttachments: true } : {}),
+  });
 }
+
+/** How this window's engine is wired for the door it serves. */
+export interface EngineAdapterOptions {
+  /**
+   * The HOSTED door only (`stagesAttachments` in `desktop-send-surface.ts`): a send too large for
+   * one request mints an upload ticket per file, and the local engine — which keeps the signed
+   * grant and hands this window a root-relative upload path — PUTs the bytes to storage.
+   */
+  stageAttachments?: boolean;
+}
+
+/**
+ * WHERE THE LOCAL ENGINE TAKES A STAGED FILE'S BYTES — the path the engine writes into the
+ * ticket it relays (`apps/sidecar/src/cloud-staged-upload.ts`, the same literal, pinned by test).
+ */
+export const STAGED_UPLOAD_PATH_PREFIX = "/cloud/staged-upload/";
+
+/**
+ * One file's upload is a whole file over the person's uplink, so it gets the engine's own upload
+ * bound and a margin rather than the minute every other request has.
+ */
+export const STAGED_UPLOAD_DEADLINE_MS = 5 * 60_000 + 15_000;
+
+/** {@link bridgeFetch}, with a staged upload's longer deadline. */
+const stagedUploadAwareFetch: BridgeFetch = (url, init) =>
+  url.startsWith(STAGED_UPLOAD_PATH_PREFIX)
+    ? bridgeFetch(url, { ...((init ?? {}) as BridgeInit), deadlineMs: STAGED_UPLOAD_DEADLINE_MS })
+    : bridgeFetch(url, init);
 
 /** The local engine's door for one Search's timings — see {@link reportWindowSearchPhases}. */
 export const WINDOW_SEARCH_PHASES_PATH = "/local/window/search-phases";
@@ -876,7 +909,7 @@ export async function reportWindowSyncFailure(record: WindowSyncFailure): Promis
  * `GET /sync/snapshot`, answered from the database the deltas come from, so its `asOfSeq` cursor
  * matches the next `/sync` and a cold start paints newest-first.
  */
-export function createLocalEngine(scope: string): OhmailEngine {
+export function createLocalEngine(scope: string, options: EngineAdapterOptions = {}): OhmailEngine {
   /**
    * `eagerBodies: true` — the desktop window opts in to the eager recent-window hydration
    * (ruling 2026-08-21). The bodies live in the sidecar's store on this same machine, so the
@@ -885,7 +918,7 @@ export function createLocalEngine(scope: string): OhmailEngine {
    * instant" the hosted client gets, without even a loopback round trip at the moment of intent.
    */
   return new OhmailEngine({
-    adapter: createEngineAdapter(),
+    adapter: createEngineAdapter(options),
     store: new WindowOutboxStore({ scope, write: bridgeFetch, read: retryingBridgeFetch }),
     storePolicy: DESKTOP_WINDOW,
     eagerBodies: true,

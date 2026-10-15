@@ -30,6 +30,15 @@ export const COMPOSE_ATTACH_MIME_ENVELOPE_BYTES = 64 * 1024;
  */
 export const COMPOSE_ATTACH_STAGED_SURFACE_BYTES = 40 * 1024 * 1024;
 
+/**
+ * THE `SIZE` ASSUMED FOR A MAILBOX THAT HAS ANNOUNCED NONE — a provider-typical message limit,
+ * budgeted like a real announcement (about 18 MiB of files). The 3 MB inline constant is a fact
+ * about the hosted request body, not about a mail server, and it refused a 4 MB video on the
+ * desktop's standalone door. Past this the server's own answer decides. Mirrors the send's
+ * `SEND_UNMEASURED_MESSAGE_BYTES`, same parity pin.
+ */
+export const COMPOSE_ATTACH_UNMEASURED_MESSAGE_BYTES = 25 * 1024 * 1024;
+
 /** An announced `SIZE` converted to a budget for RAW attachment bytes. See the constants above. */
 export function composeAttachBudgetFor(announcedMessageBytes: number): number {
   const forAttachments = announcedMessageBytes - COMPOSE_ATTACH_MIME_ENVELOPE_BYTES;
@@ -41,10 +50,10 @@ export function composeAttachBudgetFor(announcedMessageBytes: number): number {
  * The ceiling a compose form may promise — the smaller of what the sending surface can carry
  * and what the sending mailbox's server said it will accept (RFC 1870 `SIZE`, from
  * `GET /mailboxes`). `surfaceMax`: ABSENT resolves to the strict constant (an untaught caller
- * gains no allowance by not passing it); `null` is explicitly uncapped (the desktop's
- * one-process door, a staged-only send), the mailbox's announcement governing, the constant
- * while unmeasured; a number is that surface's ceiling. `SIZE 0` and non-finite never become a
- * ceiling. The mirror of `effectiveAttachmentCap` in the services package.
+ * gains no allowance by not passing it); `null` is explicitly uncapped (a staged-only send), the
+ * mailbox's announcement governing; a number is that surface's ceiling. A mailbox with no usable
+ * announcement counts as {@link COMPOSE_ATTACH_UNMEASURED_MESSAGE_BYTES}. The mirror of
+ * `effectiveAttachmentCap` in the services package.
  */
 export function composeAttachCap(
   mailboxMax: number | null | undefined,
@@ -52,7 +61,7 @@ export function composeAttachCap(
 ): number {
   const { surface, mailbox } = attachCapTerms(mailboxMax, surfaceMax);
   const bounds = [surface, mailbox].filter((n): n is number => n !== null);
-  return bounds.length > 0 ? Math.min(...bounds) : COMPOSE_ATTACH_MAX_TOTAL_BYTES;
+  return bounds.length > 0 ? Math.min(...bounds) : composeAttachBudgetFor(COMPOSE_ATTACH_UNMEASURED_MESSAGE_BYTES);
 }
 
 /**
@@ -71,10 +80,10 @@ function attachCapTerms(
   const surface = surfaceMax === undefined ? COMPOSE_ATTACH_MAX_TOTAL_BYTES : surfaceMax;
   return {
     surface: usable(surface) ? surface : null,
-    // UNPROBED resolves to the strict constant, NOT converted — it already describes raw
-    // attachment bytes. A REAL ANNOUNCEMENT is about the encoded message, hence the budget.
+    // UNPROBED counts as the assumed provider-typical `SIZE`; a REAL ANNOUNCEMENT is about the
+    // encoded message, and both become a budget for raw bytes the same way.
     mailbox: mailboxMax === null || mailboxMax === undefined
-      ? COMPOSE_ATTACH_MAX_TOTAL_BYTES
+      ? composeAttachBudgetFor(COMPOSE_ATTACH_UNMEASURED_MESSAGE_BYTES)
       : usable(mailboxMax) ? composeAttachBudgetFor(mailboxMax) : null,
   };
 }
@@ -84,21 +93,20 @@ export type ComposeAttachCapBinding = "surface" | "mailbox" | "unmeasured";
 
 /**
  * WHICH OF THE TWO CEILINGS THE STATED NUMBER CAME FROM, so a surface can say why a small one is
- * small. The paired desktop's Cloud door states 3 MB where the hosted browser states 38 MB for one
- * account and both are right: the browser stages bytes to object storage, the desktop forwards the
- * send through its own process, and that request body is the smaller ceiling. A number with no
- * reason reads as a product disagreeing with itself, which is how it was reported.
+ * small: the desktop window carries less per send than the hosted browser stages, and a number
+ * with no reason reads as a product disagreeing with itself.
  *
- * `"surface"` ONLY on a strict inequality: on a tie the mail server's limit binds just as much,
- * and a clause claiming the server would take more would be false.
+ * `"surface"` ONLY on a strict inequality against a MEASURED server: on a tie the mail server's
+ * limit binds just as much, and for an unmeasured one "the server would take more" is a guess.
  */
 export function composeAttachCapBinding(
   mailboxMax: number | null | undefined,
   surfaceMax?: number | null,
 ): ComposeAttachCapBinding {
   const { surface, mailbox } = attachCapTerms(mailboxMax, surfaceMax);
-  /* An UNPROBED mailbox contributes the same constant the surface falls back to; calling that
-     "the mail server's limit" would state a fact nobody measured. */
+  /* An UNPROBED mailbox contributes an assumption; calling that "the mail server's limit" would
+     state a fact nobody measured. */
+  if (mailboxMax === null || mailboxMax === undefined) return "unmeasured";
   const announced = typeof mailboxMax === "number" && Number.isFinite(mailboxMax) && mailboxMax > 0;
   if (surface !== null && (mailbox === null || surface < mailbox)) return "surface";
   return announced ? "mailbox" : "unmeasured";

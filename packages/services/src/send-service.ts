@@ -443,6 +443,14 @@ export const SEND_MIME_ENVELOPE_BYTES = 64 * 1024;
 export const SEND_STAGED_OBJECT_MAX_BYTES = 40 * 1024 * 1024;
 
 /**
+ * THE `SIZE` ASSUMED FOR A MAILBOX THAT HAS ANNOUNCED NONE — a provider-typical message limit,
+ * budgeted like a real announcement. The inline constant is a fact about the hosted request body,
+ * not about a mail server; past this the server's own answer decides. Mirrors the compose form's
+ * `COMPOSE_ATTACH_UNMEASURED_MESSAGE_BYTES`, pinned by the parity suite.
+ */
+export const SEND_UNMEASURED_MESSAGE_BYTES = 25 * 1024 * 1024;
+
+/**
  * AN ANNOUNCED `SIZE` IS ABOUT THE ENCODED MESSAGE; this converts it into a budget for RAW
  * attachment bytes. RFC 1870's `SIZE` bounds the MIME document: attachments are base64 (4 chars
  * per 3 bytes) wrapped at 76 with CRLF, so the expansion is (4/3)·(78/76) and the inverse is
@@ -463,10 +471,9 @@ export function attachmentBudgetFor(announcedMessageBytes: number): number {
  * request pipeline) and what the MAIL SERVER accepts (`mailboxMax`, the per-mailbox RFC 1870
  * `SIZE` probe, mail 0055). THE `min` IS THE POINT: a provider announcing 2 MB binds a hosted
  * compose to 2 MB — without it the product accepts the send and the user's own server bounces it.
- * AN UNKNOWN CEILING IS THE STRICT ONE, both sides: `undefined` surface resolves to the product
- * constant, and a never-probed mailbox does too — it used to contribute NOTHING, a real widening
- * the day a host declared a 32 MB surface. Non-positive values are ignored: `SIZE 0` means "no
- * fixed maximum" (RFC 1870 §6), so the surface alone binds.
+ * An `undefined` surface resolves to the product constant; a mailbox that announced nothing
+ * counts as {@link SEND_UNMEASURED_MESSAGE_BYTES}, never as unbounded. Non-positive values are
+ * ignored: `SIZE 0` means "no fixed maximum" (RFC 1870 §6), so the surface alone binds.
  */
 export function effectiveAttachmentCap(
   surfaceMax: number | null | undefined,
@@ -478,15 +485,13 @@ export function effectiveAttachmentCap(
   const bounds: number[] = [];
   if (usable(surface)) bounds.push(surface);
   if (mailboxMax === null || mailboxMax === undefined) {
-    // UNPROBED. The strict constant, and NOT run through `attachmentBudgetFor`: that constant
-    // already describes raw attachment bytes, so converting it would shrink an unprobed mailbox's
-    // allowance for a reason that has nothing to do with the mailbox.
-    bounds.push(SEND_ATTACHMENT_MAX_TOTAL_BYTES);
+    // UNPROBED: the assumed provider-typical `SIZE`, budgeted like an announcement.
+    bounds.push(attachmentBudgetFor(SEND_UNMEASURED_MESSAGE_BYTES));
   } else if (usable(mailboxMax)) {
     // A REAL ANNOUNCEMENT, which is about the encoded message — see `attachmentBudgetFor`.
     bounds.push(attachmentBudgetFor(mailboxMax));
   }
-  return bounds.length > 0 ? Math.min(...bounds) : SEND_ATTACHMENT_MAX_TOTAL_BYTES;
+  return bounds.length > 0 ? Math.min(...bounds) : attachmentBudgetFor(SEND_UNMEASURED_MESSAGE_BYTES);
 }
 
 /**

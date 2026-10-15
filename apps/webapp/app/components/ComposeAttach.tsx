@@ -78,6 +78,7 @@ export {
   COMPOSE_ATTACH_MAX_TOTAL_BYTES,
   COMPOSE_ATTACH_MIME_ENVELOPE_BYTES,
   COMPOSE_ATTACH_STAGED_SURFACE_BYTES,
+  COMPOSE_ATTACH_UNMEASURED_MESSAGE_BYTES,
   composeAttachBudgetFor,
   composeAttachCap,
   composeAttachCapBinding,
@@ -182,9 +183,9 @@ export function ComposeAttach({
    * WHY THE STATED CAP IS THE NUMBER IT IS — {@link composeAttachCapBinding} of the SAME two
    * inputs the caller derived `maxTotalBytes` from. Only `"surface"` renders anything: it means
    * this window's transport is the smaller ceiling and the mail server would take more, which is
-   * the one case a person cannot work out from the number. The paired desktop's Cloud door states
-   * 3 MB where the hosted browser states 38 MB for the same account and both are right; without
-   * the clause that reads as the product disagreeing with itself.
+   * the one case a person cannot work out from the number. The desktop window carries less per
+   * send than the hosted browser stages, so for one account the two can state different numbers
+   * and both be right; without the clause that reads as the product disagreeing with itself.
    *
    * ABSENT says nothing, so a caller that has not been taught it renders exactly what it did.
    */

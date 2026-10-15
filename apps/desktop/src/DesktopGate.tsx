@@ -99,6 +99,7 @@ import { DefaultMailAsk, DefaultMailRow } from "./DesktopDefaultMail.js";
 import {
   createLocalEngine, onAccessRefused, waitingFor, type AccessRefusedFacts, type EngineStatus, type SignedOut,
 } from "./bridge-fetch.js";
+import { desktopSendSurface, stagesAttachments } from "./desktop-send-surface.js";
 
 /** How much of a refused address the one-line toast shows. The host is at the front. */
 const ADDRESS_SHOWN = 80;
@@ -735,7 +736,7 @@ export function DesktopGate() {
    * shell saying `serving` and the client. The constructor opens nothing; the shared shell
    * starts the engine and drives its sync loop, exactly as for a browser tab.
    */
-  const [live, setLive] = useState<{ key: string; engine: OhmailEngine } | null>(null);
+  const [live, setLive] = useState<{ key: string; stage: boolean; engine: OhmailEngine } | null>(null);
   const gate = gateFor(shell ?? { kind: "none" });
   const mount = mailMount(shell ?? { kind: "none" }, live?.key ?? null);
   /**
@@ -779,8 +780,10 @@ export function DesktopGate() {
   );
   // One window, one composer, across restarts — see `setComposerScope`.
   setComposerScope("window");
-  if (mount.kind === "engine" && live?.key !== mount.key) {
-    setLive({ key: mount.key, engine: createLocalEngine(mount.key) });
+  // The hosted door stages a large send's bytes through the engine; no other door has storage.
+  const stage = stagesAttachments(shell?.kind === "status" ? shell.status : null);
+  if (mount.kind === "engine" && (live?.key !== mount.key || live.stage !== stage)) {
+    setLive({ key: mount.key, stage, engine: createLocalEngine(mount.key, { stageAttachments: stage }) });
   } else if (mount.kind !== "engine" && live !== null) {
     /* Signed out, or the door was given up. Dropping the reference is what takes the mirror — a
        copy of somebody's mail — out of this window's memory; keeping it would leave it sitting
@@ -1260,17 +1263,12 @@ export function DesktopGate() {
         /* THE SYNC STRIP YIELDS for a refused session: the card says why, and its pull-failure
            arm would say "Retrying" over a session nothing will renew. */
         {...(readers !== null && !readers.strip ? { sessionRefused: true } : {})}
-        /* WHAT A SEND FROM THIS WINDOW RIDES. On the STANDALONE door the compose form, the
-           send handler and the SMTP dial are one process — the mail engine's own service bag
-           makes the same declaration, `sendSurfaceMaxTotalBytes: null` — so the attach
-           ceiling the form may promise is the sending mailbox's own announced limit, not the
-           hosted constant. The CLOUD door stays SILENT on purpose: its writes,
-           `POST /drafts/:id/send` included, are forwarded verbatim to the hosted API
-           (`cloud-proxy.ts`), whose serverless body limit is exactly what the shared
-           constant expresses — an uncapped declaration there would promise attachments the
-           forwarded send must refuse. Both halves are guarded from source by
-           `apps/desktop/test/desktop-attach-cap.test.ts`. */
-        {...(engine && status?.mode === "local" ? { sendSurfaceMaxTotalBytes: null } : {})}
+        /* WHAT A SEND FROM THIS WINDOW RIDES (`desktop-send-surface.ts`): the window's own
+           per-send ceiling on the standalone door and on the hosted door, which stages its
+           bytes; the self-hosted and paired doors declare nothing and keep the inline constant.
+           Guarded by `apps/desktop/test/desktop-attach-cap.test.ts`. */
+        {...(engine && desktopSendSurface(status) !== undefined
+          ? { sendSurfaceMaxTotalBytes: desktopSendSurface(status) } : {})}
         /* SETTINGS → MAILBOXES. The shared pane's own list used to be drawn from the mirror's
            `mailbox` entities, which only the invented world has — so on a real install it was an
            empty pane; that fallback is deleted now. This one reads the same facts the sync line
