@@ -428,7 +428,8 @@ export const bridgeFetch: BridgeFetch = async (url, init) => {
       ...(options.signal ? { signal: options.signal } : {}),
       /* Only when present: `withDeadline` refuses `{ ms: undefined }` by name, so forwarding an
          absent field would refuse every call that names none. */
-      ...(options.deadlineMs !== undefined ? { ms: options.deadlineMs } : {}),
+      ...(options.deadlineMs !== undefined ? { ms: options.deadlineMs }
+        : url.startsWith(STAGED_UPLOAD_PATH_PREFIX) ? { ms: STAGED_UPLOAD_DEADLINE_MS } : {}),
     },
   );
   return toResponse(asBytes(bytes), url);
@@ -859,7 +860,7 @@ function endsAtServer(press: SignOutPress): boolean {
 export function createEngineAdapter(options: EngineAdapterOptions = {}): HttpAdapter {
   const stage = options.stageAttachments === true;
   return new HttpAdapter({
-    baseUrl: "", fetch: stage ? stagedUploadAwareFetch : bridgeFetch,
+    baseUrl: "", fetch: bridgeFetch,
     syncFailureSink: reportWindowSyncFailure, searchPhasesSink: reportWindowSearchPhases,
     ...(stage ? { stageAttachments: true } : {}),
   });
@@ -882,16 +883,11 @@ export interface EngineAdapterOptions {
 export const STAGED_UPLOAD_PATH_PREFIX = "/cloud/staged-upload/";
 
 /**
- * One file's upload is a whole file over the person's uplink, so it gets the engine's own upload
- * bound and a margin rather than the minute every other request has.
+ * One file's upload is a whole file over the person's uplink, so a request to
+ * {@link STAGED_UPLOAD_PATH_PREFIX} gets the engine's own upload bound and a margin rather than the
+ * minute every other request has. Decided in {@link bridgeFetch}, by the path the engine minted.
  */
 export const STAGED_UPLOAD_DEADLINE_MS = 5 * 60_000 + 15_000;
-
-/** {@link bridgeFetch}, with a staged upload's longer deadline. */
-const stagedUploadAwareFetch: BridgeFetch = (url, init) =>
-  url.startsWith(STAGED_UPLOAD_PATH_PREFIX)
-    ? bridgeFetch(url, { ...((init ?? {}) as BridgeInit), deadlineMs: STAGED_UPLOAD_DEADLINE_MS })
-    : bridgeFetch(url, init);
 
 /** The local engine's door for one Search's timings — see {@link reportWindowSearchPhases}. */
 export const WINDOW_SEARCH_PHASES_PATH = "/local/window/search-phases";
