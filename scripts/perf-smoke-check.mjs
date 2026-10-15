@@ -530,7 +530,7 @@ export function readDeriveP95Budget(tablePath) {
 }
 
 /* The table beside this script, resolved from this file's own location. */
-export const DEFAULT_BUDGET_TABLE = join(dirname(fileURLToPath(import.meta.url)), "..", "docs", "ohmail", "perf-budgets.json");
+export const DEFAULT_BUDGET_TABLE = join(dirname(fileURLToPath(import.meta.url)), "..", "test", "contracts", "perf-budgets.json");
 
 /* ── THE BOOT'S PHASES, AND WHERE THE WINDOW SAW IT ─────────────────────────────────────────
  * The last `boot_phases` line by field, so a timing red names its phase: each phase over its own

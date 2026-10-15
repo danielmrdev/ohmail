@@ -267,7 +267,7 @@ describe("a hosted sign-in refused because this install mirrors another account"
       if (command === "plugin:event|listen") return 99;
       throw new Error(`unexpected command ${command}`);
     };
-    await signIn(el, "mila@ohmail.app");
+    await signIn(el, "mila@lichtgrat.example");
     await click(buttonSaying(el, "Sign in"));
 
     expect(el.textContent ?? "").toMatch(/were not accepted/);

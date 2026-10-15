@@ -1,0 +1,14 @@
+0124_sync_blocked_reason_account_closed — NOT CARRIED AS A STEP, FOR `0105.noop`'S REASON VERBATIM.
+
+The shared entry widens the closed set on `mailboxes.sync_blocked_reason` by one more member,
+'account_closed', the way Postgres allows: DROP CONSTRAINT then ADD CONSTRAINT. SQLite carries no
+CHECK for this column at all — the three widenable sets are refused at the write door instead
+(`closed-sets.ts`, which reads `MAILBOX_SYNC_BLOCK_REASONS` itself), so the sqlite widening IS the
+constant's new member and there is no table to rebuild.
+
+Hosted-only in effect besides: a local install composes no entitlements program, so no writer on
+this store ever produces the value; the member exists here so a row synced down from a hosted
+account is not refused at the door.
+
+WHAT CHANGES THE DAY THIS JOURNAL SHIPS is what `0102.noop` and `0104.noop` already say, and the
+same answer will serve all four.

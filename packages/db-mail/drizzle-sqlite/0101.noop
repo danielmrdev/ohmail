@@ -1,0 +1,10 @@
+0101_away_piles_wider — NOT CARRIED AS A STEP, AND NEVER WILL BE.
+
+The shared entry only widens the closed set on `away_responders.piles`: DROP CONSTRAINT then ADD
+CONSTRAINT, which Postgres allows and SQLite does not. A CHECK is part of the table definition
+here, so changing one member would mean rebuilding the table.
+
+There is nothing to rebuild. `piles` carries no CHECK on this store and `0096_away_piles.sql`
+never gave it one — a widenable set is refused at the write door, not by the table. That is the
+rule now, not a consequence of the journal being unreleased, so this entry stays a no-op however
+many members the set gains. `closed-set-parity.test.ts` holds both halves.

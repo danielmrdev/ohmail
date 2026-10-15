@@ -1,0 +1,5 @@
+0153_rule_revoke_keeps_its_decisions — NOT CARRIED AS A STEP: THE DEVICE STORE HAS NO SUCH KEY.
+
+The shared entry gives `routing_decisions.matched_rule_id`'s key to `rules` an ON DELETE SET NULL, so
+a rule that filed mail can be deleted. The SQLite twin of `routing_decisions` declares no key on
+`matched_rule_id` at all, so deleting a rule there was never refused and there is nothing to change.

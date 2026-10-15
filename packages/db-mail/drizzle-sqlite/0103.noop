@@ -1,0 +1,13 @@
+0103_organizer_kind_mobile — NOT CARRIED AS A STEP, AND NEVER WILL BE.
+
+The shared entry widens two closed sets on `mailboxes` — `organized_by_kind` gains 'mobile' and
+`disabled_reason` gains 'organized_elsewhere:mobile' — the way Postgres allows: DROP CONSTRAINT
+then ADD CONSTRAINT. SQLite has neither.
+
+Both are WIDENABLE and neither has a CHECK on this store, for `0102.noop`'s reason verbatim: the
+members are refused at the write door instead. `organized_by_kind` is the one with teeth, because
+two write sites cut the kind out of a reason string — `organizedByKind` now goes through
+`organizerKindColumn`, which answers 'unknown' for a word that is not a kind.
+
+`closed-set-parity.test.ts` classifies every set against this journal's own history and refuses a
+widenable one that reappears here, which is what this file used to argue by hand.

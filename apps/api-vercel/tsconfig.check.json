@@ -1,0 +1,21 @@
+{
+  "// why": [
+    "Next's own tsconfig.json runs `moduleResolution: bundler` + `noEmit` and is not a",
+    "composite project, so `tsc -b` at the repo root cannot use it. This project is the",
+    "one the root build references: NodeNext (matching the workspace packages this host",
+    "imports), composite, emitting declarations into dist/ that nothing consumes.",
+    "Its whole job is to put the API host's source under the SAME `pnpm typecheck` gate as",
+    "packages/* and apps/worker — a serverless entry point that only the deploy typechecks",
+    "is a serverless entry point nobody typechecks."
+  ],
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "outDir": "dist", "rootDir": ".", "types": ["node"] },
+  "include": ["src/**/*.ts", "app/**/*.ts"],
+  "references": [
+    { "path": "../../packages/core" },
+    { "path": "../../packages/db-mail" },
+    { "path": "../../packages/db" },
+    { "path": "../../packages/services" },
+    { "path": "../../packages/api" }
+  ]
+}

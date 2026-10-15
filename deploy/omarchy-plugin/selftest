@@ -1,0 +1,129 @@
+#!/bin/bash
+#
+# Everything ohmail-unread promises, asserted. Run it from anywhere:
+#
+#   ./selftest
+#
+# ── WHY THIS FILE EXISTS ──────────────────────────────────────────────────────
+#
+# Every case below is here because it was WRONG once, or because it is the exact
+# thing the widget must never do. The two that were wrong:
+#
+#   · `010` used to print 10 as the number 8, and `08` printed 0 with a bash
+#     "invalid octal number" on stderr. bash's printf and arithmetic read a
+#     leading zero as octal, so a count file written by something that
+#     zero-pads produced a confidently wrong number in the bar.
+#   · A command printing `1 2`, or two lines `1` and `2`, produced 12 — the
+#     first version deleted whitespace everywhere instead of only at the ends,
+#     so two numbers became one number nobody had said.
+#
+# Both are trivially reintroduced by "simplifying" trim() or dropping the `10#`,
+# which is the point of asserting them rather than remembering them.
+
+set -uo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")"
+UNREAD=./bin/ohmail-unread
+
+pass=0
+fail=0
+
+# check <label> <expected-json> <command...>
+check() {
+  local label="$1" want="$2"; shift 2
+  local got
+  got="$("$@" 2>/dev/null)"
+  if [[ $got == "$want" ]]; then
+    pass=$((pass + 1))
+    printf '  ok    %s\n' "$label"
+  else
+    fail=$((fail + 1))
+    printf '  FAIL  %s\n     want %s\n     got  %s\n' "$label" "$want" "$got"
+  fi
+}
+
+# check_unknown <label> <command...> — the reason text is allowed to change, the
+# STATE is not. Asserting the whole sentence would make every reword a failure.
+check_unknown() {
+  local label="$1"; shift
+  local got
+  got="$("$@" 2>/dev/null)"
+  if [[ $got == '{"state":"unknown",'* ]]; then
+    pass=$((pass + 1))
+    printf '  ok    %s\n' "$label"
+  else
+    fail=$((fail + 1))
+    printf '  FAIL  %s\n     want state=unknown\n     got  %s\n' "$label" "$got"
+  fi
+}
+
+echo "the demo fixture"
+check "plain"                    '{"state":"ok","unread":7,"why":"demo fixture"}'  $UNREAD --demo 7
+check "zero is a real answer"    '{"state":"ok","unread":0,"why":"demo fixture"}'  $UNREAD --demo 0
+check "010 is ten, not octal 8"  '{"state":"ok","unread":10,"why":"demo fixture"}' $UNREAD --demo 010
+check "08 is eight, not an error" '{"state":"ok","unread":8,"why":"demo fixture"}' $UNREAD --demo 08
+check "007 normalises to 7"      '{"state":"ok","unread":7,"why":"demo fixture"}'  $UNREAD --demo 007
+check_unknown "words are not a count"  $UNREAD --demo abc
+check_unknown "negatives are not a count" $UNREAD --demo -3
+
+echo "a command you supplied"
+check "an integer"   '{"state":"ok","unread":12,"why":"your count command"}' $UNREAD --command 'echo 12'
+check "padded ends"  '{"state":"ok","unread":42,"why":"your count command"}' $UNREAD --command "printf '  42  '"
+check "nine digits"  '{"state":"ok","unread":999999999,"why":"your count command"}' $UNREAD --command 'echo 999999999'
+check_unknown "two numbers on one line are NOT one number" $UNREAD --command "printf '1 2\n'"
+check_unknown "two numbers on two lines are NOT one number" $UNREAD --command "printf '1\n2\n'"
+check_unknown "ten digits is over the ceiling" $UNREAD --command 'echo 1234567890'
+check_unknown "prose"        $UNREAD --command 'echo "12 messages"'
+check_unknown "silence"      $UNREAD --command 'true'
+check_unknown "a failure"    $UNREAD --command 'exit 4'
+check_unknown "empty setting falls through" $UNREAD --command ''
+
+echo "a count file"
+tmp="$(mktemp -d)"
+mkdir -p "$tmp/ohmail"
+run_file() { XDG_RUNTIME_DIR="$tmp" XDG_STATE_HOME="$tmp/none" $UNREAD; }
+
+printf '7\n' > "$tmp/ohmail/unread"
+check "an integer with a newline" "{\"state\":\"ok\",\"unread\":7,\"why\":\"$tmp/ohmail/unread\"}" run_file
+printf '0012' > "$tmp/ohmail/unread"
+check "zero-padded"               "{\"state\":\"ok\",\"unread\":12,\"why\":\"$tmp/ohmail/unread\"}" run_file
+printf '1 2\n' > "$tmp/ohmail/unread"
+check_unknown "two numbers"       run_file
+printf '' > "$tmp/ohmail/unread"
+check_unknown "empty file"        run_file
+printf 'lots\n' > "$tmp/ohmail/unread"
+check_unknown "prose in the file" run_file
+rm -f "$tmp/ohmail/unread"
+check_unknown "no file at all"    run_file
+
+echo "the output is always JSON"
+for spec in "--demo 7" "--demo abc" "--command echo_nothing" "--command exit_4"; do
+  out=$($UNREAD ${spec/echo_nothing/true} 2>/dev/null)
+  if printf '%s' "$out" | python3 -c 'import json,sys; json.loads(sys.stdin.read())' 2>/dev/null; then
+    pass=$((pass + 1)); printf '  ok    valid JSON for: %s\n' "$spec"
+  else
+    fail=$((fail + 1)); printf '  FAIL  not JSON for: %s -> %s\n' "$spec" "$out"
+  fi
+done
+
+# A path with a quote and a backslash in it. Unlikely, and the whole reason `why`
+# is escaped rather than interpolated: an unescaped one turns a WORKING source
+# into "the count source did not answer JSON" in the widget.
+weird="$tmp/we\"ird\\path"
+mkdir -p "$weird/ohmail"
+printf '5\n' > "$weird/ohmail/unread"
+out=$(XDG_RUNTIME_DIR="$weird" $UNREAD 2>/dev/null)
+if printf '%s' "$out" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read()); raise SystemExit(0 if d["unread"]==5 else 1)' 2>/dev/null; then
+  pass=$((pass + 1)); printf '  ok    a path with a quote and a backslash stays valid JSON\n'
+else
+  fail=$((fail + 1)); printf '  FAIL  quoted path broke the JSON -> %s\n' "$out"
+fi
+
+rm -rf "$tmp"
+
+echo
+if (( fail )); then
+  printf '%d passed, %d FAILED\n' "$pass" "$fail"
+  exit 1
+fi
+printf '%d passed\n' "$pass"

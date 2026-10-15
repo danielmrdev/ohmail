@@ -1,0 +1,14 @@
+{
+  "crons": [
+    {
+      "path": "/internal/alerts/run",
+      "schedule": "*/2 * * * *"
+    }
+  ],
+  "functions": {
+    "app/**/route.ts": {
+      "memory": 1024
+    }
+  },
+  "installCommand": "cd ../.. && npm ci --ignore-scripts && node scripts/apply-patches.mjs apply"
+}

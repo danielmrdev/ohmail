@@ -1,0 +1,100 @@
+#!/bin/bash
+#
+# Make ohmail the thing that opens a mailto: link — or just say what currently
+# does.
+#
+#   ohmail-mailto            what handles mailto: today
+#   ohmail-mailto set        make it ohmail
+#   ohmail-mailto unset      hand it back to whatever the desktop picks
+#
+# ── WHY THIS IS A COMMAND AND NOT SOMETHING THE PLUGIN DOES ON INSTALL ────────
+#
+# Because which mail client opens your links is your decision, and a plugin that
+# quietly takes it over during `omarchy plugin add` has stolen it. Installing
+# something is not the same as choosing it.
+#
+# The app's own desktop entry already declares the scheme
+# (MimeType=x-scheme-handler/ohmail;x-scheme-handler/mailto), so there is
+# nothing to register — only a default to point somewhere.
+
+set -uo pipefail
+
+DESKTOP="ohmail.desktop"
+
+need() {
+  command -v "$1" >/dev/null 2>&1 || { echo "ohmail-mailto: $1 is not installed" >&2; exit 1; }
+}
+
+current() {
+  need xdg-settings
+  xdg-settings get default-url-scheme-handler mailto 2>/dev/null
+}
+
+case "${1:-status}" in
+  status)
+    now=$(current)
+    if [[ -z ${now//[[:space:]]/} ]]; then
+      echo "mailto: has no default handler"
+    else
+      echo "mailto: opens with ${now}"
+    fi
+    [[ $now == "$DESKTOP" ]] && echo "that is ohmail." || true
+    ;;
+
+  set)
+    need xdg-settings
+    # Checked before setting: xdg-settings will happily record a desktop file
+    # that does not exist, and the result is a mailto: link that opens nothing
+    # with no error anywhere.
+    if ! [[ -f "/usr/share/applications/$DESKTOP" ||
+            -f "$HOME/.local/share/applications/$DESKTOP" ]]; then
+      echo "ohmail-mailto: $DESKTOP is not installed — install ohmail first" >&2
+      exit 1
+    fi
+    # Checked, not fired and forgotten. xdg-settings refuses on a desktop it does
+    # not support and fails on an unwritable config, and without this the script
+    # would go on to print a cheerful "mailto: now opens with …" and exit 0 having
+    # changed nothing — a failure reporting success, which is the one shape this
+    # repository will not ship.
+    if ! xdg-settings set default-url-scheme-handler mailto "$DESKTOP"; then
+      echo "ohmail-mailto: xdg-settings would not set the handler — it is still $(current)" >&2
+      exit 1
+    fi
+    echo "mailto: now opens with $(current)"
+    ;;
+
+  unset)
+    # There is no "unset" in xdg-settings, so this edits the user's own
+    # mimeapps.list and leaves the system default to take over again.
+    #
+    # It removes OUR ENTRY from the handler list rather than deleting the whole
+    # line, because the value is a semicolon-separated list and other mail
+    # clients can be sitting on it: `mailto=ohmail.desktop;thunderbird.desktop;`
+    # is an ordinary thing to find, and deleting that line would silently
+    # un-register somebody else's app as well as ours. The key goes only when
+    # taking ohmail out of it leaves nothing behind.
+    list="${XDG_CONFIG_HOME:-$HOME/.config}/mimeapps.list"
+    if [[ -f $list ]]; then
+      python3 - "$list" "$DESKTOP" <<'PY'
+import io, sys
+path, desktop = sys.argv[1], sys.argv[2]
+out = []
+for line in io.open(path, encoding="utf-8"):
+    key, sep, value = line.partition("=")
+    if sep and key.strip() == "x-scheme-handler/mailto":
+        kept = [e for e in value.strip().split(";") if e and e != desktop]
+        if not kept:
+            continue                      # nothing left: drop the key entirely
+        line = "%s=%s;\n" % (key, ";".join(kept))
+    out.append(line)
+io.open(path, "w", encoding="utf-8").writelines(out)
+PY
+    fi
+    echo "mailto: now opens with $(current)"
+    ;;
+
+  *)
+    echo "usage: ohmail-mailto [status|set|unset]" >&2
+    exit 2
+    ;;
+esac

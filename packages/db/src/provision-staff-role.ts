@@ -50,7 +50,8 @@ async function main(): Promise<number> {
   // THE COPY GATE, BEFORE A CONNECTION IS EVEN OPENED. Provisioning `ohmail_admin` in
   // production makes the FAQ and privacy-policy disclaimers false-by-understatement. That copy
   // edit is coupled to `STAFF_ROLE_LIVE_IN_PRODUCTION`, and this refuses `--apply` until the flag
-  // is flipped — which `staff-role-copy-gate.test.ts` will not let happen without the copy edit.
+  // is flipped — which the copy gate (`staff-role-copy-gate.test.ts` for the FAQ, a private test for the
+  // policy) will not let happen without the copy edit.
   // The rehearsal seam (`PROVISION_URL`) is exempt: a throwaway database is not production, and
   // the whole point of the seam is to exercise the apply path before the flag is ready to flip.
   if (APPLY && !STAFF_ROLE_LIVE_IN_PRODUCTION && !process.env.PROVISION_URL?.trim()) {

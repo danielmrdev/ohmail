@@ -58,11 +58,11 @@ function shell(seal: { status: number; body: unknown }): Seen {
         return { state: "starting", mode: null };
       }
       if (command === "engine_status") {
-        return { state: "serving", mode: null, address: "mila@home.arpa", mailboxId: "mbx-1", credentialState: "absent" };
+        return { state: "serving", mode: null, address: "box2@home.arpa", mailboxId: "mbx-1", credentialState: "absent" };
       }
       if (command === "engine_request") {
         const method = String((payload as { method?: unknown }).method ?? "GET");
-        if (method === "GET") return encode(200, JSON.stringify({ id: "mbx-1", address: "mila@home.arpa" }));
+        if (method === "GET") return encode(200, JSON.stringify({ id: "mbx-1", address: "box2@home.arpa" }));
         const body = JSON.parse(new TextDecoder().decode(Uint8Array.from((payload as { body: number[] }).body)));
         seen.seals.push(body);
         return encode(seal.status, JSON.stringify(seal.body), seal.status === 200 ? "OK" : "Bad Request");
@@ -74,7 +74,7 @@ function shell(seal: { status: number; body: unknown }): Seen {
 }
 
 const FIELDS: LocalDoorFields = {
-  providerId: "other", address: "mila@home.arpa", user: "", imapHost: "mail.home.arpa", imapPort: "143",
+  providerId: "other", address: "box2@home.arpa", user: "", imapHost: "mail.home.arpa", imapPort: "143",
   smtpHost: "mail.home.arpa", smtpPort: "25", password: "door-fixture",
 };
 const PRESET = { imap: { host: "mail.home.arpa", port: 143 }, smtp: { host: "mail.home.arpa", port: 25 } };
@@ -124,14 +124,14 @@ describe("the first door's seal and configure", () => {
   });
 
   it("configures pending on an install with no door, and the relaunch after the seal commits it", async () => {
-    const seen = shell({ status: 200, body: { id: "mbx-1", address: "mila@home.arpa" } });
+    const seen = shell({ status: 200, body: { id: "mbx-1", address: "box2@home.arpa" } });
     const result = await enterLocalDoor(FIELDS, PRESET, { state: "not_configured", mode: null } as never);
     expect(result.problem).toBeNull();
     expect(seen.configures.map((c) => c.pending ?? null)).toEqual([true, null]);
   });
 
   it("writes as before over a door that exists (a switch is not a first door)", async () => {
-    const seen = shell({ status: 200, body: { id: "mbx-1", address: "mila@home.arpa" } });
+    const seen = shell({ status: 200, body: { id: "mbx-1", address: "box2@home.arpa" } });
     const standing = { state: "serving", mode: "cloud", mailboxId: "c-1", address: "someone@ohmail.app" };
     await enterLocalDoor(FIELDS, PRESET, standing as never);
     expect(seen.configures.map((c) => c.pending ?? null)).toEqual([null, null]);
@@ -152,7 +152,7 @@ describe("the stage's seed connect", () => {
     root = createRoot(document.createElement("div"));
     await act(async () => { root!.render(React.createElement(Capture)); });
     const thrown = await made!.connect({
-      address: "mila@home.arpa", provider: "other",
+      address: "box2@home.arpa", provider: "other",
       imap: { host: "mail.home.arpa", port: 143, secure: false, pass: "door-fixture", allowInsecure: true },
       smtp: { host: "mail.home.arpa", port: 25, secure: false, pass: "door-fixture" },
     }, "seed").then(() => null, (err: unknown) => err);

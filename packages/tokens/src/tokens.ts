@@ -60,9 +60,9 @@ export interface ColorScheme {
    *
    * ── THE FAMILY IS A HUE WHEEL AT A FIXED L/C ENVELOPE ────────────────────────────────────
    *
-   * The prototype extracted three (moss/ochre/rosewood) and they are pinned byte-for-byte by
-   * `test/fidelity.test.ts`. The seven that follow are DERIVED from those three rather than
-   * invented: the family holds lightness and chroma inside the envelope the prototype set
+   * The prototype extracted three (moss/ochre/rosewood) and they are pinned byte-for-byte by the
+   * fidelity test (private, as the prototype is). The seven that follow are DERIVED from those three
+   * rather than invented: the family holds lightness and chroma inside the envelope the prototype set
    * (light ink ≈ L .43–.45 / C .07–.10, light bg ≈ L .55–.60 / C .08–.10 at 11–14% alpha; dark
    * ink ≈ L .80–.82, dark bg ≈ L .72–.78 at 14–15%) and varies ONLY the hue angle. Chroma
    * tracks the angle by a hair — blues and violets need a little more to read as coloured at

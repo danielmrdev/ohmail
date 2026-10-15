@@ -1,11 +1,14 @@
 export * from "./types.js";
 export { SLOP } from "./slop.js";
 export {
-  bannedTerms,
-  corpusOnlyBannedTerms,
   fictionalNames,
+  guardFrom,
   NAMESPACE_EXEMPTION,
+  parseGuardList,
+  PUBLIC_GUARD,
   type FictionalName,
+  type GuardLists,
+  type GuardMode,
   type NameVerdict,
 } from "./privacy.js";
 export {

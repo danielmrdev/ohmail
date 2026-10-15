@@ -136,14 +136,24 @@ function laneDbUrl(): string | null {
   } catch { return null; }
 }
 
-/** The workspace this module was loaded from — the directory holding `pnpm-workspace.yaml`. */
+/** The workspace this module was loaded from: the directory holding `pnpm-workspace.yaml`, or, in
+ *  the published tree (npm workspaces, no pnpm file), the `package.json` that declares `workspaces`. */
 function workspaceRoot(): string | null {
-  let dir = dirname(fileURLToPath(import.meta.url));
+  return workspaceRootFrom(dirname(fileURLToPath(import.meta.url)));
+}
+
+/** {@link workspaceRoot}'s walk from any directory, five levels up at most; `null` when none is found. */
+export function workspaceRootFrom(start: string): string | null {
+  let dir = start;
   for (let up = 0; up < 5; up++) {
-    if (existsSync(join(dir, "pnpm-workspace.yaml"))) return dir;
+    if (existsSync(join(dir, "pnpm-workspace.yaml")) || declaresWorkspaces(join(dir, "package.json"))) return dir;
     dir = dirname(dir);
   }
   return null;
+}
+
+function declaresWorkspaces(manifest: string): boolean {
+  try { return Array.isArray((JSON.parse(readFileSync(manifest, "utf8")) as { workspaces?: unknown }).workspaces); } catch { return false; }
 }
 
 /** The lane database if there is one, else the environment, else the compose service on :5433. */

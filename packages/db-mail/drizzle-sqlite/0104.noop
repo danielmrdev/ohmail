@@ -1,0 +1,17 @@
+0104_mailbox_takeover_intent — NOT CARRIED AS A STEP, BECAUSE THE COLUMN AND ITS CHECK ARRIVE
+TOGETHER OR NOT AT ALL.
+
+The shared entry adds `mailboxes.takeover_intent` (`text NOT NULL DEFAULT 'join'`) and closes it
+to ('join', 'takeover'). The column alone SQLite can add; the CHECK it cannot — a CHECK is part of
+the table definition there, so adding one means rebuilding a fifty-column table. Splitting them
+across two releases would leave a device store with an open column that the Postgres twin refuses
+values for, and `schema-twin-parity.test.ts` compares the two twins' CHECK names, so the twin
+could not declare it either.
+
+It does not need to be a step, for `0102.noop`'s reason verbatim: this journal has never shipped,
+so no store in the world holds the table without the column. Both go in `0001_baseline.sql`, which
+is where the current shape belongs while the baseline is still unreleased.
+
+WHAT CHANGES THE DAY THIS JOURNAL SHIPS: the baseline freezes, and adding a closed column becomes
+a real table rebuild with a real ordering question — the same decision `0103.noop` names, and the
+same answer will serve both.

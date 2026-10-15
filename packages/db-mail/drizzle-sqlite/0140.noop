@@ -1,0 +1,7 @@
+0140_body_tsv_bounded — NOT CARRIED AS A STEP: THE DEVICE STORE HAS NEITHER OBJECT.
+
+The shared entry turns `message_bodies.body_tsv` from a generated column into a trigger-kept one
+bounded at 65,536 characters, and widens the `message_failures_code_closed` CHECK by one member,
+`data_too_large`. The SQLite twin of `message_bodies` has no tsvector column (its full text lives
+in an external-content index kept by triggers), and its `message_failures.code` is a plain `text`
+column with no CHECK (`0001_baseline.sql`), so there is nothing to rebuild or change.

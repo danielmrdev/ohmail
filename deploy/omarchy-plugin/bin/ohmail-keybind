@@ -1,0 +1,84 @@
+#!/bin/bash
+#
+# The summon keybind: SUPER + M.
+#
+#   ohmail-keybind print     show the line, so you can paste it yourself
+#   ohmail-keybind install   append it to ~/.config/hypr/bindings.lua
+#   ohmail-keybind remove    take it back out
+#
+# ── WHY SUPER, WHEN THE APP ITSELF NEVER USES IT ──────────────────────────────
+#
+# The two are the same rule seen from either side. ohmail's own keyboard grammar
+# deliberately claims nothing on Super, precisely so the compositor can: Super
+# belongs to the desktop, letters belong to the app. A summon binding is the
+# desktop's job, so Super is exactly right for it.
+#
+# SUPER + M was free on a stock Omarchy 4 install — checked against
+# `hyprctl binds`, not guessed. If you have bound it to something, use `print`
+# and pick your own key; nothing here depends on which one it is.
+#
+# ── WHY IT EDITS bindings.lua AND NOT THE DEFAULTS ────────────────────────────
+#
+# ~/.config/hypr/bindings.lua is the file Omarchy ships for exactly this, with
+# commented examples in the same shape. Omarchy's own defaults live under
+# /usr/share and are replaced on update, so anything written there is lost.
+
+set -uo pipefail
+
+BINDINGS="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/bindings.lua"
+MARKER="-- ohmail plugin: summon"
+KEY="SUPER + M"
+
+line() {
+  local bin
+  bin="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ohmail-summon"
+  printf '%s\no.bind("%s", "ohmail", "%s")\n' "$MARKER" "$KEY" "$bin"
+}
+
+case "${1:-print}" in
+  print)
+    line
+    ;;
+
+  install)
+    [[ -f $BINDINGS ]] || { echo "ohmail-keybind: no $BINDINGS" >&2; exit 1; }
+    # Idempotent by marker, not by the whole line: the path inside it changes
+    # with where the plugin was cloned, so matching the line itself would add a
+    # second binding for the same key after a move.
+    # `-e` is load-bearing: the marker starts with `--`, which grep reads as the
+    # end of its own options and then rejects. Without it this grep fails, the
+    # failure reads as "not present", and a second install appends a duplicate
+    # binding for the same key. Watched happen.
+    if grep -qF -e "$MARKER" -- "$BINDINGS"; then
+      echo "already installed in $BINDINGS — remove it first to change the key"
+      exit 0
+    fi
+    # The write is checked before anything claims it happened. An unwritable file
+    # or a full filesystem fails here, and without this the script would print
+    # "added to …", reload hyprland, and exit 0 having added nothing — the reload
+    # even makes it look convincing.
+    if ! printf '\n%s\n' "$(line)" >> "$BINDINGS"; then
+      echo "ohmail-keybind: could not write to $BINDINGS — nothing was added" >&2
+      exit 1
+    fi
+    echo "added to $BINDINGS:"
+    line
+    if command -v hyprctl >/dev/null 2>&1; then
+      hyprctl reload >/dev/null && echo "hyprland reloaded — $KEY is live"
+    fi
+    ;;
+
+  remove)
+    [[ -f $BINDINGS ]] || exit 0
+    # The marker line and the o.bind line under it. Deleted as a pair so a
+    # half-removal cannot leave an orphan marker that blocks a reinstall.
+    sed -i "\|^${MARKER}$|,+1d" "$BINDINGS"
+    echo "removed from $BINDINGS"
+    command -v hyprctl >/dev/null 2>&1 && hyprctl reload >/dev/null
+    ;;
+
+  *)
+    echo "usage: ohmail-keybind [print|install|remove]" >&2
+    exit 2
+    ;;
+esac

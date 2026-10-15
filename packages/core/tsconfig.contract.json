@@ -1,0 +1,20 @@
+{
+  "// why": [
+    "`packages/core/tsconfig.json` includes `src` only, so NOTHING under `test/` is typechecked by",
+    "the package build (proven by planting `const x: number = \"a string\"` in a test file and",
+    "watching the typecheck exit 0). A compile-time guard that no compiler runs is not a guard,",
+    "and the rule evaluator's input contract depends on exactly one: `auth` is",
+    "REQUIRED on `EvaluateRulesInput` and unread by the evaluator, so a runtime assertion cannot",
+    "see it and the only thing that can enforce it is tsc.",
+    "This project compiles `test/contract/` — type-level assertions, no runtime behaviour — and the",
+    "root tsconfig references it, so `pnpm typecheck` builds it on every push.",
+    "`test/rules-contract.test.ts` invokes the same build so the suite reports the same failure",
+    "under a test name. Modelled on `packages/api/tsconfig.contract.json`.",
+    "Deliberately NOT the whole `test/` tree: this project must fail for one reason only."
+  ],
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "outDir": "test/contract/dist", "rootDir": "test/contract" },
+  "include": ["test/contract/**/*.ts"],
+  "exclude": ["test/contract/dist"],
+  "references": [{ "path": "./tsconfig.json" }]
+}

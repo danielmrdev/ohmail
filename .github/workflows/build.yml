@@ -137,6 +137,11 @@ permissions:
 # build with nothing set reports the version alone.
 env:
   OHMAIL_BUILD_SHA: ${{ github.sha }}
+  # THE RUST EVERY JOB COMPILES WITH, an exact release and never a channel: `stable` is whatever
+  # was published that morning, and the macOS job holds the signing secrets on a release tag. Each
+  # Toolchain step installs this one and refuses a compiler that reports another; a bump is a
+  # reviewed commit.
+  RUST_TOOLCHAIN: "1.99.0"
 
 # Only a pull request's superseded run is cancelled. A run on main, on a tag or on a merge group has a
 # group of its own — the commit — so it is never cancelled, nor dropped while pending behind another:
@@ -159,20 +164,22 @@ jobs:
         shell: bash
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: 22
+          node-version: 22.23.3
 
       - name: Toolchain
         run: |
-          rustup update stable
-          rustup default stable
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --no-self-update
+          rustup default "$RUST_TOOLCHAIN"
           # BOTH SLICES, because the macOS artifact is universal. `tauri build
           # --target universal-apple-darwin` compiles the binary twice and lipos
           # the result, and a missing target is a build that fails late.
           rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          test "$(rustc --version | cut -d' ' -f2)" = "$RUST_TOOLCHAIN" \
+            || { echo "rustc reports $(rustc --version), not the pinned $RUST_TOOLCHAIN" >&2; exit 1; }
           rustc --version
           node --version
 
@@ -240,7 +247,7 @@ jobs:
       # cached because it is a fifth of a gigabyte and never changes for a
       # pinned version. The cache key carries the version, so a bump in
       # scripts/vendor-node.mjs misses the cache rather than serving the old one.
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: build/vendor
           # The pinned version is in the key, spelled here rather than read out
@@ -778,14 +785,14 @@ jobs:
           echo "unique URL strings (reconcile with the README enumeration): $(grep -c . <<< "$ALL_URLS" || true)"
 
       - name: Upload ohmail.dmg
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ohmail-dmg-${{ github.run_number }}
           path: build/ohmail.dmg
           if-no-files-found: error
 
       - name: Upload the updater payload
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ohmail-app-tgz-${{ github.run_number }}
           path: build/ohmail.app.tar.gz
@@ -838,16 +845,18 @@ jobs:
         shell: bash
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: 22
+          node-version: 22.23.3
 
       - name: Toolchain
         run: |
-          rustup update stable
-          rustup default stable
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --no-self-update
+          rustup default "$RUST_TOOLCHAIN"
+          test "$(rustc --version | cut -d' ' -f2)" = "$RUST_TOOLCHAIN" \
+            || { echo "rustc reports $(rustc --version), not the pinned $RUST_TOOLCHAIN" >&2; exit 1; }
           rustc --version
           node --version
 
@@ -906,7 +915,7 @@ jobs:
           OHMAIL_BOOT_LOG: ${{ runner.temp }}/engine-boot.log
         run: node scripts/verify-engine-boot.mjs
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: build/vendor
           key: vendor-node-windows-v22.23.2
@@ -1122,7 +1131,7 @@ jobs:
           echo "unique URL strings (reconcile with the README enumeration): $(grep -c . <<< "$ALL_URLS" || true)"
 
       - name: Upload the setup .exe
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ohmail-windows-${{ github.run_number }}
           path: build/ohmail-windows-setup.exe
@@ -1133,7 +1142,7 @@ jobs:
       # from a fresh clone must reproduce the exact build CI made, and a
       # hand-assembled lockfile would carry unverified checksums.
       - name: Upload the resolved Cargo.lock
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: cargo-lock-${{ github.run_number }}
           path: apps/desktop/src-tauri/Cargo.lock
@@ -1167,11 +1176,11 @@ jobs:
         shell: bash
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: 22
+          node-version: 22.23.3
 
       # Tauri's Linux prerequisites: the WebKitGTK webview it renders in, the
       # GTK/soup stack under it, and the tools its bundlers shell out to.
@@ -1212,8 +1221,10 @@ jobs:
 
       - name: Toolchain
         run: |
-          rustup update stable
-          rustup default stable
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --no-self-update
+          rustup default "$RUST_TOOLCHAIN"
+          test "$(rustc --version | cut -d' ' -f2)" = "$RUST_TOOLCHAIN" \
+            || { echo "rustc reports $(rustc --version), not the pinned $RUST_TOOLCHAIN" >&2; exit 1; }
           rustc --version
           node --version
 
@@ -1269,7 +1280,7 @@ jobs:
       - name: The engine boots from the shipped layout, and only from it
         run: node scripts/verify-engine-boot.mjs
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: build/vendor
           key: vendor-node-linux-v22.23.2
@@ -2039,11 +2050,13 @@ jobs:
             separator = /
           }
           CONF
+          # THE MAIL SERVER BY DIGEST: dovecot/dovecot:2.3.21 as Docker Hub served it on 2026-10-14,
+          # one linux/amd64 manifest. A tag can be pushed again; a bump is a reviewed commit.
           docker run -d --name ohmail-perf-imap \
             -p 127.0.0.1:11143:143 \
             -v "$PWD/perf-smoke/dovecot.conf:/etc/dovecot/dovecot.conf:ro" \
             -v "$PWD/perf-smoke/vmail:/tmp/vmail" \
-            dovecot/dovecot:2.3.21
+            dovecot/dovecot:2.3.21@sha256:1c18c756f20d03867077a1b509a6e2e3008ab1eafa56377b6f2eca12dc1ba581
           # Waited for, not slept on: a login against a server that is not up
           # yet fails for a reason that is not the app.
           UP=0
@@ -2213,7 +2226,7 @@ jobs:
 
       - name: Keep the perf smoke's own files
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: perf-smoke-linux-x86_64-${{ github.run_number }}
           path: |
@@ -2223,21 +2236,21 @@ jobs:
 
       - name: Keep the launch captures when it fails
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: launch-check-linux-x86_64-${{ github.run_number }}
           path: launch-check
           if-no-files-found: ignore
 
       - name: Upload the AppImage
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ohmail-appimage-${{ github.run_number }}
           path: build/ohmail-linux-x86_64.AppImage
           if-no-files-found: error
 
       - name: Upload the .deb
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ohmail-deb-${{ github.run_number }}
           path: build/ohmail-linux-amd64.deb
@@ -2247,7 +2260,7 @@ jobs:
       # install drill below downloads THIS ONE and nothing else — a two-file
       # artifact would put a Debian package inside a Fedora container.
       - name: Upload the .rpm
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ohmail-rpm-${{ github.run_number }}
           path: build/ohmail-linux-x86_64.rpm
@@ -2339,11 +2352,11 @@ jobs:
         shell: bash
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: 22
+          node-version: 22.23.3
 
       # The same list as the x86_64 job. Every one of these has an arm64 build in
       # Ubuntu's own archive, so nothing here is architecture-conditional — which
@@ -2366,8 +2379,10 @@ jobs:
 
       - name: Toolchain
         run: |
-          rustup update stable
-          rustup default stable
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --no-self-update
+          rustup default "$RUST_TOOLCHAIN"
+          test "$(rustc --version | cut -d' ' -f2)" = "$RUST_TOOLCHAIN" \
+            || { echo "rustc reports $(rustc --version), not the pinned $RUST_TOOLCHAIN" >&2; exit 1; }
           # No `rustup target add`: the host triple IS aarch64-unknown-linux-gnu
           # here, and a native build wants nothing else. (macOS adds two targets
           # because its artifact is universal; this one is not.)
@@ -2433,7 +2448,7 @@ jobs:
       - name: The engine boots from the shipped layout, and only from it
         run: node scripts/verify-engine-boot.mjs
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: build/vendor
           # A DIFFERENT KEY FROM THE x86_64 JOB, and this is the one line in this
@@ -3087,28 +3102,28 @@ jobs:
 
       - name: Keep the launch captures when it fails
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: launch-check-linux-aarch64-${{ github.run_number }}
           path: launch-check
           if-no-files-found: ignore
 
       - name: Upload the arm64 AppImage
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ohmail-appimage-aarch64-${{ github.run_number }}
           path: build/ohmail-linux-aarch64.AppImage
           if-no-files-found: error
 
       - name: Upload the arm64 .deb
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ohmail-deb-arm64-${{ github.run_number }}
           path: build/ohmail-linux-arm64.deb
           if-no-files-found: error
 
       - name: Upload the arm64 .rpm
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ohmail-rpm-aarch64-${{ github.run_number }}
           path: build/ohmail-linux-aarch64.rpm
@@ -3165,9 +3180,11 @@ jobs:
   # turning that print into a failure would be asking Fedora for a promise
   # Debian was never asked for.
   #
-  # A pinned base image, deliberately: an install drill whose distribution moves
-  # under it reports a Fedora change as an ohmail regression. Bump it with a
-  # release, as a decision.
+  # A pinned base image, deliberately, and pinned BY DIGEST (fedora:42's multi-arch
+  # index as registry.fedoraproject.org served it on 2026-10-14): an install drill
+  # whose distribution moves under it reports a Fedora change as an ohmail
+  # regression. Bump it with a release, as a decision. The three packages dnf adds
+  # inside it still come from Fedora's signed repositories, at that day's versions.
   # ==========================================================================
   linux-rpm-install:
     name: Linux · the .rpm installs on Fedora
@@ -3179,12 +3196,12 @@ jobs:
         shell: bash
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # The artifact the x86_64 Linux job renamed and uploaded — the exact bytes
       # a release attaches, not a rebuild.
       - name: Take the .rpm the Linux job produced
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: ohmail-rpm-${{ github.run_number }}
           path: build
@@ -3313,7 +3330,7 @@ jobs:
           # a base image continuing to carry it.
           docker run --rm \
             -v "$PWD/build:/work:ro" \
-            registry.fedoraproject.org/fedora:42 \
+            registry.fedoraproject.org/fedora:42@sha256:e78cd1a688cd079c23864f289a89a49a3f4ad66d817864e325e1d058310ee95c \
             bash -c 'dnf -y install desktop-file-utils findutils file >/dev/null && bash /work/rpm-install-drill.sh'
 
       - name: Run summary
@@ -3326,7 +3343,7 @@ jobs:
             echo "|---|---|"
             echo "| commit | \`${GITHUB_SHA:0:9}\` |"
             echo "| package | \`ohmail-linux-x86_64.rpm\` from the x86_64 Linux job |"
-            echo "| container | \`registry.fedoraproject.org/fedora:42\` |"
+            echo "| container | \`registry.fedoraproject.org/fedora:42\`, by its pinned digest |"
             echo
             echo 'Installs, lands its files where the shell resolves them, starts its own mail'
             echo 'engine from the installed layout, and uninstalls. The window is not opened here.'
@@ -3356,11 +3373,11 @@ jobs:
         shell: bash
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: 22
+          node-version: 22.23.3
 
       # The builder and the runtimes the manifest names, read OUT OF the
       # manifest rather than repeated here: a runtime bump in the manifest that
@@ -3404,6 +3421,10 @@ jobs:
           ' "$M")"
           echo "the manifest asks for GNOME $RUNTIME_VERSION"
 
+          # WHAT FLOATS HERE, NAMED: flatpak verifies every install below against the key in the
+          # flathub.flatpakrepo fetched above over HTTPS, but no commit is pinned. The builder is
+          # whatever its stable branch carries on the day, the runtimes and both SDK extensions
+          # whatever their branches carry. This job holds no secret and its bundle ships nowhere.
           flatpak install -y --user flathub org.flatpak.Builder
           sudo flatpak install -y --system flathub \
             "org.gnome.Platform//$RUNTIME_VERSION" "org.gnome.Sdk//$RUNTIME_VERSION" \
@@ -3683,11 +3704,11 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: 22
+          node-version: 22.23.3
 
       # From the committed package-lock.json, so the dependency tree is the same
       # on every machine — the reproducibility the exact-pinned manifests promise.
@@ -3706,7 +3727,9 @@ jobs:
       # the unrelated `tsc` package. The @types back the engine's `node:` and
       # untyped-dependency imports; the runtime deps ship their own declarations. Each is the
       # version this repository's own typecheck uses, and the tree is read again afterwards,
-      # because the engine bundle below is built from it.
+      # because the engine bundle below is built from it. WHAT FLOATS, NAMED: with no lockfile,
+      # their own ranges resolve against the registry on the day (iconv-lite ^0.6.3, htmlparser2
+      # ^10.1 and its dependencies), installed beside the locked tree, scriptless, read by tsc only.
       - name: Typecheck the engine source
         run: |
           npm install --no-save --ignore-scripts --no-audit --no-fund \
@@ -3817,11 +3840,11 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: 22
+          node-version: 22.23.3
 
       # `apps/desktop` only, and no workspace: the Vite config aliases every
       # `@ohmail/*` specifier straight at a source path, which is why the three

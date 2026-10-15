@@ -1284,7 +1284,7 @@ export async function adminWorker(db: AdminDb, now: Date): Promise<WorkerSnapsho
     // This copy once named "the reconcile, stale-send and proposal passes"; two of the three were
     // false (`proposalGeneratePass` has no production caller; there is no stale-send pass —
     // `staleSends` is a read-only listing computed on this request). Keep the pass list in step
-    // with `SCHEDULE_MANIFEST` in `test/every-pass-has-a-producer.test.ts`.
+    // with `SCHEDULE_MANIFEST` in the producer census (a private test).
     crons: [],
     // ZERO, for the same reason `crons` is empty: the honest answer is nothing, and
     // the surface that produced this one was a receipt oracle. The full argument, the D=15min /

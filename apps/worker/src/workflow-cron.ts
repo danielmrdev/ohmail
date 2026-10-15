@@ -22,7 +22,7 @@ import { attributedWorkflowDrafter, makeAiUsageBuffer } from "./ai-usage.js";
  * `audit_log` inverse). Pure and hermetic (db/tx + injected DraftPort + clock). The PRIMARY caller is
  * `apps/worker/src/index.ts`'s `cycle()` (this + {@link workflowTimeScanPass} once per poll per account),
  * so a `POST /workflows/:id/run` 202 is honoured by the always-on worker; {@link runWorkflowCron} is the
- * dead-worker backstop, on no schedule. `test/every-pass-has-a-producer.test.ts` asserts which caller is which. */
+ * dead-worker backstop, on no schedule. The producer census (a private test) asserts which caller is which. */
 export interface WorkflowDrainDeps {
   drafter: DraftPort;
   /**
@@ -286,7 +286,7 @@ export const unconfiguredDrafter: DraftPort = {
  * touching the DB; otherwise one drain pass and release. Nothing invokes it on a timer, and nothing can
  * while a worker is up. `index.ts`'s `cycle()` is the producer of record; this is what an operator runs
  * when the worker is not (recorded `MANUAL_BACKSTOP` in `SCHEDULE_MANIFEST`,
- * `test/every-pass-has-a-producer.test.ts`). It loops the SERVED accounts (its shard, dev-filter narrowed,
+ * a private test's census). It loops the SERVED accounts (its shard, dev-filter narrowed,
  * each isolated in its own try/catch). `log` defaults to `silentLogger` — see `cron-log.ts`.
  */
 export async function runWorkflowCron(

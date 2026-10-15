@@ -395,7 +395,7 @@ export function dayValue(iso: string): string {
  * WHO WROTE IT: their display name, else their address in readable form.
  *
  * The address is passed through {@link displayAddress}, so a sender on an internationalized
- * domain reads as `sarada@götsch.ch` rather than the `xn--…` A-label the mailbox stores. This is
+ * domain reads as `info@bücher.example` rather than the `xn--…` A-label the mailbox stores. This is
  * the display side of a deliberate split — see `idn.ts`. The identity side of the same message
  * (`avatarHue`, the screening key, every mutation) reads `m.from.address` directly and is
  * untouched, which is why THIS function is safe to decode inside and that field is not.

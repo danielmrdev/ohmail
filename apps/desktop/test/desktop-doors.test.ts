@@ -798,14 +798,14 @@ describe("the cloud door", () => {
   it("configures the door with an address and no secret, then signs in over the bridge", async () => {
     const asked = shellThatWorks({ ...SERVING, mode: "cloud" });
 
-    const result = await enterCloudDoor("mila@ohmail.app", "hunter2-and-then-some", "123456");
+    const result = await enterCloudDoor("mila@lichtgrat.example", "hunter2-and-then-some", "123456");
     expect(result.problem).toBeNull();
 
     const configure = asked.find((a) => a.command === "engine_configure")!;
     expect(configure.payload!.config).toEqual({
       mode: "cloud",
       cloudUrl: CLOUD_URL,
-      address: "mila@ohmail.app",
+      address: "mila@lichtgrat.example",
     });
     expect(JSON.stringify(configure.payload)).not.toContain("hunter2");
     expect(JSON.stringify(configure.payload)).not.toContain("123456");
@@ -815,7 +815,7 @@ describe("the cloud door", () => {
     expect(request.payload!.url).toBe("/cloud/signin");
     const body = new TextDecoder().decode(Uint8Array.from(request.payload!.body as number[]));
     expect(JSON.parse(body)).toEqual({
-      email: "mila@ohmail.app",
+      email: "mila@lichtgrat.example",
       password: "hunter2-and-then-some",
       totp: "123456",
     });
@@ -834,18 +834,18 @@ describe("the cloud door", () => {
 
   it("checks the code is six digits before spending a sign-in attempt", async () => {
     const asked = shellThatWorks({ ...SERVING, mode: "cloud" });
-    expect((await enterCloudDoor("mila@ohmail.app", "pw", "12345")).problem)
+    expect((await enterCloudDoor("mila@lichtgrat.example", "pw", "12345")).problem)
       .toMatch(/six digits/);
-    expect((await enterCloudDoor("mila@ohmail.app", "pw", "abcdef")).problem)
+    expect((await enterCloudDoor("mila@lichtgrat.example", "pw", "abcdef")).problem)
       .toMatch(/six digits/);
-    expect(cloudProblem("mila@ohmail.app", "pw", "123456")).toBeNull();
+    expect(cloudProblem("mila@lichtgrat.example", "pw", "123456")).toBeNull();
     expect(asked).toHaveLength(0);
   });
 
   /** Signing in again on a door that is already chosen reconfigures nothing. */
   it("re-signs in without touching the configuration", async () => {
     const asked = shellThatWorks({ ...SERVING, mode: "cloud" });
-    const result = await signInToCloud("mila@ohmail.app", "pw", "123456");
+    const result = await signInToCloud("mila@lichtgrat.example", "pw", "123456");
     expect(result.problem).toBeNull();
     expect(asked.some((a) => a.command === "engine_configure")).toBe(false);
     expect(asked.find((a) => a.command === "engine_request")!.payload!.url).toBe("/cloud/signin");
@@ -863,12 +863,12 @@ describe("the cloud door", () => {
 describe("door two, entered with a code from the browser", () => {
   it("configures the engine for the address and sends ONLY the code over the bridge", async () => {
     const asked = shellThatWorks({ ...SERVING, mode: "cloud" });
-    const result = await enterCloudDoorWithCode("mila@ohmail.app", "  handoff-code-9  ");
+    const result = await enterCloudDoorWithCode("mila@lichtgrat.example", "  handoff-code-9  ");
     expect(result.problem).toBeNull();
 
     const configure = asked.find((a) => a.command === "engine_configure")!;
     expect(configure.payload!.config).toEqual({
-      mode: "cloud", cloudUrl: CLOUD_URL, address: "mila@ohmail.app",
+      mode: "cloud", cloudUrl: CLOUD_URL, address: "mila@lichtgrat.example",
     });
 
     const request = asked.find((a) => a.command === "engine_request")!;
@@ -882,7 +882,7 @@ describe("door two, entered with a code from the browser", () => {
 
   it("NO PASSWORD FIELD LEAVES THIS PROCESS ON THIS PATH — over the DECODED bytes", async () => {
     const asked = shellThatWorks({ ...SERVING, mode: "cloud" });
-    await enterCloudDoorWithCode("mila@ohmail.app", "handoff-code-9");
+    await enterCloudDoorWithCode("mila@lichtgrat.example", "handoff-code-9");
 
     // DECODED, and the reason is worth the extra line: `engine_request` carries its body as a
     // NUMBER ARRAY, so a string search over `JSON.stringify(payload)` finds nothing whatever the
@@ -905,7 +905,7 @@ describe("door two, entered with a code from the browser", () => {
     const asked = shellThatWorks({ ...SERVING, mode: "cloud" });
     expect((await enterCloudDoorWithCode("", "code")).problem).toMatch(/address is missing/);
     expect((await enterCloudDoorWithCode("not-an-address", "code")).problem).toMatch(/does not look like/);
-    expect((await enterCloudDoorWithCode("mila@ohmail.app", "   ")).problem).toMatch(/code the browser showed/);
+    expect((await enterCloudDoorWithCode("mila@lichtgrat.example", "   ")).problem).toMatch(/code the browser showed/);
     expect(asked).toHaveLength(0);
   });
 
@@ -914,14 +914,14 @@ describe("door two, entered with a code from the browser", () => {
     // here is a quieter second definition of what `POST /auth/desktop-link` issues, and it keeps
     // working until the issuer changes — at which point every valid code is refused locally with
     // a sentence about a format nobody can see.
-    expect(handoffProblem("mila@ohmail.app", "short")).toBeNull();
-    expect(handoffProblem("mila@ohmail.app", "a".repeat(200))).toBeNull();
-    expect(handoffProblem("mila@ohmail.app", "has-dashes_and_underscores")).toBeNull();
+    expect(handoffProblem("mila@lichtgrat.example", "short")).toBeNull();
+    expect(handoffProblem("mila@lichtgrat.example", "a".repeat(200))).toBeNull();
+    expect(handoffProblem("mila@lichtgrat.example", "has-dashes_and_underscores")).toBeNull();
   });
 
   it("re-signs in with a code without touching the configuration", async () => {
     const asked = shellThatWorks({ ...SERVING, mode: "cloud" });
-    const result = await signInToCloudWithCode("mila@ohmail.app", "handoff-code-9");
+    const result = await signInToCloudWithCode("mila@lichtgrat.example", "handoff-code-9");
     expect(result.problem).toBeNull();
     expect(asked.some((a) => a.command === "engine_configure")).toBe(false);
     expect(asked.find((a) => a.command === "engine_request")!.payload!.url).toBe("/cloud/signin");
@@ -971,7 +971,7 @@ describe("starting a browser handoff", () => {
 
   it("configures the door FIRST, then mints the commitment, on a fresh install", async () => {
     const asked = shellThatMints(CHALLENGE);
-    const started = await beginBrowserSignIn("  mila@ohmail.app  ");
+    const started = await beginBrowserSignIn("  mila@lichtgrat.example  ");
     expect(started.problem).toBeNull();
     expect(started.challenge).toBe(CHALLENGE);
 
@@ -985,14 +985,14 @@ describe("starting a browser handoff", () => {
       .toBeLessThan(mintAt);
 
     expect(asked[configureAt]!.payload!.config).toEqual({
-      mode: "cloud", cloudUrl: CLOUD_URL, address: "mila@ohmail.app",
+      mode: "cloud", cloudUrl: CLOUD_URL, address: "mila@lichtgrat.example",
     });
     expect(asked[mintAt]!.payload!.method).toBe("POST");
   });
 
   it("touches nothing on a door that is already chosen and serving", async () => {
     const asked = shellThatMints(CHALLENGE);
-    const started = await beginBrowserSignIn("mila@ohmail.app", true);
+    const started = await beginBrowserSignIn("mila@lichtgrat.example", true);
     expect(started.challenge).toBe(CHALLENGE);
     // A configure here would restart the engine — and take somebody's mail off the screen for the
     // length of a first launch — to change nothing at all.
@@ -1002,7 +1002,7 @@ describe("starting a browser handoff", () => {
 
   it("REFUSES rather than answering a page with no commitment on it", async () => {
     const asked = shellThatMints(null);
-    const started = await beginBrowserSignIn("mila@ohmail.app", true);
+    const started = await beginBrowserSignIn("mila@lichtgrat.example", true);
     /* The page without a commitment mints a code any program that claimed `ohmail://` could spend,
        while this install goes on waiting for a link — every party believing the binding is on. The
        honest answer is that the handoff could not be started, with the retype field still on
@@ -1031,7 +1031,7 @@ describe("starting a browser handoff", () => {
         throw new Error(`unexpected command ${command}`);
       },
     };
-    const started = await beginBrowserSignIn("mila@ohmail.app", true);
+    const started = await beginBrowserSignIn("mila@lichtgrat.example", true);
     expect(started.challenge).toBeNull();
     // The ENGINE's own words, not a category — the same rule every other refusal on this screen
     // follows.
@@ -1046,7 +1046,7 @@ describe("starting a browser handoff", () => {
         throw new Error(`unexpected command ${command}`);
       },
     };
-    const started = await beginBrowserSignIn("mila@ohmail.app");
+    const started = await beginBrowserSignIn("mila@lichtgrat.example");
     expect(started.challenge).toBeNull();
     expect(started.problem).toBe("another copy is running");
   });

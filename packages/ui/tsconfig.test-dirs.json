@@ -1,0 +1,8 @@
+{
+  "//": "`jsx: react-jsx`, the setting packages/ui/tsconfig.json already carries, because 14 of this directory's 18 files are .tsx. Without it the program reports 166 x TS17004 (\"Cannot use JSX unless the --jsx flag is provided\") and 62 x TS6142 for the modules behind them - 230 errors that are the config's, not the code's; with it, one. `lib` is NOT set: the base leaves it unset and TypeScript's default for target ES2022 is lib.es2022.FULL, which already carries dom and dom.iterable, so naming the package's own [\"es2022\",\"dom\",\"dom.iterable\"] here would narrow the program rather than mirror it, and measures the same 1 either way.",
+  "extends": "../../test/tsconfig.test-dirs-base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx"
+  },
+  "include": ["test"]
+}

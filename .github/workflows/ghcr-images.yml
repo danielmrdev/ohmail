@@ -64,7 +64,8 @@
 # gate possible rather than aspirational: caddy, postgres, minio, minio/mc and mailpit all
 # publish linux/arm64 in their own manifest lists — and we now serve those manifests ourselves,
 # whole, so the arm64 half of each is ours to keep too. The base these three are built from
-# (`node:22-bookworm-slim`) publishes arm64/v8. Checked against the registries, not assumed.
+# (`node:22-bookworm-slim`, named in each Dockerfile by its multi-arch index digest, so the base
+# cannot move under a release) publishes arm64/v8. Checked against the registries, not assumed.
 # `npm ci` picks the matching native halves off the committed lockfile — it records every
 # platform's optional package with its `cpu`/`os` fields, so `@next/swc-linux-arm64-gnu` and
 # `lightningcss-linux-arm64-gnu` install on the arm runner from the same lockfile the amd64
@@ -87,9 +88,11 @@ on:
         description: "A release CANDIDATE: the 40-hex commit these images are built from. Pushes only rc-<sha>; no version tag and no latest."
         required: false
 
+# READ-ONLY BY DEFAULT. `packages: write` is granted job by job, to the four jobs that push
+# (mirror-images, build-push, promote-candidate, promote); gate-boot reads the staged images, which
+# are private until promotion; version and gate-visibility read this tree and nothing else.
 permissions:
   contents: read
-  packages: write
 
 # One release at a time. Staging tags are run-scoped so an overlap could not cross-promote
 # anyway; serializing keeps `latest` from being decided by a race between two green runs.
@@ -100,8 +103,8 @@ concurrency:
 jobs:
   # One place decides the tags, and it is DATA, never shell source: a dispatch input (or a
   # tag name — git allows `$` and parentheses in one) interpolated into a run: block would
-  # execute with this workflow's packages:write token. Read through the environment, validate
-  # against docker's own tag grammar, and refuse anything else.
+  # execute with that job's token, which can push in four of them. Read through the environment,
+  # validate against docker's own tag grammar, and refuse anything else.
   #
   # THE DECISION LIVES IN A SCRIPT (`.github/scripts/ghcr-image-tags.sh`) because a workflow's
   # YAML can be read by a test and a workflow's shell can only be run by GitHub. It answers with
@@ -118,6 +121,8 @@ jobs:
       promote_public: ${{ steps.decide.outputs.promote_public }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Decide and validate the tags
         id: decide
@@ -156,17 +161,42 @@ jobs:
     needs: version
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
-      - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
 
-      - uses: imjasonh/setup-crane@31b88efe9de28ae0ffa220711af4b60be9435f6e # v0.4
+      # crane runs holding this job's packages: write token, so it is a NAMED release whose tarball
+      # is checked against a committed SHA-256 before it is unpacked: a release asset can be
+      # replaced, and an action that installs "latest" pins nothing (the bundletool rule in
+      # android.yml). The sum is upstream's checksums.txt line for this asset, and the release's
+      # signed SLSA provenance names the same digest. No step has written the job token anywhere yet:
+      # the checkout keeps none, and crane's own login, the next step, is the job's only login.
+      - name: Install crane, a named release checked against its committed SHA-256
+        env:
+          CRANE_VERSION: v0.22.1
+          CRANE_SHA256: 0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0
+        run: |
+          set -euo pipefail
+          [ "$(uname -s)" = Linux ] && [ "$(uname -m)" = x86_64 ] \
+            || { echo "the pinned crane is the Linux x86_64 build; this runner is $(uname -s) $(uname -m)" >&2; exit 1; }
+          curl -sSfL --retry 3 -o "$RUNNER_TEMP/crane.tar.gz" \
+            "https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz"
+          echo "${CRANE_SHA256}  $RUNNER_TEMP/crane.tar.gz" | sha256sum -c --strict - \
+            || { echo "crane ${CRANE_VERSION} does not hash to the pinned ${CRANE_SHA256}" >&2; exit 1; }
+          mkdir -p "$RUNNER_TEMP/crane"
+          tar -xzf "$RUNNER_TEMP/crane.tar.gz" -C "$RUNNER_TEMP/crane" crane
+          echo "$RUNNER_TEMP/crane" >> "$GITHUB_PATH"
+
+      - name: Log crane in to GHCR with the job token, on stdin
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | crane auth login ghcr.io --username dummy --password-stdin
 
       - name: Mirror every third-party image the lock names
         run: bash .github/scripts/mirror-images.sh
@@ -176,6 +206,9 @@ jobs:
     needs: version
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix:
@@ -196,13 +229,20 @@ jobs:
             dockerfile: apps/webapp/Dockerfile
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       # For the prune check's patch read, which runs on the runner against the checked-out tree.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 22
+          node-version: 22.23.3
 
+      # THE BUILDKIT DAEMON BY DIGEST. Left to its default, setup-buildx boots moby/buildkit:buildx-stable-1,
+      # a tag its publisher moves, and that daemon runs every build step and pushes with this job's token.
+      # v0.33.1 is the release that tag named on 2026-10-14; a bump is a reviewed commit.
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          driver-opts: image=moby/buildkit:v0.33.1@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea
 
       - name: Log in to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
@@ -281,6 +321,9 @@ jobs:
     needs: [version, build-push, mirror-images]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    # It pulls the staged images, private until promotion, and pushes nothing.
+    permissions:
+      packages: read
     strategy:
       # Both arches are reported. Stopping the arm64 boot because amd64 failed would hide
       # which half is broken, and the promotion is blocked by either failing regardless.
@@ -409,6 +452,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Anonymous-pull gate — the packages must be publicly pullable
         env:
@@ -455,6 +500,8 @@ jobs:
     needs: [version, build-push, gate-boot, gate-visibility]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      packages: write
     steps:
       - name: Log in to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
@@ -499,6 +546,8 @@ jobs:
     needs: [version, build-push, gate-boot, gate-visibility]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      packages: write
     steps:
       # The same refusal as a step, not only as a job condition: an `if:` edited away is a public
       # tag moved, and this is the one place where that is unrecoverable for every unpinned install.

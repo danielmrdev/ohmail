@@ -1,0 +1,35 @@
+#!/bin/bash
+#
+# Bring ohmail to you: focus its window if it is already open, start it if not.
+#
+# The reason this is a script and not a keybind straight to `ohmail`: launching
+# an app that is already running is not what "summon" means. ohmail holds a
+# single-instance lock, so a second launch does reach the first one — but going
+# through the compositor is instant, works on whichever workspace the window is
+# on, and does not depend on that behaviour.
+
+set -uo pipefail
+
+CLASS="ohmail"
+
+# `hyprctl clients` and not `pgrep`: a running process with no window (still
+# starting, or quit to the tray) is not something to focus.
+if command -v hyprctl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+  if hyprctl clients -j | jq -e --arg c "$CLASS" 'any(.[]; .class == $c)' >/dev/null 2>&1; then
+    hyprctl dispatch focuswindow "class:^${CLASS}$" >/dev/null
+    exit 0
+  fi
+fi
+
+if ! command -v ohmail >/dev/null 2>&1; then
+  # Said out loud rather than exiting quietly: a keybind that does nothing is
+  # indistinguishable from a keybind that is not bound.
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send "ohmail is not installed" "Install it with: yay -S ohmail-bin"
+  fi
+  echo "ohmail-summon: no 'ohmail' on PATH" >&2
+  exit 1
+fi
+
+setsid ohmail >/dev/null 2>&1 < /dev/null &
+exit 0

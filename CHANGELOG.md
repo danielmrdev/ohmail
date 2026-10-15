@@ -13,6 +13,19 @@ See [Status](README.md#status--read-this-first).
 
 ## [Unreleased]
 
+### PDF previews work on a self-hosted install
+<!-- changes: split-s9p-product-inputs.md -->
+
+A self-hosted install showed "Can't show this PDF here" for every PDF attachment, because the web image
+did not carry the PDF viewer's worker. It does now, and a PDF attachment opens in the preview.
+
+### A text field in a dialog keeps its focus on Linux
+<!-- changes: pr13-import.md -->
+
+In the Linux desktop app, clicking a text field in a dialog, such as the address field under Settings >
+Mailboxes > Add mailbox, no longer sends focus back to the dialog's first control, so what you type
+reaches the field. Contributed by Daniel Muñoz in #13.
+
 ### Still to come
 
 Signed installers — a real Apple Developer ID and an Authenticode certificate. See

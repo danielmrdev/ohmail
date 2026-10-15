@@ -22,7 +22,8 @@ the licence's "How to Apply These Terms" appendix.
 
 What is under AGPL-3.0
 ----------------------
-All source in this repository:
+All source in this repository, except the files copied in from other
+projects that "Third parties" below names:
 
   apps/desktop/**          the app, on all three platforms (Rust + TS)
   apps/webapp/app/**       the shared client shell and its views
@@ -61,6 +62,50 @@ Third parties
 -------------
 Every dependency carries its own licence, granted by its own authors, and
 nothing in this file changes any of them.
+
+Files in this tree that are copied from other projects keep their own
+licence:
+
+  PDF preview     apps/webapp/public/pdf.worker.min.mjs is the worker of
+                  pdf.js (copyright Mozilla Foundation, Apache-2.0), copied
+                  byte for byte from the pdfjs-dist build the web app's
+                  manifest pins. Its licence notice heads the file; the
+                  licence text ships in that package (pdfjs-dist/LICENSE).
+
+  Omarchy themes  packages/tokens/omarchy/fixtures/raw/*.colors.toml and
+                  packages/tokens/omarchy/fixtures/shell.example.toml are
+                  Omarchy's stock theme and shell files, as an Omarchy 4.0.2
+                  install ships them. Copyright (c) David Heinemeier
+                  Hansson, MIT, with the notice below.
+
+  AppImage GTK    apps/desktop/src-tauri/linux/linuxdeploy-plugin-gtk.sh is
+  plugin          linuxdeploy-plugin-gtk, with each change marked `ohmail:`
+                  at the line it touches. Copyright 2018-2019 TheAssassin
+                  and the linuxdeploy contributors, MIT, with the notice
+                  below.
+
+The MIT notice both of those carry, after their copyright lines:
+
+  Permission is hereby granted, free of charge, to any person obtaining a
+  copy of this software and associated documentation files (the
+  "Software"), to deal in the Software without restriction, including
+  without limitation the rights to use, copy, modify, merge, publish,
+  distribute, sublicense, and/or sell copies of the Software, and to permit
+  persons to whom the Software is furnished to do so, subject to the
+  following conditions:
+
+  The above copyright notice and this permission notice shall be included
+  in all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+  OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+  NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+  DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+  OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+  USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Every other dependency is installed, not copied in:
 
   The app          Rust: the Tauri 2 crate tree pinned in
                   apps/desktop/src-tauri/Cargo.lock. Tauri is MIT OR

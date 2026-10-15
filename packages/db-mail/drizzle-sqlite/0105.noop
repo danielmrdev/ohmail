@@ -1,0 +1,17 @@
+0105_sync_blocked_reason_clock_off — NOT CARRIED AS A STEP, FOR `0102.noop`'S REASON VERBATIM.
+
+The shared entry widens the closed set on `mailboxes.sync_blocked_reason` by one more member,
+'clock_off', the way Postgres allows: DROP CONSTRAINT then ADD CONSTRAINT. SQLite has neither. A
+CHECK is part of the table definition there, so changing one member means rebuilding a fifty-column
+table by hand for a one-word widening.
+
+It does not need to be a step. This journal has never shipped: nothing outside a test's temporary
+file has ever run `0001_baseline.sql`, so there is no store in the world holding the four-member
+constraint that a migration would have to correct. The member goes in the BASELINE, which is where
+the current closed set belongs while the baseline is still unreleased, and both twins are checked
+against `MAILBOX_SYNC_BLOCK_REASONS` itself — `sqlite-baseline.test.ts` stores every member in a
+real store and refuses one outside the set, and `schema-twin-parity.test.ts` compares the two
+twins' CHECK text.
+
+WHAT CHANGES THE DAY THIS JOURNAL SHIPS is what `0102.noop` and `0104.noop` already say, and the
+same answer will serve all three.
