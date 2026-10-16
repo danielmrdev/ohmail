@@ -925,10 +925,11 @@ interface sources under `apps/webapp/app/` and `packages/ui` are the same ones
 the web client renders, not a copy. `apps/desktop/README.md` is the long
 version — the aliases, the capability set, and what each directory is.
 
-This tree is a generated mirror of a private monorepo. Commits arrive as
-replays that name the monorepo
-revision they came from; pull requests land in the monorepo and come back out
-here. [CHANGELOG.md](CHANGELOG.md) records what has shipped.
+This repository is where ohmail is developed. Every change reaches `main` as a
+pull request, ours included: nothing is pushed to it directly, and a pull
+request is merged only once its required checks pass. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for how to send one;
+[CHANGELOG.md](CHANGELOG.md) records what has shipped.
 
 ## Roadmap
 

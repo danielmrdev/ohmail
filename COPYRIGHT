@@ -130,10 +130,10 @@ The letterforms in the ohmail icon were drawn as outlined paths from Inter Bold
 https://github.com/rsms/inter), licensed under the SIL Open Font License 1.1.
 
 No font binary is distributed in this repository. The .ttf used to draw the
-mark is a design-time tool that lives in the private monorepo alongside its OFL
-text, and it is not part of what is published here. The publishing script's
-allow-list contains no font extension at all, so a font file cannot ride along
-into this tree by accident — the run aborts instead of shipping it.
+mark stayed with the design files, alongside its OFL text, and is not part of
+this tree. The guard check (.github/scripts/assert-pr-guard.sh) refuses any pull
+request whose tree carries a file of a font kind, so one cannot ride along by
+accident.
 
 That distinction is the whole answer. The OFL's conditions — its copyleft, its
 requirement that the licence travel with the font, and its Reserved Font Name
@@ -163,16 +163,16 @@ so a file separated from its project still carries its terms — a real risk for
 a library whose files get vendored into other projects, a small one for an
 application nobody copies a single file out of.
 
-The one specific to ohmail: this repository is a generated mirror. Several of
-the trees published here — packages/tokens, packages/ui, packages/fixtures,
-packages/client-engine and apps/webapp/app — are the *same files* the hosted
-ohmail Cloud web client is built from. TrafficFlow GmbH holds the copyright on
-all of it and licenses it both ways: AGPL-3.0 in this repository, under its own
-terms in the Cloud product. Stamping an AGPL header into each of those files
-upstream would assert, inside the Cloud client's own sources, a licence that
-does not describe them. Declaring the licence once, at the root, for the
-repository as published, states exactly the thing that is true: *this tree, as
-published here, is AGPL-3.0.*
+The one specific to ohmail: several of the trees published here —
+packages/tokens, packages/ui, packages/fixtures, packages/client-engine and
+apps/webapp/app — are the *same files* the hosted ohmail Cloud web client is
+built from. TrafficFlow GmbH holds the copyright on all of it and licenses it
+both ways: AGPL-3.0 in this repository, under its own terms in the Cloud
+product. Stamping an AGPL header into each of those files would assert, inside
+the Cloud client's own sources, a licence that does not describe them.
+Declaring the licence once, at the root, for the repository as published,
+states exactly the thing that is true: *this tree, as published here, is
+AGPL-3.0.*
 
 If you extract a file from this repository, it came from here and it is
 AGPL-3.0. Please carry that with you.
