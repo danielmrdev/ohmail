@@ -74,6 +74,13 @@
   </screenshots>
 
   <releases>
+    <release version="0.26.1" date="2026-10-16">
+      <description>
+        <ul>
+          <li>The Cloud deploy installs with the build host's npm</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.26.0" date="2026-10-16">
       <description>
         <ul>
@@ -140,26 +147,6 @@
           <li>Organize on this phone shows Starting</li>
           <li>A phone connected to a mailbox starts organizing it within seconds</li>
           <li>Search on ohmail Cloud finds the closest words to a mistyped word faster</li>
-        </ul>
-      </description>
-    </release>
-    <release version="0.25.21" date="2026-10-11">
-      <description>
-        <ul>
-          <li>Mail under a company's name through a mailing list's address waits at the Screener</li>
-          <li>Letters arriving together all show within seconds, and a read on the web reaches the mail server within seconds</li>
-          <li>Live updates</li>
-          <li>A short first message is marked read when you scroll up to it</li>
-          <li>News and Receipts count only what is new since you were there</li>
-          <li>Keys and a resized window keep your place</li>
-          <li>Restarting the desktop app keeps it organizing your mailbox</li>
-          <li>A phone organizes a mailbox only where you agreed to it</li>
-          <li>Letters that arrive while nothing organizes are offered for filing</li>
-          <li>Search on ohmail Cloud answers faster</li>
-          <li>Search finds ß and ss alike, and says what it found</li>
-          <li>Changing your statistics choice on the website</li>
-          <li>The phone keeps its editor on a draft sent or deleted on another device</li>
-          <li>Changing the text size keeps the open screen on both phones</li>
         </ul>
       </description>
     </release>

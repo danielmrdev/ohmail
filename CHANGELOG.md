@@ -13,14 +13,16 @@ See [Status](README.md#status--read-this-first).
 
 ## [Unreleased]
 
-### The Cloud deploy installs with the build host's npm
-
-The Cloud deploy installs with the build host's npm: an optional package no installed package needs may be absent.
-
 ### Still to come
 
 Signed installers — a real Apple Developer ID and an Authenticode certificate. See
 [Roadmap](README.md#roadmap).
+
+## [0.26.1] — 2026-10-16
+
+### The Cloud deploy installs with the build host's npm
+
+The Cloud deploy installs with the build host's npm: an optional package no installed package needs may be absent.
 
 ## [0.26.0] — 2026-10-16
 
@@ -12362,7 +12364,8 @@ no network in any of them.
   Gatekeeper, SmartScreen and the AppImage's executable bit all need a manual
   step, and that is a real cost of a preview rather than something to gloss over.
 
-[Unreleased]: https://github.com/trafficflowhq/ohmail/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/trafficflowhq/ohmail/compare/v0.26.1...HEAD
+[0.26.1]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.26.1
 [0.26.0]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.26.0
 [0.25.24]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.24
 [0.25.23]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.23

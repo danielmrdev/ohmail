@@ -181,7 +181,7 @@ describe("tauri.conf.json", () => {
     // from the file it is asserting — an assertion that reads its own subject
     // asserts nothing — so it MUST be bumped by hand with the rest. Every
     // release.
-    expect(conf.version).toBe("0.26.0");
+    expect(conf.version).toBe("0.26.1");
     expect(conf.identifier).toBe("io.ohmail.desktop");
   });
 
