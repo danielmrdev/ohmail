@@ -74,6 +74,22 @@
   </screenshots>
 
   <releases>
+    <release version="0.26.0" date="2026-10-16">
+      <description>
+        <ul>
+          <li>Self-built servers and workers start from the built files</li>
+          <li>The Screener answers in a fraction of the time on a large mailbox</li>
+          <li>The desktop app shows your mail sooner after it starts</li>
+          <li>Rules and drafts on the desktop survive a power cut</li>
+          <li>PDF previews work on a self-hosted install</li>
+          <li>A text field in a dialog keeps its focus on Linux</li>
+          <li>Screener purchases in the desktop app stop at the price you confirmed</li>
+          <li>Automatic suggestions skip mail kept out of automatic AI</li>
+          <li>Text size, and the same size on every Linux build</li>
+          <li>Larger attachments from the desktop app</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.25.24" date="2026-10-14">
       <description>
         <ul>
@@ -144,29 +160,6 @@
           <li>Changing your statistics choice on the website</li>
           <li>The phone keeps its editor on a draft sent or deleted on another device</li>
           <li>Changing the text size keeps the open screen on both phones</li>
-        </ul>
-      </description>
-    </release>
-    <release version="0.25.20" date="2026-10-10">
-      <description>
-        <ul>
-          <li>The Linux app no longer crashes at launch without GPU rendering</li>
-          <li>On Android, a long html message scrolls with the reader</li>
-          <li>Mail servers that do not state message sizes import faster</li>
-          <li>Warnings show in the warning colour again</li>
-          <li>Mail from people you wrote to is released on time after the clock is set back</li>
-          <li>Answers to your mail arrive; only the people you wrote to are remembered</li>
-          <li>Search on the desktop answers faster</li>
-          <li>Marking a message unread puts it back where it arrived</li>
-          <li>A picture inside a letter appears once the connection is back</li>
-          <li>A later name check no longer returns a sender to the Screener</li>
-          <li>The away responder's switch no longer says On before you save</li>
-          <li>The Screener says when nothing is screened yet</li>
-          <li>Moving your own letter writes no rule about your own address</li>
-          <li>A draft sent from another device no longer leaves a dead editor</li>
-          <li>A year press in History fills the rows around it</li>
-          <li>Visit statistics on ohmail.app, only if you agree</li>
-          <li>What the website's visit statistics count</li>
         </ul>
       </description>
     </release>

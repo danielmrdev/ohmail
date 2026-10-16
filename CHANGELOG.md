@@ -13,6 +13,13 @@ See [Status](README.md#status--read-this-first).
 
 ## [Unreleased]
 
+### Still to come
+
+Signed installers — a real Apple Developer ID and an Authenticode certificate. See
+[Roadmap](README.md#roadmap).
+
+## [0.26.0] — 2026-10-16
+
 ### Self-built servers and workers start from the built files
 <!-- changes: one-oh-node-resolves-dist.md -->
 
@@ -85,11 +92,6 @@ for one request is uploaded to the account's storage first, so the compose form 
 browser, up to 42 MB per message. On your own mail server the limit is your server's, up to the same 42 MB.
 A mail server that announces no size limit is no longer held to 3 MB of attachments: the form allows about
 19 MB, a typical provider's limit, and the server's own answer decides.
-
-### Still to come
-
-Signed installers — a real Apple Developer ID and an Authenticode certificate. See
-[Roadmap](README.md#roadmap).
 
 ## [0.25.24] — 2026-10-14
 
@@ -12356,7 +12358,8 @@ no network in any of them.
   Gatekeeper, SmartScreen and the AppImage's executable bit all need a manual
   step, and that is a real cost of a preview rather than something to gloss over.
 
-[Unreleased]: https://github.com/trafficflowhq/ohmail/compare/v0.25.24...HEAD
+[Unreleased]: https://github.com/trafficflowhq/ohmail/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.26.0
 [0.25.24]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.24
 [0.25.23]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.23
 [0.25.22]: https://github.com/trafficflowhq/ohmail/releases/tag/v0.25.22
