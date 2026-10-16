@@ -47,6 +47,20 @@ export interface DraftReplyControl {
 /** One draft, in the shape the editor holds. */
 export type DraftedReply = RichValue;
 
+/** The only request options the draft flow needs on either door. */
+export interface DraftReplyRequestOptions {
+  method?: "GET" | "POST";
+  headers?: Record<string, string>;
+}
+
+/** The door-specific request path; the offer, idempotency and editor behavior stay shared. */
+export interface DraftReplyWire {
+  configured: () => boolean;
+  request: <T>(path: string, options?: DraftReplyRequestOptions) => Promise<T>;
+}
+
+const CLOUD_WIRE: DraftReplyWire = { configured: apiConfigured, request: api };
+
 /**
  * What one draft costs: 15 credits. The plan is sold in CREDITS and an action has its own price
  * (a draft 15 against a classification's 1, on the metering service's card). A literal, not an
@@ -63,11 +77,14 @@ export function useDraftReply(opts: {
    * only the caller can see the editor.
    */
   onDraft: (draft: DraftedReply, messageId: string) => void;
+  /** Absent on the web: keep using its Cloud API client. Desktop supplies the private engine wire. */
+  wire?: DraftReplyWire;
 }): DraftReplyControl {
   const t = useTranslations("draftReply");
   /** The three AI refusals both surfaces share — see `ai-refusal-copy.ts`. */
   const tAi = useTranslations("aiRefusal");
   const { onDraft } = opts;
+  const wire = opts.wire ?? CLOUD_WIRE;
 
   const [phase, setPhase] = useState<DraftReplyPhase>("closed");
   const [messageId, setMessageId] = useState<string | null>(null);
@@ -102,8 +119,8 @@ export function useDraftReply(opts: {
   const confirm = useCallback(() => {
     const id = messageId;
     if (!id || phase === "running") return;
-    if (!apiConfigured()) {
-      // The demo world has no API. Saying so beats a spinner that never resolves.
+    if (!wire.configured()) {
+      // No route is available. Saying so beats a spinner that never resolves.
       setNotice(t("unavailable"));
       return;
     }
@@ -126,14 +143,14 @@ export function useDraftReply(opts: {
        */
       let bought = false;
       try {
-        const { draftId } = await api<{ draftId: string }>(`/messages/${id}/draft`, {
+        const { draftId } = await wire.request<{ draftId: string }>(`/messages/${id}/draft`, {
           method: "POST",
           headers: { "Idempotency-Key": key },
         });
         bought = true;
         // `GET /drafts/:id` rather than the mirror — see the header. `cost: read`, spends
         // nothing, and the row was written inside the request that answered above.
-        const draft = await api<{ body?: string; html?: string | null }>(`/drafts/${draftId}`);
+        const draft = await wire.request<{ body?: string; html?: string | null }>(`/drafts/${draftId}`);
         if (io.current.run !== run) return;
         io.current.key = null;
         setPhase("closed");
@@ -165,7 +182,7 @@ export function useDraftReply(opts: {
             : tAi(key));
       }
     })();
-  }, [messageId, phase, onDraft, t, tAi]);
+  }, [messageId, phase, onDraft, t, tAi, wire]);
 
   return {
     phase,
@@ -200,8 +217,15 @@ export function useDraftReply(opts: {
  * left alone.
  */
 export function messageFor(err: unknown, fallback: string, opaque: string): string {
-  if (!(err instanceof ApiError)) return fallback;
-  return err.code === "internal" || err.message.trim() === "" ? opaque : err.message;
+  const refusal = err instanceof ApiError
+    ? err
+    : err instanceof Error
+      && typeof (err as Error & { status?: unknown }).status === "number"
+      && typeof (err as Error & { code?: unknown }).code === "string"
+      ? err as ApiError
+      : null;
+  if (!refusal) return fallback;
+  return refusal.code === "internal" || refusal.message.trim() === "" ? opaque : refusal.message;
 }
 
 /** A fresh idempotency key — see `screener-suggest.ts` for why the fallback exists. */

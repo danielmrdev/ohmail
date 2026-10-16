@@ -8,7 +8,7 @@
  */
 import * as React from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "use-intl";
 import { vi } from "vitest";
 import {
   CursorExpiredError,
@@ -24,6 +24,7 @@ import {
 } from "@ohmail/client-engine";
 import messages from "../messages/en.json";
 import type { MailboxFacts } from "../app/shell/mail-state";
+import type { DraftReplyWire } from "../app/shell/draft-reply";
 import { settleEditor, settleFirstPaint } from "./_first-paint.js";
 
 (globalThis as unknown as { React: unknown }).React = React;
@@ -272,6 +273,7 @@ export async function waitFor(predicate: () => boolean, what: string, rounds = 1
 /** Mount the shell at `hash` over these messages and drafts. */
 export async function mountShell(
   hash: string, messagesIn: EngineMessage[], drafts: EngineDraft[] = [],
+  options: { draftReplyWire?: DraftReplyWire } = {},
 ): Promise<DraftShell> {
   window.location.hash = hash;
   const { AppShell } = await import("../app/shell/AppShell.js");
@@ -292,13 +294,14 @@ export async function mountShell(
   const root = createRoot(el);
   roots.push(root);
   await act(async () => {
-    root.render(h(NextIntlClientProvider, {
+    root.render(h(IntlProvider, {
       locale: "en", messages, timeZone: "UTC", now: NOW,
       children: h(ThemeProvider, {
         children: h(ToastHost, {
           children: h(AppShell as never, {
             demo: false, engine, consentTransport,
             mailboxFacts: async () => ROSTER,
+            ...(options.draftReplyWire !== undefined ? { draftReplyWire: options.draftReplyWire } : {}),
           } as never),
         }),
       }),
