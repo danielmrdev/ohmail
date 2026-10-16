@@ -1,0 +1,174 @@
+import { UNMETERED_STORAGE_CAP, createLogger } from "@trafficflow/core/mail";
+import { describe, it, expect } from "vitest";
+import type { NativeLocator } from "@trafficflow/core";
+// The SAME module `sync.ts` imports these from, so `instanceof` answers as it does there.
+import { MessageGoneError, type ChangeBatch, type ImapCursor, type MailboxAdapter, type MoveManyResult } from "@trafficflow/core/adapters/imap";
+import type { WorkerRepo } from "@trafficflow/core/adapters/drizzle-repo";
+import { OrganizerStandDownError } from "../src/lease.js";
+import { runSyncCycle, type SyncDeps } from "../src/sync.js";
+import { FIXTURE_LEASE } from "./_door.js";
+
+/**
+ * A MOVE PENDING WHEN A LOCAL ORGANIZER DRAIN STARTS REACHES THE WIRE BEFORE ITS FOLDER WALK.
+ *
+ * The cycle filed pending moves only in `reconcileMailbox`, after `buildCursor`, `changesSince` and
+ * ingest, so on a standalone install a press waited out the whole walk (7.6 s median on the phone
+ * rig). Every adapter and repo call the order is about goes on ONE list, so the order is the
+ * assertion. The real-server arms are `move-before-the-walk.imap.test.ts`.
+ */
+
+const LOC = (folder: string, ref: string): NativeLocator => ({ folder, ref });
+
+interface Opts {
+  /** `listPendingFolderStates` throws this on its FIRST call. */
+  pendingThrows?: unknown;
+  /** No `moveMany`; `move` throws `MessageGoneError(absent)` — the per-message path. */
+  goneOnMove?: boolean;
+  /** Nothing pending; the special-folder reads and the adapter's capabilities are counted here. */
+  idle?: { special: number; caps: number };
+}
+
+function repoOf(calls: string[], o: Opts): WorkerRepo {
+  let first = true;
+  const stub = {
+    mailboxStatusForWrite: async (): Promise<string> => "connected",
+    getMailboxFolders: async () => [],
+    listKnownLocators: async () => [],
+    listMessageFailures: async () => [],
+    claimMessageFailures: async () => [],
+    upsertMailboxFolder: async () => {},
+    upsertMailboxFolders: async () => {},
+    listPendingFolderStates: async () => {
+      calls.push("listPending");
+      if (o.idle !== undefined) return [];
+      if (first && o.pendingThrows !== undefined) { first = false; throw o.pendingThrows; }
+      first = false;
+      return [
+        { messageId: "m-1", desiredFolder: "ohmail/News", observedFolder: "INBOX", lastSetBy: "us" as const, nativeLocator: LOC("INBOX", "42:1") },
+      ];
+    },
+    listPendingFlagStates: async () => [],
+    updateLocator: async () => {},
+    upsertFolderState: async () => {},
+    completeFolderState: async () => { calls.push("completeFolderState"); return true; },
+    upsertFlagState: async () => {},
+    primaryInstanceVanished: async () => false,
+    onlyInstanceAt: async () => true,
+    recordAudit: async () => {},
+    recordAuditMany: async () => {},
+    deferFolderReconcile: async () => {},
+    deferFlagReconcile: async () => {},
+    ...(o.idle === undefined ? {} : {
+      getMailboxSpecialFolders: async () => { o.idle!.special += 1; return { junkFolder: null, trashFolder: null }; },
+    }),
+  };
+  return {
+    ...stub,
+    transaction: async (fn: (r: WorkerRepo) => Promise<unknown>) => fn(stub as unknown as WorkerRepo),
+  } as unknown as WorkerRepo;
+}
+
+function adapterOf(calls: string[], o: Opts): MailboxAdapter {
+  return {
+    changesSince: async (_c: ImapCursor) => {
+      calls.push("changesSince");
+      return { creates: [], moves: [], flagChanges: [], deletes: [], newCursor: { folders: {} }, hasBacklog: false } as ChangeBatch;
+    },
+    ...(o.goneOnMove === true ? {} : {
+      moveMany: async (locators: readonly NativeLocator[], toFolder: string): Promise<MoveManyResult> => {
+        calls.push("moveMany");
+        return {
+          outcome: "batched",
+          moved: new Map(locators.map((l, i) => [l.ref, LOC(toFolder, `7:${100 + i}`)])),
+          gone: [],
+        } as MoveManyResult;
+      },
+    }),
+    move: async (l: NativeLocator) => {
+      calls.push("move");
+      if (o.goneOnMove === true) throw new MessageGoneError(l, true);
+      return LOC("ohmail/News", "7:999");
+    },
+    setFlags: async () => { calls.push("setFlags"); },
+    ...(o.idle === undefined ? {} : { capabilities: async () => { o.idle!.caps += 1; return {}; } }),
+  } as unknown as MailboxAdapter;
+}
+
+async function order(extra: Partial<SyncDeps>, o: Opts = {}): Promise<{ calls: string[]; lines: string[]; err: unknown }> {
+  const calls: string[] = [];
+  const lines: string[] = [];
+  let err: unknown = null;
+  try {
+    await runSyncCycle({
+      repo: repoOf(calls, o), adapter: adapterOf(calls, o), accountId: "acct", mailboxId: "mb",
+      role: "organizer", trustedAuthservIds: new Set<string>(), storageCap: UNMETERED_STORAGE_CAP,
+      writeAuthority: FIXTURE_LEASE,
+      log: createLogger({ service: "worker", level: "info", sink: (l) => lines.push(l) }),
+      ...extra,
+    } as SyncDeps);
+  } catch (e) { err = e; }
+  return { calls, lines, err };
+}
+
+const wire = (calls: readonly string[]) => calls.filter((c) => c !== "listPending" && c !== "completeFolderState");
+
+describe("a move pending at the drain's start reaches the wire before the folder walk", () => {
+  it("with the local door's flag set, moveMany comes before the first changesSince", async () => {
+    const { calls, err } = await order({ fileBeforeWalk: true });
+    expect(err).toBeNull();
+    expect(calls).toContain("moveMany");
+    expect(calls.indexOf("moveMany")).toBeLessThan(calls.indexOf("changesSince"));
+  });
+
+  it("flag off: the hosted order is unchanged, the walk first and the move after it", async () => {
+    const { calls } = await order({});
+    expect(wire(calls)).toEqual(["changesSince", "moveMany"]);
+    const { calls: explicit } = await order({ fileBeforeWalk: false });
+    expect(wire(explicit)).toEqual(["changesSince", "moveMany"]);
+  });
+
+  it("a reader skips the early pass: it asks for no pending move and moves nothing", async () => {
+    const { calls, err } = await order({
+      fileBeforeWalk: true, role: "reader", writeAuthority: { noLease: "reader" } as SyncDeps["writeAuthority"],
+    });
+    expect(err).toBeNull();
+    expect(calls).toEqual(["changesSince"]);
+  });
+
+  it("a refusal in the early pass ends the cycle before the walk", async () => {
+    const refusal = new OrganizerStandDownError({ organize: false, reason: "organized_elsewhere:local", state: "held" } as never);
+    const { calls, err } = await order({ fileBeforeWalk: true }, { pendingThrows: refusal });
+    expect(err).toBe(refusal);
+    expect(calls).not.toContain("changesSince");
+  });
+
+  it("any other failure is contained and named: the walk runs, and the tail files the move", async () => {
+    const { calls, lines, err } = await order({ fileBeforeWalk: true }, { pendingThrows: new Error("the store did not answer") });
+    expect(err).toBeNull();
+    expect(lines.some((l) => l.includes("\"filing_before_walk_failed\""))).toBe(true);
+    expect(wire(calls)).toEqual(["changesSince", "moveMany"]);
+  });
+
+  it("a member absent from its source is not voided before the walk; the tail decides after it", async () => {
+    const { calls, err } = await order({ fileBeforeWalk: true }, { goneOnMove: true });
+    expect(err).toBeNull();
+    // Two attempts — before and after the walk — and the void (`completeFolderState`) only after it.
+    expect(calls.filter((c) => c === "move")).toHaveLength(2);
+    expect(calls.indexOf("completeFolderState")).toBeGreaterThan(calls.indexOf("changesSince"));
+  });
+
+  /* AN IDLE EARLY PASS ASKS FOR THE PENDING LIST AND NOTHING ELSE. With nothing to file it returns
+     before the special-folder read and the adapter's capabilities, so an idle local drain reads
+     those as often as the hosted order; the pending list is the one question the pass adds. */
+  it("an idle drain's early pass reads the pending list and returns", async () => {
+    const hosted = { special: 0, caps: 0 };
+    const local = { special: 0, caps: 0 };
+    const a = await order({}, { idle: hosted });
+    const b = await order({ fileBeforeWalk: true }, { idle: local });
+    expect([a.err, b.err]).toEqual([null, null]);
+    expect(hosted).toEqual({ special: 1, caps: 1 });
+    expect(local).toEqual(hosted);
+    const pending = (calls: readonly string[]) => calls.filter((c) => c === "listPending").length;
+    expect(pending(b.calls)).toBe(pending(a.calls) + 1);
+  });
+});

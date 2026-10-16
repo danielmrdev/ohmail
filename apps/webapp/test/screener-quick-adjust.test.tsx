@@ -1,0 +1,337 @@
+/** @vitest-environment jsdom */
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import * as React from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { NextIntlClientProvider } from "next-intl";
+import {
+  MemoryMirrorStore, OhmailEngine, consentPartition, mutationEffects, presentationReader, senderKey,
+  type EngineMessage, type EngineMutation, type Folder, type SyncChange,
+} from "@ohmail/client-engine";
+import { ThemeProvider } from "@ohmail/ui";
+import type { ScreenerState } from "../app/shell/screener-state.js";
+import messages from "../messages/en.json";
+import { settleFirstPaint } from "./_first-paint.js";
+
+/**
+ * QUICK-ADJUST — filing a waiting sender from its own row.
+ *
+ * The Screener's decisions have always lived in the bar above the PREVIEW, so every sender cost a
+ * selection before it cost a decision. The row already names the destination; this is the same
+ * decision taken where it is already legible.
+ *
+ * ── WHAT IS ACTUALLY UNDER TEST, AND WHY IT IS THIS ─────────────────────────────────────────
+ *
+ * Not "the button files the mail" — that is easy to make true and easy to make true WRONGLY. A
+ * row control that reached for `engine.mutate` directly would look identical on screen, pass any
+ * assertion about mail moving, and silently drop all six of the things `ScreenerState.decide`
+ * does: the undo window, the delayed commit, the read clamp, the scope, the rule promotion, and
+ * the past-the-gate branch that files with a rule and capped moves because a decide cannot reach
+ * mail that is physically in the INBOX (#116).
+ *
+ * So the two assertions are the two that a bypass cannot fake:
+ *
+ *  1. NOTHING IS SENT AT PRESS TIME. The row goes pending and the wire stays silent until the
+ *     undo window closes. A direct mutate is on the wire in the same tick.
+ *  2. A PAST-THE-GATE SENDER GETS A RULE AND MOVES, NOT A DECIDE. That branch exists only inside
+ *     `decide`. Anything that files by any other route emits a `screener_decide` the server
+ *     would resolve against no held mail, and this goes red.
+ *
+ * MUTATION WATCH — each of these was applied to `ScreenerView.tsx`, watched go red, and reverted
+ * (2026-08-09):
+ *   · the row's `onFile` made a no-op → the funnel, the past-the-gate and the menu tests.
+ *   · `state.flush()` added straight after the `decide`, which is what filing without an undo
+ *     window looks like from here → the funnel test, on the "nothing sent yet" assertion.
+ *   · `acceptDestOf` returning `ai.dest` unconditionally, so a hold gets an accept → the
+ *     no-accept test.
+ */
+
+// See `sync-liveness-shell.test.ts` for why React is published as a global.
+(globalThis as unknown as { React: unknown }).React = React;
+process.env.NEXT_PUBLIC_API_BASE = "/api";
+
+const h = React.createElement;
+const act = (React as unknown as { act: (cb: () => Promise<void> | void) => Promise<void> }).act;
+(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+Element.prototype.scrollTo ??= function scrollTo() {};
+Element.prototype.scrollIntoView ??= function scrollIntoView() {};
+(window as unknown as { matchMedia: (q: string) => MediaQueryList }).matchMedia ??= ((query: string) =>
+  ({
+    matches: false, media: query, onchange: null,
+    addListener() {}, removeListener() {},
+    addEventListener() {}, removeEventListener() {},
+    dispatchEvent() { return false; },
+  })) as never;
+
+const NOW = new Date("2026-08-02T12:00:00.000Z");
+let seq = 0;
+let sent: EngineMutation[] = [];
+let root: Root | null = null;
+let host: HTMLDivElement | null = null;
+
+const json = (v: unknown, status = 200) =>
+  new Response(JSON.stringify(v), { status, headers: { "content-type": "application/json" } });
+
+function msg(id: string, from: string, hour: number, folder: Folder = "ohmail/Screener"): EngineMessage {
+  return {
+    id, accountId: "acct", mailboxId: "mb", threadId: null, messageIdHeader: null,
+    subject: `Subject ${id}`, from: { name: null, address: from }, to: [], cc: [],
+    date: `2026-08-02T${String(hour).padStart(2, "0")}:00:00.000Z`,
+    folder, snippet: `snippet ${id}`, unread: true,
+    hasAttachments: false, attachmentCount: 0,
+    sensitivity: { sensitive: false, category: null, no_ai: false, no_forward: false, no_kb: false, priority: false },
+    triage: null, labels: [], remoteContent: "none",
+    updatedAt: "2026-08-02T09:00:00.000Z",
+  };
+}
+
+/** An engine over a mirror already holding `mail`, with every mutation it issues recorded. */
+async function engineWith(mail: EngineMessage[]): Promise<OhmailEngine> {
+  const store = new MemoryMirrorStore();
+  await store.load();
+  await store.applyChanges(
+    mail.map((m): SyncChange => ({
+      type: "message", op: "create", id: m.id, seq: ++seq, updatedAt: m.updatedAt, entity: m,
+    })),
+  );
+  return new OhmailEngine({
+    store,
+    now: () => NOW,
+    adapter: {
+      sync: async () => ({
+        changes: { creates: [], updates: [], moves: [], deletes: [] },
+        cursor: store.getCursor(), hasMore: false, serverTime: NOW.toISOString(),
+      }),
+      mutate: async (m) => {
+        sent.push(m);
+        const changes: SyncChange[] = mutationEffects(store, m, { now: () => NOW, uuid: () => `id-${++seq}` })
+          .map((e) => ({
+            type: e.type, op: e.move ? "move" : "update", id: e.id, seq: ++seq,
+            updatedAt: NOW.toISOString(), entity: e.entity, ...(e.move ? { move: e.move } : {}),
+          }));
+        await store.applyChanges(changes);
+        return { changes, seq: changes[changes.length - 1]?.seq ?? null };
+      },
+      withdrawSend: async () => ({ outcome: "unsupported" as const }),
+      fetchBody: async () => null,
+    },
+  });
+}
+
+const suggestion = (dest: string, extra: Record<string, unknown> = {}) => ({
+  dest, confidence: 0.88, rationale: "because", ...extra,
+});
+
+beforeEach(() => {
+  sent = [];
+  globalThis.fetch = (async () => json({})) as typeof fetch;
+});
+
+afterEach(async () => {
+  if (root) await act(async () => { root!.unmount(); });
+  host?.remove();
+  root = null;
+  host = null;
+});
+
+/**
+ * Mount the REAL waiting Screener over the REAL state hook.
+ *
+ * `pastTheGate` composes the queue the way the shell does — the projection for the rows, the raw
+ * mirror for the mutations — which is the only composition that mints a `gatePhysical:false` row.
+ */
+async function mount(opts: {
+  mail: EngineMessage[];
+  suggestions: Record<string, unknown>;
+  pastTheGate?: boolean;
+}): Promise<{ latest: () => ScreenerState }> {
+  const { useScreenerState } = await import("../app/shell/screener-state.js");
+  const { ScreenerView } = await import("../app/views/ScreenerView.js");
+  const { KeymapProvider } = await import("../app/shell/keymap.js");
+  const engine = await engineWith(opts.mail);
+  const overlay = new Map(
+    Object.entries(opts.suggestions).map(([addr, s]) => [senderKey(addr), s]),
+  );
+
+  let live: ScreenerState | null = null;
+
+  function Probe(): React.ReactElement {
+    const [v, setV] = React.useState(0);
+    React.useEffect(() => engine.subscribe(() => setV((x) => x + 1)), []);
+    const reader = engine.read();
+    const presented = opts.pastTheGate
+      ? presentationReader(reader, consentPartition(reader, { now: NOW }))
+      : undefined;
+    const state = useScreenerState(
+      engine, v, (() => {}) as never, overlay as never, presented as never,
+    );
+    const [sel, setSel] = React.useState<Record<string, string | null>>({
+      waiting: null, screened: null, spam: null,
+    });
+    live = state;
+    return h(ScreenerView, {
+      owed: false,
+      state,
+      segment: "waiting", settled: true, selection: sel as never,
+      onSelect: (s: string, id: string | null) => setSel((m) => ({ ...m, [s]: id })),
+      hydrateBody: () => {}, hydrateBodies: () => {}, full: false, onFull: () => {},
+    } as never);
+  }
+
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+  await act(async () => {
+    root!.render(
+      h(NextIntlClientProvider, {
+        locale: "en", messages, timeZone: "UTC", now: NOW,
+        children: h(ThemeProvider, {
+          storageKey: null,
+          children: h(KeymapProvider, { children: h(Probe) }),
+        }),
+      }),
+    );
+  });
+  await flush();
+  await settleFirstPaint();
+  return { latest: () => live! };
+}
+
+async function flush(): Promise<void> {
+  for (let i = 0; i < 12; i++) await act(async () => { await Promise.resolve(); });
+}
+
+/** The action slot beside the row whose sender is `address`. */
+function slot(address: string): HTMLElement {
+  const found = [...host!.querySelectorAll<HTMLElement>(".row-slot")].find((s) =>
+    (s.querySelector(".row")?.textContent ?? "").includes(address),
+  );
+  if (!found) throw new Error(`no row for ${address} — on screen: ${host!.textContent}`);
+  const actions = found.querySelector<HTMLElement>(".row-actions");
+  if (!actions) throw new Error(`the row for ${address} has no action slot`);
+  return actions;
+}
+
+async function click(el: Element): Promise<void> {
+  await act(async () => { el.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+  await flush();
+}
+
+describe("quick-adjust — the decision on the row", () => {
+  it("presses through the decide funnel: pending first, the wire only when the undo window closes", async () => {
+    const { latest } = await mount({
+      mail: [msg("m1", "news@example.test", 9)],
+      suggestions: { "news@example.test": suggestion("reads") },
+    });
+    const before = latest();
+    const id = before.waiting[0]!.id;
+    // Premise: the row carries the suggestion, or the accept under test is not the one shipping.
+    expect(before.waiting[0]!.ai?.dest).toBe("reads");
+
+    const accept = slot("news@example.test").querySelector(".scn-act-yes");
+    expect(accept, "the row offers no accept for a sender that has a suggestion").not.toBeNull();
+    // The pile is in the accessible name: a reader arriving on this button hears it alone.
+    expect(accept!.getAttribute("aria-label")).toBe(
+      "Accept the suggestion — file this sender to News",
+    );
+
+    await click(accept!);
+
+    // ── 1. NOTHING ON THE WIRE YET ─────────────────────────────────────────────────────────
+    // The row is pending and reversible. A control that called `engine.mutate` itself would
+    // already have sent, and there would be nothing left for the undo capsule to undo.
+    expect(latest().isExiting(id), "the accept did not open an undo window").toBe(true);
+    expect(sent.filter((m) => m.kind === "screener_decide")).toHaveLength(0);
+
+    // ── 2. AND THEN EXACTLY THE DECIDE THE SUGGESTION NAMED ────────────────────────────────
+    await act(async () => { latest().flush(); });
+    await flush();
+    const decides = sent.filter((m) => m.kind === "screener_decide");
+    expect(decides).toHaveLength(1);
+    expect(decides[0]).toMatchObject({
+      senderId: id, decision: "yes", dest: "reads", scope: "sender",
+      // Filing from the row does not mark the held mail read — that is the ⇧ twin's job, and a
+      // one-press control must not take the decision the keyboard makes people ask for.
+      read: false,
+    });
+    // No second path fired alongside it.
+    expect(sent.filter((m) => m.kind === "mark_seen")).toHaveLength(0);
+  });
+
+  it("past the gate, the row files with a RULE and moves the letter it showed — never a decide", async () => {
+    // `stray@` has mail only in the INBOX. The cutline presents them at the gate because a
+    // decision about them is genuinely wanted, but the decide endpoint resolves `:id` against
+    // held mail and would find none. `decide` routes them past the gate instead — and that
+    // branch lives nowhere else, so this is the assertion a bypass cannot survive.
+    //
+    // The suggestion is Reads and not Ohbox on purpose: an Ohbox rule targets the INBOX, which
+    // is where this sender's mail already is, so a correct run would move nothing and the
+    // second half of the assertion would pass over an empty plan.
+    const { latest } = await mount({
+      mail: [msg("stray1", "stray@example.test", 9, "INBOX")],
+      suggestions: { "stray@example.test": suggestion("reads") },
+      pastTheGate: true,
+    });
+    const st = latest();
+    expect(st.waiting).toHaveLength(1);
+    expect(st.waiting[0]!.gatePhysical, "premise: this row is not at the gate").toBe(false);
+
+    await click(slot("stray@example.test").querySelector(".scn-act-yes")!);
+    await act(async () => { latest().flush(); });
+    await flush();
+
+    expect(sent.filter((m) => m.kind === "screener_decide")).toHaveLength(0);
+    const rules = sent.filter((m) => m.kind === "rule_create");
+    expect(rules, "the past-the-gate branch did not run — no rule was written").toHaveLength(1);
+    // …and, ruled, the row files what it shows: the rule asks no past-mail answer and the letter
+    // the row listed moves by id — the pass is not asked for mail the row never showed.
+    expect(rules[0]).toMatchObject({ destination: "ohmail/News", applyRetro: false });
+    expect(sent.filter((m) => m.kind === "move")).toEqual([{ kind: "move", messageId: "stray1", folder: "ohmail/News", from: "INBOX" }]);
+  });
+
+  it("a held sender gets no accept — only the five destinations", async () => {
+    // `dest: "screener"` is the model DECLINING to place this sender. There is no suggestion to
+    // take, and a ✓ over one would be the row claiming an answer the model refused to give.
+    await mount({
+      mail: [msg("m1", "hold@example.test", 9), msg("m2", "none@example.test", 10)],
+      suggestions: { "hold@example.test": suggestion("screener") },
+    });
+
+    for (const who of ["hold@example.test", "none@example.test"]) {
+      const actions = slot(who);
+      expect(actions.querySelector(".scn-act-yes"), `${who} was offered an accept`).toBeNull();
+      const more = actions.querySelector(".scn-act-more");
+      expect(more, `${who} has no way to file at all`).not.toBeNull();
+      await click(more!);
+      const dests = [...slot(who).querySelectorAll(".scn-act-dest")].map((b) =>
+        (b.textContent ?? "").replace(/[orcnx]$/, "").trim(),
+      );
+      expect(dests).toEqual(["Ohbox", "News", "Receipts", "Screened out", "Spam"]);
+      await click(slot(who).querySelector(".scn-act-more")!);
+    }
+  });
+
+  it("the destination menu files through the same funnel as the accept", async () => {
+    const { latest } = await mount({
+      mail: [msg("m1", "none@example.test", 9)],
+      suggestions: {},
+    });
+    const id = latest().waiting[0]!.id;
+
+    await click(slot("none@example.test").querySelector(".scn-act-more")!);
+    const receipts = [...slot("none@example.test").querySelectorAll<HTMLElement>(".scn-act-dest")]
+      .find((b) => (b.textContent ?? "").startsWith("Receipts"))!;
+    await click(receipts);
+
+    // The same ceremony: reversible first, on the wire second.
+    expect(latest().isExiting(id)).toBe(true);
+    expect(sent.filter((m) => m.kind === "screener_decide")).toHaveLength(0);
+    await act(async () => { latest().flush(); });
+    await flush();
+    expect(sent.filter((m) => m.kind === "screener_decide")[0]).toMatchObject({
+      senderId: id, dest: "receipts", scope: "sender", read: false,
+    });
+    // One menu at a time, and it closes behind the press.
+    expect(host!.querySelector(".scn-act-menu")).toBeNull();
+  });
+});

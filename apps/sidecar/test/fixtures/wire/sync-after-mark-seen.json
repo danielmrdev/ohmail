@@ -1,0 +1,548 @@
+{
+  "changes": {
+    "creates": [
+      {
+        "entity": {
+          "accountId": "00000000-0000-4000-8000-000000000002",
+          "folder": "ohmail/Screener",
+          "id": "00000000-0000-4000-8000-000000000003",
+          "lastMessageAt": "2026-01-01T05:02:00.000Z",
+          "messageIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "muted": false,
+          "participants": [
+            {
+              "address": "studio@pottery.test",
+              "name": null
+            },
+            {
+              "address": "reader@corpus.test",
+              "name": null
+            }
+          ],
+          "subject": "Kiln schedule for August",
+          "unreadCount": 1,
+          "updatedAt": "2026-01-01T11:01:00.000Z"
+        },
+        "id": "00000000-0000-4000-8000-000000000003",
+        "op": "create",
+        "seq": 1,
+        "type": "thread",
+        "updatedAt": "2026-01-01T11:01:00.000Z"
+      },
+      {
+        "entity": {
+          "accountId": "00000000-0000-4000-8000-000000000002",
+          "arrivedAt": "2026-01-01T00:00:00.000Z",
+          "attachmentCount": 0,
+          "authVerdict": "unavailable",
+          "autoReplyByUs": false,
+          "awayRepliedAt": null,
+          "cc": [],
+          "date": "2026-01-01T03:02:00.000Z",
+          "folder": "ohmail/Screener",
+          "from": {
+            "address": "studio@pottery.test",
+            "name": null
+          },
+          "hasAttachments": false,
+          "id": "00000000-0000-4000-8000-000000000004",
+          "invitationWithoutEvent": false,
+          "itipReplyHeader": false,
+          "labels": [],
+          "lastReadAt": null,
+          "mailboxId": "00000000-0000-4000-8000-000000000001",
+          "messageIdHeader": "header-1@corpus.test",
+          "openReadAt": null,
+          "remoteContent": "none",
+          "senderCheck": null,
+          "sensitivity": {
+            "category": null,
+            "no_ai": false,
+            "no_forward": false,
+            "no_kb": false,
+            "priority": false,
+            "sensitive": false
+          },
+          "snippet": "The kiln is booked Tuesdays and Thursdays through the end of the month.",
+          "sortAt": "2026-01-01T10:00:00.000Z",
+          "subject": "Kiln schedule for August",
+          "threadId": "00000000-0000-4000-8000-000000000003",
+          "to": [
+            {
+              "address": "reader@corpus.test",
+              "name": null
+            }
+          ],
+          "triage": null,
+          "unread": true,
+          "updatedAt": "2026-01-01T11:02:00.000Z"
+        },
+        "id": "00000000-0000-4000-8000-000000000004",
+        "op": "create",
+        "seq": 2,
+        "type": "message",
+        "updatedAt": "2026-01-01T11:02:00.000Z"
+      },
+      {
+        "entity": {
+          "accountId": "00000000-0000-4000-8000-000000000002",
+          "folder": "ohmail/Screener",
+          "id": "00000000-0000-4000-8000-000000000005",
+          "lastMessageAt": "2026-01-01T05:01:00.000Z",
+          "messageIds": [
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "muted": false,
+          "participants": [
+            {
+              "address": "stranger@nowhere.test",
+              "name": null
+            },
+            {
+              "address": "reader@corpus.test",
+              "name": null
+            }
+          ],
+          "subject": "Following up",
+          "unreadCount": 1,
+          "updatedAt": "2026-01-01T11:03:00.000Z"
+        },
+        "id": "00000000-0000-4000-8000-000000000005",
+        "op": "create",
+        "seq": 4,
+        "type": "thread",
+        "updatedAt": "2026-01-01T11:03:00.000Z"
+      },
+      {
+        "entity": {
+          "accountId": "00000000-0000-4000-8000-000000000002",
+          "arrivedAt": "2026-01-01T00:01:00.000Z",
+          "attachmentCount": 0,
+          "authVerdict": "unavailable",
+          "autoReplyByUs": false,
+          "awayRepliedAt": null,
+          "cc": [],
+          "date": "2026-01-01T03:01:00.000Z",
+          "folder": "ohmail/Screener",
+          "from": {
+            "address": "stranger@nowhere.test",
+            "name": null
+          },
+          "hasAttachments": false,
+          "id": "00000000-0000-4000-8000-000000000006",
+          "invitationWithoutEvent": false,
+          "itipReplyHeader": false,
+          "labels": [],
+          "lastReadAt": null,
+          "mailboxId": "00000000-0000-4000-8000-000000000001",
+          "messageIdHeader": "header-2@corpus.test",
+          "openReadAt": null,
+          "remoteContent": "none",
+          "senderCheck": null,
+          "sensitivity": {
+            "category": null,
+            "no_ai": false,
+            "no_forward": false,
+            "no_kb": false,
+            "priority": false,
+            "sensitive": false
+          },
+          "snippet": "Following up on the studio question — no rush.",
+          "sortAt": "2026-01-01T10:00:00.000Z",
+          "subject": "Following up",
+          "threadId": "00000000-0000-4000-8000-000000000005",
+          "to": [
+            {
+              "address": "reader@corpus.test",
+              "name": null
+            }
+          ],
+          "triage": null,
+          "unread": true,
+          "updatedAt": "2026-01-01T11:04:00.000Z"
+        },
+        "id": "00000000-0000-4000-8000-000000000006",
+        "op": "create",
+        "seq": 5,
+        "type": "message",
+        "updatedAt": "2026-01-01T11:04:00.000Z"
+      },
+      {
+        "entity": {
+          "accountId": "00000000-0000-4000-8000-000000000002",
+          "folder": "ohmail/Screener",
+          "id": "00000000-0000-4000-8000-000000000007",
+          "lastMessageAt": "2026-01-01T05:00:00.000Z",
+          "messageIds": [
+            "00000000-0000-4000-8000-000000000008"
+          ],
+          "muted": false,
+          "participants": [
+            {
+              "address": "stranger@nowhere.test",
+              "name": null
+            },
+            {
+              "address": "reader@corpus.test",
+              "name": null
+            }
+          ],
+          "subject": "Can we talk?",
+          "unreadCount": 0,
+          "updatedAt": "2026-01-01T11:05:00.000Z"
+        },
+        "id": "00000000-0000-4000-8000-000000000007",
+        "op": "create",
+        "seq": 7,
+        "type": "thread",
+        "updatedAt": "2026-01-01T11:05:00.000Z"
+      },
+      {
+        "entity": {
+          "accountId": "00000000-0000-4000-8000-000000000002",
+          "arrivedAt": "2026-01-01T00:02:00.000Z",
+          "attachmentCount": 0,
+          "authVerdict": "unavailable",
+          "autoReplyByUs": false,
+          "awayRepliedAt": null,
+          "cc": [],
+          "date": "2026-01-01T03:00:00.000Z",
+          "folder": "ohmail/Screener",
+          "from": {
+            "address": "stranger@nowhere.test",
+            "name": null
+          },
+          "hasAttachments": false,
+          "id": "00000000-0000-4000-8000-000000000008",
+          "invitationWithoutEvent": false,
+          "itipReplyHeader": false,
+          "labels": [],
+          "lastReadAt": "2026-01-01T06:01:00.000Z",
+          "mailboxId": "00000000-0000-4000-8000-000000000001",
+          "messageIdHeader": "header-3@corpus.test",
+          "openReadAt": null,
+          "remoteContent": "none",
+          "senderCheck": null,
+          "sensitivity": {
+            "category": null,
+            "no_ai": false,
+            "no_forward": false,
+            "no_kb": false,
+            "priority": false,
+            "sensitive": false
+          },
+          "snippet": "Hello — we have not met before. I am writing about the pottery studio.",
+          "sortAt": "2026-01-01T10:00:00.000Z",
+          "subject": "Can we talk?",
+          "threadId": "00000000-0000-4000-8000-000000000007",
+          "to": [
+            {
+              "address": "reader@corpus.test",
+              "name": null
+            }
+          ],
+          "triage": null,
+          "unread": false,
+          "updatedAt": "2026-01-01T11:08:00.000Z"
+        },
+        "id": "00000000-0000-4000-8000-000000000008",
+        "op": "create",
+        "seq": 8,
+        "type": "message",
+        "updatedAt": "2026-01-01T11:08:00.000Z"
+      }
+    ],
+    "deletes": [],
+    "moves": [
+      {
+        "entity": {
+          "accountId": "00000000-0000-4000-8000-000000000002",
+          "arrivedAt": "2026-01-01T00:00:00.000Z",
+          "attachmentCount": 0,
+          "authVerdict": "unavailable",
+          "autoReplyByUs": false,
+          "awayRepliedAt": null,
+          "cc": [],
+          "date": "2026-01-01T03:02:00.000Z",
+          "folder": "ohmail/Screener",
+          "from": {
+            "address": "studio@pottery.test",
+            "name": null
+          },
+          "hasAttachments": false,
+          "id": "00000000-0000-4000-8000-000000000004",
+          "invitationWithoutEvent": false,
+          "itipReplyHeader": false,
+          "labels": [],
+          "lastReadAt": null,
+          "mailboxId": "00000000-0000-4000-8000-000000000001",
+          "messageIdHeader": "header-1@corpus.test",
+          "openReadAt": null,
+          "remoteContent": "none",
+          "senderCheck": null,
+          "sensitivity": {
+            "category": null,
+            "no_ai": false,
+            "no_forward": false,
+            "no_kb": false,
+            "priority": false,
+            "sensitive": false
+          },
+          "snippet": "The kiln is booked Tuesdays and Thursdays through the end of the month.",
+          "sortAt": "2026-01-01T10:00:00.000Z",
+          "subject": "Kiln schedule for August",
+          "threadId": "00000000-0000-4000-8000-000000000003",
+          "to": [
+            {
+              "address": "reader@corpus.test",
+              "name": null
+            }
+          ],
+          "triage": null,
+          "unread": true,
+          "updatedAt": "2026-01-01T11:02:00.000Z"
+        },
+        "id": "00000000-0000-4000-8000-000000000004",
+        "move": {
+          "from": "INBOX",
+          "to": "ohmail/Screener"
+        },
+        "op": "move",
+        "seq": 3,
+        "type": "message",
+        "updatedAt": "2026-01-01T11:02:00.000Z"
+      },
+      {
+        "entity": {
+          "accountId": "00000000-0000-4000-8000-000000000002",
+          "arrivedAt": "2026-01-01T00:01:00.000Z",
+          "attachmentCount": 0,
+          "authVerdict": "unavailable",
+          "autoReplyByUs": false,
+          "awayRepliedAt": null,
+          "cc": [],
+          "date": "2026-01-01T03:01:00.000Z",
+          "folder": "ohmail/Screener",
+          "from": {
+            "address": "stranger@nowhere.test",
+            "name": null
+          },
+          "hasAttachments": false,
+          "id": "00000000-0000-4000-8000-000000000006",
+          "invitationWithoutEvent": false,
+          "itipReplyHeader": false,
+          "labels": [],
+          "lastReadAt": null,
+          "mailboxId": "00000000-0000-4000-8000-000000000001",
+          "messageIdHeader": "header-2@corpus.test",
+          "openReadAt": null,
+          "remoteContent": "none",
+          "senderCheck": null,
+          "sensitivity": {
+            "category": null,
+            "no_ai": false,
+            "no_forward": false,
+            "no_kb": false,
+            "priority": false,
+            "sensitive": false
+          },
+          "snippet": "Following up on the studio question — no rush.",
+          "sortAt": "2026-01-01T10:00:00.000Z",
+          "subject": "Following up",
+          "threadId": "00000000-0000-4000-8000-000000000005",
+          "to": [
+            {
+              "address": "reader@corpus.test",
+              "name": null
+            }
+          ],
+          "triage": null,
+          "unread": true,
+          "updatedAt": "2026-01-01T11:04:00.000Z"
+        },
+        "id": "00000000-0000-4000-8000-000000000006",
+        "move": {
+          "from": "INBOX",
+          "to": "ohmail/Screener"
+        },
+        "op": "move",
+        "seq": 6,
+        "type": "message",
+        "updatedAt": "2026-01-01T11:04:00.000Z"
+      },
+      {
+        "entity": {
+          "accountId": "00000000-0000-4000-8000-000000000002",
+          "arrivedAt": "2026-01-01T00:02:00.000Z",
+          "attachmentCount": 0,
+          "authVerdict": "unavailable",
+          "autoReplyByUs": false,
+          "awayRepliedAt": null,
+          "cc": [],
+          "date": "2026-01-01T03:00:00.000Z",
+          "folder": "ohmail/Screener",
+          "from": {
+            "address": "stranger@nowhere.test",
+            "name": null
+          },
+          "hasAttachments": false,
+          "id": "00000000-0000-4000-8000-000000000008",
+          "invitationWithoutEvent": false,
+          "itipReplyHeader": false,
+          "labels": [],
+          "lastReadAt": "2026-01-01T06:01:00.000Z",
+          "mailboxId": "00000000-0000-4000-8000-000000000001",
+          "messageIdHeader": "header-3@corpus.test",
+          "openReadAt": null,
+          "remoteContent": "none",
+          "senderCheck": null,
+          "sensitivity": {
+            "category": null,
+            "no_ai": false,
+            "no_forward": false,
+            "no_kb": false,
+            "priority": false,
+            "sensitive": false
+          },
+          "snippet": "Hello — we have not met before. I am writing about the pottery studio.",
+          "sortAt": "2026-01-01T10:00:00.000Z",
+          "subject": "Can we talk?",
+          "threadId": "00000000-0000-4000-8000-000000000007",
+          "to": [
+            {
+              "address": "reader@corpus.test",
+              "name": null
+            }
+          ],
+          "triage": null,
+          "unread": false,
+          "updatedAt": "2026-01-01T11:08:00.000Z"
+        },
+        "id": "00000000-0000-4000-8000-000000000008",
+        "move": {
+          "from": "INBOX",
+          "to": "ohmail/Screener"
+        },
+        "op": "move",
+        "seq": 9,
+        "type": "message",
+        "updatedAt": "2026-01-01T11:08:00.000Z"
+      }
+    ],
+    "updates": [
+      {
+        "entity": {
+          "accountId": "00000000-0000-4000-8000-000000000002",
+          "arrivedAt": "2026-01-01T00:02:00.000Z",
+          "attachmentCount": 0,
+          "authVerdict": "unavailable",
+          "autoReplyByUs": false,
+          "awayRepliedAt": null,
+          "cc": [],
+          "date": "2026-01-01T03:00:00.000Z",
+          "folder": "ohmail/Screener",
+          "from": {
+            "address": "stranger@nowhere.test",
+            "name": null
+          },
+          "hasAttachments": false,
+          "id": "00000000-0000-4000-8000-000000000008",
+          "invitationWithoutEvent": false,
+          "itipReplyHeader": false,
+          "labels": [],
+          "lastReadAt": "2026-01-01T06:01:00.000Z",
+          "mailboxId": "00000000-0000-4000-8000-000000000001",
+          "messageIdHeader": "header-3@corpus.test",
+          "openReadAt": null,
+          "remoteContent": "none",
+          "senderCheck": null,
+          "sensitivity": {
+            "category": null,
+            "no_ai": false,
+            "no_forward": false,
+            "no_kb": false,
+            "priority": false,
+            "sensitive": false
+          },
+          "snippet": "Hello — we have not met before. I am writing about the pottery studio.",
+          "sortAt": "2026-01-01T10:00:00.000Z",
+          "subject": "Can we talk?",
+          "threadId": "00000000-0000-4000-8000-000000000007",
+          "to": [
+            {
+              "address": "reader@corpus.test",
+              "name": null
+            }
+          ],
+          "triage": null,
+          "unread": false,
+          "updatedAt": "2026-01-01T11:08:00.000Z"
+        },
+        "id": "00000000-0000-4000-8000-000000000008",
+        "op": "update",
+        "seq": 10,
+        "type": "message",
+        "updatedAt": "2026-01-01T11:08:00.000Z"
+      },
+      {
+        "entity": {
+          "accountId": "00000000-0000-4000-8000-000000000002",
+          "arrivedAt": "2026-01-01T00:02:00.000Z",
+          "attachmentCount": 0,
+          "authVerdict": "unavailable",
+          "autoReplyByUs": false,
+          "awayRepliedAt": null,
+          "cc": [],
+          "date": "2026-01-01T03:00:00.000Z",
+          "folder": "ohmail/Screener",
+          "from": {
+            "address": "stranger@nowhere.test",
+            "name": null
+          },
+          "hasAttachments": false,
+          "id": "00000000-0000-4000-8000-000000000008",
+          "invitationWithoutEvent": false,
+          "itipReplyHeader": false,
+          "labels": [],
+          "lastReadAt": "2026-01-01T06:01:00.000Z",
+          "mailboxId": "00000000-0000-4000-8000-000000000001",
+          "messageIdHeader": "header-3@corpus.test",
+          "openReadAt": null,
+          "remoteContent": "none",
+          "senderCheck": null,
+          "sensitivity": {
+            "category": null,
+            "no_ai": false,
+            "no_forward": false,
+            "no_kb": false,
+            "priority": false,
+            "sensitive": false
+          },
+          "snippet": "Hello — we have not met before. I am writing about the pottery studio.",
+          "sortAt": "2026-01-01T10:00:00.000Z",
+          "subject": "Can we talk?",
+          "threadId": "00000000-0000-4000-8000-000000000007",
+          "to": [
+            {
+              "address": "reader@corpus.test",
+              "name": null
+            }
+          ],
+          "triage": null,
+          "unread": false,
+          "updatedAt": "2026-01-01T11:08:00.000Z"
+        },
+        "id": "00000000-0000-4000-8000-000000000008",
+        "op": "update",
+        "seq": 11,
+        "type": "message",
+        "updatedAt": "2026-01-01T11:08:00.000Z"
+      }
+    ]
+  },
+  "cursor": "MS4xMQ",
+  "hasMore": false,
+  "serverTime": "2026-01-01T09:01:00.000Z"
+}

@@ -1,0 +1,536 @@
+{
+  "kind": "ohmail-provider-shape",
+  "version": 1,
+  "provider": "greenmail",
+  "presetId": "imap",
+  "source": {
+    "kind": "recorded",
+    "tool": "probe-shapes.mjs",
+    "recordedOn": "2026-09-27",
+    "rescrubbed": {
+      "tool": "probe-shapes.mjs",
+      "on": "2026-09-27"
+    }
+  },
+  "endpoint": {
+    "host": "loopback",
+    "port": 21290,
+    "tls": "none"
+  },
+  "probes": {
+    "greeting": {
+      "answered": true,
+      "status": "OK",
+      "code": null,
+      "text": "IMAP4rev1 Server GreenMail v2.1.3 ready"
+    },
+    "capability": {
+      "answered": true,
+      "status": "OK",
+      "code": null,
+      "text": "CAPABILITY completed.",
+      "list": [
+        "IDLE",
+        "IMAP4REV1",
+        "LITERAL+",
+        "MOVE",
+        "QUOTA",
+        "SORT",
+        "UIDPLUS"
+      ]
+    },
+    "login": {
+      "answered": true,
+      "mechanism": "LOGIN",
+      "status": "OK",
+      "code": null
+    },
+    "capabilityAfterLogin": {
+      "answered": true,
+      "status": "OK",
+      "code": null,
+      "text": "CAPABILITY completed.",
+      "list": [
+        "IDLE",
+        "IMAP4REV1",
+        "LITERAL+",
+        "MOVE",
+        "QUOTA",
+        "SORT",
+        "UIDPLUS"
+      ]
+    },
+    "id": {
+      "answered": true,
+      "advertised": false,
+      "status": "BAD",
+      "code": null,
+      "text": "Invalid command.",
+      "fields": {}
+    },
+    "namespace": {
+      "answered": true,
+      "advertised": false,
+      "status": "BAD",
+      "code": null,
+      "text": "Invalid command.",
+      "personal": null,
+      "other": null,
+      "shared": null
+    },
+    "list": {
+      "answered": true,
+      "status": "OK",
+      "code": null,
+      "text": "LIST completed.",
+      "delimiters": [
+        "."
+      ],
+      "derivedPrefix": "",
+      "rows": [
+        {
+          "name": "INBOX",
+          "special": [],
+          "flags": [],
+          "delimiter": ".",
+          "product": false
+        },
+        {
+          "name": "ohmail",
+          "special": [],
+          "flags": [],
+          "delimiter": ".",
+          "product": true
+        },
+        {
+          "name": "ohmail/_meta",
+          "special": [],
+          "flags": [],
+          "delimiter": ".",
+          "product": true
+        }
+      ],
+      "others": "0"
+    },
+    "lsub": {
+      "answered": true,
+      "status": "OK",
+      "code": null,
+      "text": "LSUB completed.",
+      "rows": [
+        "ohmail",
+        "ohmail/_meta"
+      ],
+      "others": "0"
+    },
+    "status": {
+      "answered": true,
+      "folders": [
+        {
+          "folder": "INBOX",
+          "status": "OK",
+          "code": null,
+          "text": "STATUS completed.",
+          "messages": "nonzero",
+          "uidNext": "number",
+          "uidValidity": "number",
+          "unseen": "nonzero",
+          "highestModseq": "absent"
+        },
+        {
+          "folder": "ohmail",
+          "status": "OK",
+          "code": null,
+          "text": "STATUS completed.",
+          "messages": "zero",
+          "uidNext": "number",
+          "uidValidity": "number",
+          "unseen": "zero",
+          "highestModseq": "absent"
+        },
+        {
+          "folder": "ohmail/_meta",
+          "status": "OK",
+          "code": null,
+          "text": "STATUS completed.",
+          "messages": "nonzero",
+          "uidNext": "number",
+          "uidValidity": "number",
+          "unseen": "nonzero",
+          "highestModseq": "absent"
+        }
+      ]
+    },
+    "examine": {
+      "answered": true,
+      "folders": [
+        {
+          "folder": "INBOX",
+          "status": "OK",
+          "code": "READ-ONLY",
+          "text": "EXAMINE completed.",
+          "codes": [
+            "PERMANENTFLAGS",
+            "READ-ONLY",
+            "UIDNEXT",
+            "UIDVALIDITY",
+            "UNSEEN"
+          ],
+          "flags": [
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "permanentFlags": [
+            "\\*",
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "exists": "nonzero",
+          "uidValidity": "number",
+          "uidNext": "number",
+          "highestModseq": "absent"
+        },
+        {
+          "folder": "ohmail",
+          "status": "OK",
+          "code": "READ-ONLY",
+          "text": "EXAMINE completed.",
+          "codes": [
+            "PERMANENTFLAGS",
+            "READ-ONLY",
+            "UIDNEXT",
+            "UIDVALIDITY"
+          ],
+          "flags": [
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "permanentFlags": [
+            "\\*",
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "exists": "zero",
+          "uidValidity": "number",
+          "uidNext": "number",
+          "highestModseq": "absent"
+        },
+        {
+          "folder": "ohmail/_meta",
+          "status": "OK",
+          "code": "READ-ONLY",
+          "text": "EXAMINE completed.",
+          "codes": [
+            "PERMANENTFLAGS",
+            "READ-ONLY",
+            "UIDNEXT",
+            "UIDVALIDITY",
+            "UNSEEN"
+          ],
+          "flags": [
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "permanentFlags": [
+            "\\*",
+            "\\Answered",
+            "\\Deleted",
+            "\\Draft",
+            "\\Flagged",
+            "\\Seen"
+          ],
+          "exists": "nonzero",
+          "uidValidity": "number",
+          "uidNext": "number",
+          "highestModseq": "absent"
+        }
+      ]
+    },
+    "search": {
+      "answered": true,
+      "total": "1-9",
+      "terms": {
+        "headerMessageIdEmpty": {
+          "status": "OK",
+          "rel": "all"
+        },
+        "headerMessageIdAt": {
+          "status": "OK",
+          "rel": "all"
+        },
+        "headerFromEmpty": {
+          "status": "OK",
+          "rel": "all"
+        },
+        "headerAbsentEmpty": {
+          "status": "OK",
+          "rel": "none"
+        },
+        "subjectEmpty": {
+          "status": "OK",
+          "rel": "all"
+        },
+        "charsetUtf8Subject": {
+          "status": "OK",
+          "rel": "none"
+        },
+        "charsetUtf8All": {
+          "status": "OK",
+          "rel": "all"
+        },
+        "uidOneToStar": {
+          "status": "OK",
+          "rel": "all"
+        },
+        "uidNextToStar": {
+          "status": "OK",
+          "rel": "none"
+        },
+        "uidBeyondRange": {
+          "status": "OK",
+          "rel": "none"
+        }
+      }
+    },
+    "metaSearch": {
+      "answered": true,
+      "total": "1-9",
+      "headers": {
+        "X-Ohmail-Lease": {
+          "empty": {
+            "status": "OK",
+            "rel": "none"
+          },
+          "value": {
+            "status": "OK",
+            "rel": "none"
+          },
+          "agree": true
+        },
+        "X-Ohmail-Request": {
+          "empty": {
+            "status": "OK",
+            "rel": "none"
+          },
+          "value": {
+            "status": "OK",
+            "rel": "none"
+          },
+          "agree": true
+        },
+        "X-Ohmail-Ack": {
+          "empty": {
+            "status": "OK",
+            "rel": "one"
+          },
+          "value": {
+            "status": "OK",
+            "rel": "one"
+          },
+          "agree": true
+        },
+        "X-Ohmail-Profile": {
+          "empty": {
+            "status": "OK",
+            "rel": "one"
+          },
+          "value": {
+            "status": "OK",
+            "rel": "one"
+          },
+          "agree": true
+        }
+      },
+      "subjectEmpty": {
+        "status": "OK",
+        "rel": "all"
+      }
+    },
+    "nonexistent": {
+      "answered": true,
+      "root": {
+        "status": {
+          "status": "NO",
+          "code": null,
+          "text": "STATUS failed. No such mailbox"
+        },
+        "examine": {
+          "status": "NO",
+          "code": null,
+          "text": "EXAMINE failed. No such mailbox"
+        },
+        "listByName": "empty"
+      },
+      "nested": {
+        "status": {
+          "status": "NO",
+          "code": null,
+          "text": "STATUS failed. No such mailbox"
+        },
+        "examine": {
+          "status": "NO",
+          "code": null,
+          "text": "EXAMINE failed. No such mailbox"
+        },
+        "listByName": "empty"
+      }
+    },
+    "fetchShape": {
+      "answered": true,
+      "status": "OK",
+      "code": null,
+      "text": "FETCH completed.",
+      "flags": [
+        "\\Recent"
+      ],
+      "size": "number",
+      "internalDate": "<date>",
+      "envelope": {
+        "date": "<date>",
+        "subject": "h:pmcugxtsxxhc",
+        "from": [
+          {
+            "name": "h:vpygbqbngswr",
+            "adl": null,
+            "mailbox": "h:nppgszmctpeg",
+            "host": "h:wqzcwdzdnedt"
+          }
+        ],
+        "sender": [
+          {
+            "name": "h:vpygbqbngswr",
+            "adl": null,
+            "mailbox": "h:nppgszmctpeg",
+            "host": "h:wqzcwdzdnedt"
+          }
+        ],
+        "replyTo": [
+          {
+            "name": "h:vpygbqbngswr",
+            "adl": null,
+            "mailbox": "h:nppgszmctpeg",
+            "host": "h:wqzcwdzdnedt"
+          }
+        ],
+        "to": [
+          {
+            "name": null,
+            "adl": null,
+            "mailbox": "h:pmjujxvbkqhv",
+            "host": "h:ffsamxqywffy"
+          }
+        ],
+        "cc": null,
+        "bcc": null,
+        "inReplyTo": null,
+        "messageId": "h:skfhtazyedbq"
+      },
+      "bodystructure": {
+        "type": "text/plain",
+        "params": {
+          "charset": "utf-8"
+        },
+        "id": null,
+        "description": null,
+        "encoding": "7bit",
+        "size": "number",
+        "lines": "number",
+        "ext": 3
+      }
+    },
+    "emptyFolderFetch": {
+      "answered": true,
+      "folder": "ohmail",
+      "seqStar": {
+        "status": "OK",
+        "code": null,
+        "text": "FETCH completed."
+      },
+      "uidStar": {
+        "status": "OK",
+        "code": null,
+        "text": "FETCH completed."
+      },
+      "searchAll": {
+        "status": "OK",
+        "rel": "empty-folder"
+      }
+    },
+    "idle": {
+      "answered": true,
+      "advertised": true,
+      "continuation": true,
+      "status": "OK",
+      "code": null,
+      "text": "IDLE completed."
+    },
+    "logout": {
+      "answered": true,
+      "status": "OK",
+      "code": null,
+      "text": "LOGOUT completed.",
+      "bye": true
+    }
+  },
+  "semantics": {
+    "headerEmptyValue": "presence",
+    "headerEmptyValueStandard": "presence",
+    "headerValue": "substring",
+    "subjectEmpty": "all",
+    "subjectEmptyAnswer": null,
+    "uidBeyondEnd": "nothing",
+    "charsetUtf8": "accepted",
+    "nonexistent": {
+      "status": {
+        "status": "NO",
+        "code": null,
+        "text": "STATUS failed. No such mailbox"
+      },
+      "examine": {
+        "status": "NO",
+        "code": null,
+        "text": "EXAMINE failed. No such mailbox"
+      },
+      "listByName": "empty"
+    },
+    "emptyFolderStarFetch": {
+      "status": "OK",
+      "code": null,
+      "text": "FETCH completed."
+    },
+    "namespace": {
+      "prefix": "",
+      "delimiter": ".",
+      "announced": false
+    },
+    "specialUse": [],
+    "idle": "supported",
+    "capabilities": [
+      "IDLE",
+      "IMAP4REV1",
+      "LITERAL+",
+      "MOVE",
+      "QUOTA",
+      "SORT",
+      "UIDPLUS"
+    ]
+  },
+  "transient": {
+    "of": 22
+  }
+}

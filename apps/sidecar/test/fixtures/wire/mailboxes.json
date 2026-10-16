@@ -1,0 +1,92 @@
+{
+  "items": [
+    {
+      "address": "reader@corpus.test",
+      "addressIsOwn": true,
+      "authKind": "password",
+      "createdAt": "2026-01-01T02:00:00.000Z",
+      "disabledReason": null,
+      "displayName": "This Mac",
+      "errorCode": null,
+      "errorDetail": null,
+      "failedAt": null,
+      "filing": {
+        "asOf": "2026-01-01T01:00:00.000Z",
+        "attempts": 0,
+        "deferred": 0,
+        "due": 0,
+        "lastCycleAt": null,
+        "lastRefusalClass": null,
+        "nextAttemptAt": null,
+        "oldestPendingAt": null,
+        "stuck": 0,
+        "stuckRefusalClass": null,
+        "stuckSince": null
+      },
+      "firstSyncStopFolder": null,
+      "folders": [
+        {
+          "folder": "INBOX",
+          "hasSyncCursor": true,
+          "updatedAt": "2026-01-01T11:00:00.000Z"
+        },
+        {
+          "folder": "ohmail/News",
+          "hasSyncCursor": true,
+          "updatedAt": "2026-01-01T11:00:00.000Z"
+        },
+        {
+          "folder": "ohmail/Quarantine",
+          "hasSyncCursor": true,
+          "updatedAt": "2026-01-01T11:00:00.000Z"
+        },
+        {
+          "folder": "ohmail/Receipts",
+          "hasSyncCursor": true,
+          "updatedAt": "2026-01-01T11:00:00.000Z"
+        },
+        {
+          "folder": "ohmail/Screened",
+          "hasSyncCursor": true,
+          "updatedAt": "2026-01-01T11:00:00.000Z"
+        },
+        {
+          "folder": "ohmail/Screener",
+          "hasSyncCursor": true,
+          "updatedAt": "2026-01-01T11:00:00.000Z"
+        }
+      ],
+      "gapLetters": null,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "inboundQuietDismissedAt": null,
+      "inboundQuietSince": null,
+      "initialImportCompletedAt": "2026-01-01T04:00:00.000Z",
+      "junkFolder": null,
+      "lastSyncAt": "2026-01-01T07:00:00.000Z",
+      "organizeConsentedAt": "2026-01-01T08:00:00.000Z",
+      "organizedBy": null,
+      "organizedByThisInstall": false,
+      "organizerAcceptsRequests": false,
+      "organizerChecked": true,
+      "organizerEventAt": null,
+      "organizerEventSeenAt": null,
+      "organizerParkedAt": null,
+      "organizerReleasedAt": null,
+      "organizerRole": "organizer",
+      "organizerState": null,
+      "pendingMoves": 0,
+      "provider": "imap",
+      "releaseRefusal": null,
+      "releaseRequestedAt": null,
+      "retryCount": 0,
+      "sendingUnsettledReason": null,
+      "serverMessageCount": 3,
+      "setAside": 0,
+      "smtpMaxSizeBytes": null,
+      "status": "connected",
+      "syncBlockedReason": null,
+      "syncBlockedSince": null,
+      "takeoverAuthorizedAt": null
+    }
+  ]
+}

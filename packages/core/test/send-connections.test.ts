@@ -1,0 +1,182 @@
+import { describe, expect, it } from "vitest";
+import { IMAP_READ_DEADLINE_MS } from "../src/adapters/imap-bounds.js";
+import type { OutboundMessage } from "../src/send.js";
+import { SendConnections, type KeepTimers, type WarmSendAdapter } from "../src/send-connections.js";
+
+/**
+ * THE SEND DOOR REUSES A LIVE CONNECTION AND DIALS ONLY WHEN NONE EXISTS — the keeper, over
+ * doubles that fail the way production fails: `isLive()` reads imapflow's `usable`, which is
+ * cleared when the socket dies, so a dead double flips that flag and nothing else.
+ *
+ * THE MUTATION THAT MAKES THIS RED: in `SendConnections.open`, the reuse branch
+ * `if (entry.real.isLive()) return this.lease(entry);` — drop it (always dial) and (1), (4) and
+ * (5) go red on the dial count; make it `if (true)` and (3) goes red because a dead connection
+ * is handed out. Watched fail and restored.
+ */
+
+const MSG: OutboundMessage = { from: "a@x.test", to: "b@x.test", subject: "s", text: "t" };
+
+function fakeTimers(): KeepTimers & { fire(): number; armed: number[] } {
+  const pending = new Map<number, () => void>();
+  const armed: number[] = [];
+  let n = 0;
+  return {
+    armed,
+    set(fn, ms) { n += 1; pending.set(n, fn); armed.push(ms); return n; },
+    clear(t) { pending.delete(t as number); },
+    /** Fire every armed timer once; answers how many fired. */
+    fire() { const fns = [...pending.values()]; pending.clear(); for (const f of fns) f(); return fns.length; },
+  };
+}
+
+/** A connected double: live until `die()`, counting sends and closes. */
+function connection(name: string) {
+  const state = { name, live: true, sends: 0, closes: 0, forced: 0 };
+  const real: WarmSendAdapter = {
+    async send() { state.sends += 1; return { providerMessageId: `<${name}-${state.sends}@x>` }; },
+    async messageInSent() { return false; },
+    async close() { state.closes += 1; state.live = false; },
+    forceClose() { state.forced += 1; state.live = false; },
+    isLive: () => state.live,
+  };
+  return { real, state, die() { state.live = false; } };
+}
+
+function dialler() {
+  const made: ReturnType<typeof connection>[] = [];
+  let gate: (() => void) | null = null;
+  return {
+    made,
+    dials: () => made.length,
+    /** The next dial parks until `release()` — for the coalescing arm. */
+    hold() { return new Promise<void>((r) => { gate = r; }); },
+    release() { gate?.(); gate = null; },
+    dial: async (): Promise<WarmSendAdapter> => {
+      const c = connection(`c${made.length + 1}`);
+      made.push(c);
+      if (gate) await new Promise<void>((r) => { const g = gate; gate = () => { g?.(); r(); }; });
+      return c.real;
+    },
+  };
+}
+
+describe("SendConnections — one connection across consecutive presses", () => {
+  it("(1) three presses, one dial: the released connection serves the next press", async () => {
+    const timers = fakeTimers();
+    const keep = new SendConnections({ timers });
+    const d = dialler();
+    for (let press = 1; press <= 3; press++) {
+      const a = await keep.open("mb-1", d.dial);
+      await a.send(MSG);
+      await a.close();
+    }
+    expect(d.dials()).toBe(1);
+    expect(d.made[0]!.state.sends).toBe(3);
+    // Kept, not closed: the press's `close()` is a release.
+    expect(d.made[0]!.state.closes).toBe(0);
+    expect(keep.size()).toBe(1);
+  });
+
+  it("(2) the idle clock is the adapter's read deadline, and firing it closes the connection", async () => {
+    const timers = fakeTimers();
+    const keep = new SendConnections({ timers });
+    const d = dialler();
+    const a = await keep.open("mb-1", d.dial);
+    await a.close();
+    expect(timers.armed).toEqual([IMAP_READ_DEADLINE_MS]);   // no new number
+    expect(timers.fire()).toBe(1);
+    expect(d.made[0]!.state.closes).toBe(1);
+    expect(keep.size()).toBe(0);
+    // The next press dials again — nothing is held past the ceiling.
+    await keep.open("mb-1", d.dial);
+    expect(d.dials()).toBe(2);
+  });
+
+  it("(3) a kept connection that died is dropped and the press re-dials rather than failing", async () => {
+    const timers = fakeTimers();
+    const keep = new SendConnections({ timers });
+    const d = dialler();
+    const a = await keep.open("mb-1", d.dial);
+    await a.close();
+    d.made[0]!.die();                       // the server closed the idle socket: `usable` false
+    const b = await keep.open("mb-1", d.dial);
+    await b.send(MSG);
+    expect(d.dials()).toBe(2);
+    expect(d.made[0]!.state.sends).toBe(0);    // never offered a command
+    expect(d.made[0]!.state.forced).toBe(1);   // torn down, not politely LOGOUTed
+    expect(d.made[1]!.state.sends).toBe(1);
+  });
+
+  it("(4) two presses during one dial share it — one LOGIN, both leased, the clock waits for both", async () => {
+    const timers = fakeTimers();
+    const keep = new SendConnections({ timers });
+    const d = dialler();
+    const parked = d.hold();
+    const p1 = keep.open("mb-1", d.dial);
+    const p2 = keep.open("mb-1", d.dial);
+    d.release();
+    await parked;
+    const [a, b] = await Promise.all([p1, p2]);
+    expect(d.dials()).toBe(1);
+    await a.close();
+    expect(timers.armed).toEqual([]);          // one lease still open: no idle clock yet
+    await b.close();
+    expect(timers.armed).toEqual([IMAP_READ_DEADLINE_MS]);
+  });
+
+  it("(5) a second close on one lease releases once — the other press keeps its connection", async () => {
+    const timers = fakeTimers();
+    const keep = new SendConnections({ timers });
+    const d = dialler();
+    const a = await keep.open("mb-1", d.dial);
+    const b = await keep.open("mb-1", d.dial);
+    await a.close();
+    await a.close();                            // the send path's `finally` and a follower
+    expect(timers.armed).toEqual([]);           // b still holds it
+    await b.close();
+    expect(timers.armed).toHaveLength(1);
+  });
+
+  it("(6) forceClose from a lease destroys the connection and forgets it", async () => {
+    const keep = new SendConnections({ timers: fakeTimers() });
+    const d = dialler();
+    const a = await keep.open("mb-1", d.dial);
+    a.forceClose!();
+    expect(d.made[0]!.state.forced).toBe(1);
+    expect(keep.size()).toBe(0);
+    await keep.open("mb-1", d.dial);
+    expect(d.dials()).toBe(2);
+  });
+
+  it("(7) a double without isLive is handed back uncached — the existing fakes dial every time", async () => {
+    const keep = new SendConnections({ timers: fakeTimers() });
+    let dials = 0;
+    const dial = async (): Promise<WarmSendAdapter> => {
+      dials += 1;
+      return { async send() { return { providerMessageId: "<x@x>" }; }, async messageInSent() { return false; }, async close() {} };
+    };
+    await (await keep.open("mb-1", dial)).close();
+    await (await keep.open("mb-1", dial)).close();
+    expect(dials).toBe(2);
+    expect(keep.size()).toBe(0);
+  });
+
+  it("(8) a refused dial propagates to every press waiting on it and keeps nothing", async () => {
+    const keep = new SendConnections({ timers: fakeTimers() });
+    const dial = async (): Promise<WarmSendAdapter> => { throw new Error("LOGIN refused"); };
+    await expect(keep.open("mb-1", dial)).rejects.toThrow(/LOGIN refused/);
+    expect(keep.size()).toBe(0);
+  });
+
+  it("(9) connections are kept per mailbox, and closeAll closes every one", async () => {
+    const keep = new SendConnections({ timers: fakeTimers() });
+    const d = dialler();
+    await (await keep.open("mb-1", d.dial)).close();
+    await (await keep.open("mb-2", d.dial)).close();
+    expect(d.dials()).toBe(2);
+    expect(keep.size()).toBe(2);
+    await keep.closeAll();
+    expect(keep.size()).toBe(0);
+    expect(d.made.map((c) => c.state.closes)).toEqual([1, 1]);
+  });
+});

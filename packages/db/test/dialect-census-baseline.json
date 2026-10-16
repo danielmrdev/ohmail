@@ -1,0 +1,18 @@
+{
+  "packages/db/src/concurrent-index.ts": {
+    "raw execute": 10,
+    "db.execute(": 10,
+    "pg_advisory": 2,
+    "cast": 2
+  },
+  "packages/db/src/schema-mail.ts": {
+    "cast": 15,
+    "to_tsvector": 2,
+    "regex match (~)": 1,
+    "position(x in y)": 1
+  },
+  "packages/db/src/search-setup.ts": {
+    "raw execute": 2,
+    "db.execute(": 2
+  }
+}

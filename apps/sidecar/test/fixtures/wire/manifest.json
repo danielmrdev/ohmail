@@ -1,0 +1,44 @@
+[
+  {
+    "method": "GET",
+    "name": "unauthorized",
+    "path": "/sync?since=0",
+    "status": 401
+  },
+  {
+    "method": "GET",
+    "name": "mailboxes",
+    "path": "/mailboxes",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "name": "sync-first-contact",
+    "path": "/sync?since=0",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "name": "message-body",
+    "path": "/messages/00000000-0000-4000-8000-000000000008/body",
+    "status": 200
+  },
+  {
+    "method": "PATCH",
+    "name": "mark-seen",
+    "path": "/messages",
+    "status": 200
+  },
+  {
+    "method": "PATCH",
+    "name": "mark-seen-again",
+    "path": "/messages",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "name": "sync-after-mark-seen",
+    "path": "/sync?since=0",
+    "status": 200
+  }
+]

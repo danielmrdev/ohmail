@@ -1,0 +1,203 @@
+import { describe, expect, it } from "vitest";
+import { drafts, outboundSends } from "@trafficflow/db";
+import { apiRoutes, createApp, type ApiDeps } from "@trafficflow/api";
+import { FIXED_NOW, makeDeps, seedMailbox, seedSession } from "../../api/test/helpers.js";
+import type { OpenSendAdapter, OutboundMessage } from "@trafficflow/core";
+import {
+  FixturesAdapter,
+  HttpAdapter,
+  MemoryMirrorStore,
+  OhmailEngine,
+  scheduledSendsList,
+  type FetchLike,
+} from "@ohmail/client-engine";
+
+/**
+ * SEND LATER, END TO END THROUGH THE REAL BACKEND (mail 0077) — the engine's `mail_send`
+ * carrying `sendAt` against `createApp(apiRoutes)`: the SAME `DraftsService` +
+ * `ScheduleService` + router the deployed API runs, over PGlite, with the SMTP seam a spy.
+ *
+ * THE ASSERTION THAT MATTERS is the inverse of `mail-send.test.ts`'s: a Send-later press must
+ * deliver NOTHING — no dial, no reservation, no Sent overlay — and leave exactly one
+ * appointment the worker's pass (its own suite) will keep. The delivery half of the feature is
+ * `send-later.test.ts` in `packages/services`; this file owns the wire and the mirror.
+ */
+
+const app = createApp(apiRoutes);
+
+function makeSendSpy() {
+  const spy = {
+    delivered: [] as OutboundMessage[],
+    factory: (async () => ({
+      async send(msg: OutboundMessage) {
+        spy.delivered.push(msg);
+        return { providerMessageId: msg.messageId ?? "<none>" };
+      },
+      async messageInSent() { return false; },
+      async close() { /* nothing to tear down */ },
+    })) as OpenSendAdapter,
+  };
+  return spy;
+}
+
+function bridgeFetch(deps: ApiDeps, token: string): FetchLike {
+  return async (url, init) => {
+    const headers = new Headers(init?.headers as HeadersInit | undefined);
+    headers.set("authorization", `Bearer ${token}`);
+    return app.handle(new Request(url, { ...init, headers }), { ...deps, session: null, idempotency: null });
+  };
+}
+
+const SEND_AT = new Date(FIXED_NOW.getTime() + 6 * 60 * 60 * 1000).toISOString();
+
+async function world() {
+  const spy = makeSendSpy();
+  const { db, deps } = await makeDeps(FIXED_NOW, {}, { sendAdapter: spy.factory });
+  const s = await seedSession(db, { now: FIXED_NOW });
+  const mailboxId = await seedMailbox(db, { accountId: s.accountId });
+
+  const calls: string[] = [];
+  const base = bridgeFetch(deps, s.token);
+  type Intercept = (url: string, pass: () => Promise<Response>) => Promise<Response> | null;
+  let intercept: Intercept | null = null;
+  const fetchImpl: FetchLike = async (url, init) => {
+    calls.push(`${init?.method ?? "GET"} ${new URL(url).pathname}`);
+    const pass = (): Promise<Response> => base(url, init);
+    return intercept?.(url, pass) ?? pass();
+  };
+  const engine = new OhmailEngine({
+    adapter: new HttpAdapter({ baseUrl: "http://localhost", fetch: fetchImpl }),
+    store: new MemoryMirrorStore(),
+  });
+  return {
+    db, spy, engine, calls, mailboxId,
+    setIntercept: (fn: Intercept | null) => { intercept = fn; },
+  };
+}
+
+const COMPOSE = (mailboxId: string) => ({
+  kind: "mail_send" as const,
+  inReplyTo: null,
+  mailboxId,
+  subject: "later",
+  body: "the words",
+  to: [{ name: null, address: "you@example.com" }],
+  sendAt: SEND_AT,
+});
+
+describe("mail_send with sendAt — an appointment, not a delivery", () => {
+  it("confirms over POST /drafts + POST /drafts/:id/schedule, dials nothing, reserves nothing", async () => {
+    const w = await world();
+    const res = await w.engine.mutate(COMPOSE(w.mailboxId));
+    expect(res.status).toBe("confirmed");
+    // NOTHING LEFT: the spy never dialed and there is no Sent overlay to materialise from —
+    // the outcome carried no providerMessageId, which is the engine's gate.
+    expect(w.spy.delivered).toHaveLength(0);
+    expect(res).not.toHaveProperty("providerMessageId", expect.stringContaining("@"));
+
+    const rows = await w.db.select().from(drafts);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.status).toBe("scheduled");
+    expect(rows[0]!.sendAt!.toISOString()).toBe(SEND_AT);
+    expect(rows[0]!.sendKey).not.toBeNull();
+    expect(await w.db.select().from(outboundSends)).toHaveLength(0);
+
+    // The wire shape: draft, then schedule — and NEVER /send.
+    const posts = w.calls.filter((c) => c.startsWith("POST"));
+    expect(posts).toEqual(["POST /drafts", `POST /drafts/${rows[0]!.id}/schedule`]);
+    expect(w.calls.some((c) => c.endsWith("/send"))).toBe(false);
+
+    // THE ECHO IS READ-YOUR-WRITES: the route answers the scheduled DTO with its seq, the
+    // adapter hands it back as a draft change, and the mirror holds the appointment the moment
+    // the mutation confirms — WITHOUT waiting for any drain. The confirm drops the optimistic
+    // overlay, so an empty echo here would leave the Scheduled group blank until a background
+    // sync landed (or did not — a hidden tab aborts it). Asserted with NO `syncOnce` on
+    // purpose: that call passing was exactly the hole.
+    const listed = scheduledSendsList(w.engine.read());
+    expect(listed).toHaveLength(1);
+    expect(listed[0]!.id).toBe(rows[0]!.id);
+    expect(listed[0]!.sendAt).toBe(SEND_AT);
+  });
+
+  it("draft_schedule_cancel takes the appointment off over DELETE /drafts/:id/schedule", async () => {
+    const w = await world();
+    await w.engine.mutate(COMPOSE(w.mailboxId));
+    const [row] = await w.db.select().from(drafts);
+
+    await w.engine.syncOnce();
+    const res = await w.engine.mutate({ kind: "draft_schedule_cancel", draftId: row!.id });
+    expect(res.status).toBe("confirmed");
+    expect(w.calls).toContain(`DELETE /drafts/${row!.id}/schedule`);
+
+    const [after] = await w.db.select().from(drafts);
+    expect(after!.status).toBe("draft");
+    expect(after!.sendAt).toBeNull();
+    expect(after!.sendKey).toBeNull();
+    await w.engine.syncOnce();
+    expect(scheduledSendsList(w.engine.read())).toHaveLength(0);
+  });
+
+  it("a past time is the server's 400, surfaced as a rejection — nothing scheduled, nothing sent", async () => {
+    const w = await world();
+    const res = await w.engine.mutate({
+      ...COMPOSE(w.mailboxId),
+      sendAt: new Date(FIXED_NOW.getTime() - 60_000).toISOString(),
+    });
+    expect(res.status).toBe("rolled_back");
+    const [row] = await w.db.select().from(drafts);
+    expect(row!.status).toBe("draft"); // the draft row stands; the appointment was refused
+    expect(row!.sendAt).toBeNull();
+    expect(w.spy.delivered).toHaveLength(0);
+  });
+
+  it("REFUSES attachments and forwards before the wire — a draft row cannot carry either", async () => {
+    const w = await world();
+    const res = await w.engine.mutate({
+      ...COMPOSE(w.mailboxId),
+      attachments: [{ filename: "a.txt", contentType: "text/plain", contentBase64: "aGk=" }],
+    });
+    expect(res.status).toBe("rolled_back");
+    expect(res.error?.code).toBe("schedule_unsupported_content");
+    // Refused CLIENT-side, before the schedule request exists.
+    expect(w.calls.some((c) => c.includes("/schedule"))).toBe(false);
+    expect(w.spy.delivered).toHaveLength(0);
+  });
+
+  it("VERSION SKEW: a server without the route answers 404 and the press must NOT fall back to sending now", async () => {
+    const w = await world();
+    w.setIntercept((url) => {
+      if (new URL(url).pathname.endsWith("/schedule")) {
+        return Promise.resolve(new Response(JSON.stringify({ error: { code: "not_found" } }), { status: 404 }));
+      }
+      return null;
+    });
+    const res = await w.engine.mutate(COMPOSE(w.mailboxId));
+    expect(res.status).toBe("rolled_back");
+    expect(res.error?.code).toBe("schedule_unsupported");
+    expect(res.error?.retryable).toBe(false);
+    // The one catastrophic fallback — delivering NOW what was asked for LATER — did not happen.
+    expect(w.spy.delivered).toHaveLength(0);
+    expect(w.calls.some((c) => c.endsWith("/send"))).toBe(false);
+  });
+});
+
+describe("the demo world (FixturesAdapter)", () => {
+  it("a Send-later press parks a scheduled draft and mints NO provider id — nothing 'sends' even in fiction", async () => {
+    const engine = new OhmailEngine({
+      adapter: new FixturesAdapter(),
+      store: new MemoryMirrorStore(),
+    });
+    await engine.syncOnce();
+    const res = await engine.mutate({
+      kind: "mail_send", inReplyTo: null, mailboxId: "mb-demo",
+      subject: "later", body: "demo words",
+      to: [{ name: null, address: "you@example.com" }],
+      sendAt: SEND_AT,
+    });
+    expect(res.status).toBe("confirmed");
+    const listed = scheduledSendsList(engine.read());
+    expect(listed).toHaveLength(1);
+    expect(listed[0]!.status).toBe("scheduled");
+    expect(listed[0]!.sendAt).toBe(SEND_AT);
+  });
+});

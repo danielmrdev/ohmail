@@ -1,0 +1,258 @@
+{
+  "_provenance": {
+    "authored": "2026-08-31, ohmarchy Phase 3-zero (OHMARCHY-PLAN.md §2)",
+    "rule": "Every value below is the OUTPUT of mapping.js beside this file run over the named fixture — never hand-picked. Regenerate with the snippet in OHMARCHY-TOKENS.md. The mapping is the law; this file is its statement for the two static defaults.",
+    "dark_source": "tokyo-night (Omarchy's install-default theme, verified on the 4.0.2 VM)",
+    "light_source": "flexoki-light (Omarchy designates no light default — ruling recorded in OHMARCHY-TOKENS.md and OHMARCHY-PLAN.md §8)",
+    "validation": "packages/tokens/test/omarchy-mapping.test.ts runs the mapping over all 22 themes, each clearing every contrast floor"
+  },
+  "slots": {
+    "existing": "every key below except those under new_slots maps ONE-TO-ONE onto packages/tokens/src/tokens.css",
+    "new_slots": {
+      "--r-ctl": {
+        "paper": "8px",
+        "note": "small-control radius; today's 4-10px literals collapse here"
+      },
+      "--r-card": {
+        "paper": "14px",
+        "note": "card/panel radius; today's 12-16px literals"
+      },
+      "--r-overlay": {
+        "paper": "20px",
+        "note": "overlay/palette/reader radius; today's 18-22px literals"
+      },
+      "--r-pill": {
+        "paper": "99px",
+        "note": "pills and chips; today's 99px/999px literals"
+      },
+      "--r-avatar": {
+        "paper": "50%",
+        "note": "avatars; ohmarchy squares them like every Omarchy surface"
+      },
+      "--teach": {
+        "paper": "0",
+        "note": "teaching-intensity level, 0 (paper, calm) / 1 (ohmarchy, loud) — the ONE switch the hint line and other key-teaching surfaces read; declared by OHMARCHY-CONTRACT.md (Wave-1 lane B), defined only in the token stylesheet's face blocks"
+      },
+      "--focus-w": {
+        "paper": "1.5px",
+        "note": "focus-visible outline width — teaching intensity"
+      },
+      "--focus-offset": {
+        "paper": "3px",
+        "note": "focus-visible outline offset — ohmarchy hugs the edge"
+      },
+      "--gap-tile": {
+        "paper": "16px",
+        "note": "gap between layout tiles (Zero layout); Omarchy gaps_in 5 doubles to 10"
+      },
+      "--gap-edge": {
+        "paper": "16px",
+        "note": "gap to the viewport edge; Omarchy gaps_out 10"
+      },
+      "--font-ui": {
+        "paper": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Inter, sans-serif",
+        "note": "UI family; on Omarchy the live value follows fc-match monospace (3c)"
+      },
+      "--font-size-base": {
+        "paper": "14px",
+        "note": "root UI size; on Omarchy follows shell.toml [font] base-size (12 by default — measured)"
+      },
+      "--danger": {
+        "paper": "#b3261e",
+        "note": "already read via var(--danger, fallback) in the app; ohmarchy defines it from the theme's red"
+      },
+      "--focus": {
+        "paper": "var(--accent)",
+        "note": "already read via var(--focus, ...) fallbacks"
+      },
+      "--accent-wash": {
+        "paper": "var(--tint)",
+        "note": "already read via var(--accent-wash, var(--tint))"
+      },
+      "--type-up": {
+        "paper": "0px",
+        "note": "phone type step, width-driven, not a face"
+      },
+      "--input-floor": {
+        "paper": "0px",
+        "note": "text-control floor: 16px on phones, iOS focus zoom"
+      }
+    }
+  },
+  "ohmarchy-dark": {
+    "--canvas": "#13141c",
+    "--panel": "#1a1b26",
+    "--float": "#1a1b26",
+    "--ink": "#a9b1d6",
+    "--ink2": "#8d96bc",
+    "--ink3": "#7a82ab",
+    "--hair": "rgba(169,177,214,0.25)",
+    "--hair-soft": "rgba(169,177,214,0.12)",
+    "--tint": "rgba(169,177,214,0.04)",
+    "--tint2": "rgba(169,177,214,0.08)",
+    "--accent": "#7aa2f7",
+    "--accent-ink": "#7aa2f7",
+    "--accent-soft": "rgba(122,162,247,0.12)",
+    "--accent-hair": "rgba(122,162,247,0.42)",
+    "--accent-wash": "rgba(122,162,247,0.06)",
+    "--on-accent": "#1a1b26",
+    "--danger": "#f7768e",
+    "--focus": "#7aa2f7",
+    "--tg-pottery-ink": "#499ead",
+    "--tg-pottery-bg": "rgba(68,157,171,0.14)",
+    "--tg-buch-ink": "#9ece6a",
+    "--tg-buch-bg": "rgba(158,206,106,0.14)",
+    "--tg-privat-ink": "#ff9e64",
+    "--tg-privat-bg": "rgba(255,158,100,0.14)",
+    "--tg-olive-ink": "#b9f27c",
+    "--tg-olive-bg": "rgba(185,242,124,0.14)",
+    "--tg-verdigris-ink": "#499ead",
+    "--tg-verdigris-bg": "rgba(68,157,171,0.14)",
+    "--tg-denim-ink": "#7aa2f7",
+    "--tg-denim-bg": "rgba(122,162,247,0.14)",
+    "--tg-indigo-ink": "#ad8ee6",
+    "--tg-indigo-bg": "rgba(173,142,230,0.14)",
+    "--tg-iris-ink": "#bb9af7",
+    "--tg-iris-bg": "rgba(187,154,247,0.14)",
+    "--tg-mulberry-ink": "#ff7a93",
+    "--tg-mulberry-bg": "rgba(255,122,147,0.14)",
+    "--tg-heather-ink": "#f7768e",
+    "--tg-heather-bg": "rgba(247,118,142,0.14)",
+    "--lift-0": "0 0 0 1px rgba(169,177,214,0.4)",
+    "--lift-1": "0 0 0 2px rgba(89,89,89,0.67)",
+    "--lift-2": "0 0 0 2px #414868",
+    "--lift-3": "0 0 0 2px #7aa2f7",
+    "--bar-edge": "0 1px 0 0 rgba(169,177,214,0.25)",
+    "--scrim": "rgba(26,27,38,0.5)",
+    "--sc-fade": "linear-gradient(to bottom, transparent, var(--float))",
+    "--spring": "cubic-bezier(0.23,1,0.32,1)",
+    "--swift": "cubic-bezier(0.33,1,0.68,1)",
+    "--r-ctl": "0",
+    "--r-card": "0",
+    "--r-overlay": "0",
+    "--r-pill": "0",
+    "--r-avatar": "0",
+    "--focus-w": "2px",
+    "--focus-offset": "0px",
+    "--gap-tile": "10px",
+    "--gap-edge": "10px",
+    "--font-ui": "'JetBrainsMono Nerd Font','JetBrains Mono',ui-monospace,'Cascadia Mono',Menlo,Consolas,monospace",
+    "--font-size-base": "12px",
+    "color-scheme": "dark"
+  },
+  "ohmarchy-light": {
+    "--canvas": "#f2efe4",
+    "--panel": "#FFFCF0",
+    "--float": "#FFFCF0",
+    "--ink": "#100F0F",
+    "--ink2": "#383635",
+    "--ink3": "#5f5e5a",
+    "--hair": "rgba(16,15,15,0.25)",
+    "--hair-soft": "rgba(16,15,15,0.12)",
+    "--tint": "rgba(16,15,15,0.04)",
+    "--tint2": "rgba(16,15,15,0.08)",
+    "--accent": "#205EA6",
+    "--accent-ink": "#205EA6",
+    "--accent-soft": "rgba(32,94,166,0.12)",
+    "--accent-hair": "rgba(32,94,166,0.42)",
+    "--accent-wash": "rgba(32,94,166,0.06)",
+    "--on-accent": "#FFFCF0",
+    "--danger": "#c74a3f",
+    "--focus": "#205EA6",
+    "--tg-pottery-ink": "#296b65",
+    "--tg-pottery-bg": "rgba(58,169,159,0.14)",
+    "--tg-buch-ink": "#5d692a",
+    "--tg-buch-bg": "rgba(135,154,57,0.14)",
+    "--tg-privat-ink": "#8d5321",
+    "--tg-privat-bg": "rgba(208,119,43,0.14)",
+    "--tg-olive-ink": "#5d692a",
+    "--tg-olive-bg": "rgba(135,154,57,0.14)",
+    "--tg-verdigris-ink": "#296b65",
+    "--tg-verdigris-bg": "rgba(58,169,159,0.14)",
+    "--tg-denim-ink": "#205EA6",
+    "--tg-denim-bg": "rgba(32,94,166,0.14)",
+    "--tg-indigo-ink": "#205EA6",
+    "--tg-indigo-bg": "rgba(32,94,166,0.14)",
+    "--tg-iris-ink": "#95466e",
+    "--tg-iris-bg": "rgba(206,93,151,0.14)",
+    "--tg-mulberry-ink": "#95466e",
+    "--tg-mulberry-bg": "rgba(206,93,151,0.14)",
+    "--tg-heather-ink": "#a13e35",
+    "--tg-heather-bg": "rgba(209,77,65,0.14)",
+    "--lift-0": "0 0 0 1px rgba(16,15,15,0.4)",
+    "--lift-1": "0 0 0 2px rgba(89,89,89,0.67)",
+    "--lift-2": "0 0 0 2px #B7B5AC",
+    "--lift-3": "0 0 0 2px #205EA6",
+    "--bar-edge": "0 1px 0 0 rgba(16,15,15,0.25)",
+    "--scrim": "rgba(255,252,240,0.5)",
+    "--sc-fade": "linear-gradient(to bottom, transparent, var(--float))",
+    "--spring": "cubic-bezier(0.23,1,0.32,1)",
+    "--swift": "cubic-bezier(0.33,1,0.68,1)",
+    "--r-ctl": "0",
+    "--r-card": "0",
+    "--r-overlay": "0",
+    "--r-pill": "0",
+    "--r-avatar": "0",
+    "--focus-w": "2px",
+    "--focus-offset": "0px",
+    "--gap-tile": "10px",
+    "--gap-edge": "10px",
+    "--font-ui": "'JetBrainsMono Nerd Font','JetBrains Mono',ui-monospace,'Cascadia Mono',Menlo,Consolas,monospace",
+    "--font-size-base": "12px",
+    "color-scheme": "light"
+  },
+  "fallbacks_fired": {
+    "ohmarchy-dark": [
+      {
+        "slot": "--ink3",
+        "msg": "walked 15% back toward foreground"
+      },
+      {
+        "slot": "--tg-pottery-ink",
+        "msg": "walked 5% toward foreground"
+      },
+      {
+        "slot": "--tg-verdigris-ink",
+        "msg": "walked 5% toward foreground"
+      }
+    ],
+    "ohmarchy-light": [
+      {
+        "slot": "--danger",
+        "msg": "red walked 5% toward foreground"
+      },
+      {
+        "slot": "--tg-pottery-ink",
+        "msg": "walked 40% toward foreground"
+      },
+      {
+        "slot": "--tg-buch-ink",
+        "msg": "walked 35% toward foreground"
+      },
+      {
+        "slot": "--tg-privat-ink",
+        "msg": "walked 35% toward foreground"
+      },
+      {
+        "slot": "--tg-olive-ink",
+        "msg": "walked 35% toward foreground"
+      },
+      {
+        "slot": "--tg-verdigris-ink",
+        "msg": "walked 40% toward foreground"
+      },
+      {
+        "slot": "--tg-iris-ink",
+        "msg": "walked 30% toward foreground"
+      },
+      {
+        "slot": "--tg-mulberry-ink",
+        "msg": "walked 30% toward foreground"
+      },
+      {
+        "slot": "--tg-heather-ink",
+        "msg": "walked 25% toward foreground"
+      }
+    ]
+  }
+}

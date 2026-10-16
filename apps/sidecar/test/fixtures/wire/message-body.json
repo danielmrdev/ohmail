@@ -1,0 +1,28 @@
+{
+  "headers": {
+    "content-type": [
+      "text/plain; charset=utf-8"
+    ],
+    "date": [
+      "Mon, 03 Aug 2026 08:14:00 +0000"
+    ],
+    "from": [
+      "stranger@nowhere.test"
+    ],
+    "message-id": [
+      "<header-3@corpus.test>"
+    ],
+    "subject": [
+      "Can we talk?"
+    ],
+    "to": [
+      "reader@corpus.test"
+    ]
+  },
+  "html": null,
+  "loadedRemoteContent": false,
+  "messageId": "00000000-0000-4000-8000-000000000008",
+  "text": "Hello — we have not met before. I am writing about the pottery studio.",
+  "unsubscribe": "no_header",
+  "unsubscribeUrl": null
+}

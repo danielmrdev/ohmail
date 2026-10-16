@@ -1,0 +1,51 @@
+{
+  "items": [
+    {
+      "accountId": "00000000-0000-4000-8000-000000000002",
+      "arrivedAt": "2026-01-01T00:02:00.000Z",
+      "attachmentCount": 0,
+      "authVerdict": "unavailable",
+      "autoReplyByUs": false,
+      "awayRepliedAt": null,
+      "cc": [],
+      "date": "2026-01-01T03:00:00.000Z",
+      "folder": "ohmail/Screener",
+      "from": {
+        "address": "stranger@nowhere.test",
+        "name": null
+      },
+      "hasAttachments": false,
+      "id": "00000000-0000-4000-8000-000000000008",
+      "invitationWithoutEvent": false,
+      "itipReplyHeader": false,
+      "labels": [],
+      "lastReadAt": "2026-01-01T06:01:00.000Z",
+      "mailboxId": "00000000-0000-4000-8000-000000000001",
+      "messageIdHeader": "header-3@corpus.test",
+      "openReadAt": null,
+      "remoteContent": "none",
+      "senderCheck": null,
+      "sensitivity": {
+        "category": null,
+        "no_ai": false,
+        "no_forward": false,
+        "no_kb": false,
+        "priority": false,
+        "sensitive": false
+      },
+      "snippet": "Hello — we have not met before. I am writing about the pottery studio.",
+      "sortAt": "2026-01-01T10:00:00.000Z",
+      "subject": "Can we talk?",
+      "threadId": "00000000-0000-4000-8000-000000000007",
+      "to": [
+        {
+          "address": "reader@corpus.test",
+          "name": null
+        }
+      ],
+      "triage": null,
+      "unread": false,
+      "updatedAt": "2026-01-01T11:08:00.000Z"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "path": "/v1/access",
+  "field": "prices",
+  "actions": ["classify_ingest", "draft", "propose", "screener", "workflow"],
+  "each": "a non-negative integer, in credits",
+  "absent": "unpriced: the open server withholds the quote and sells nothing"
+}

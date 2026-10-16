@@ -1,0 +1,22 @@
+{
+  "entitlements": {
+    "mailboxLimit": 0, "canAddMailbox": false, "aiEnabled": false, "syncEnabled": false,
+    "storageBytesLimit": 0, "reason": "canceled"
+  },
+  "balance": 0,
+  "setupCredits": { "remaining": 0, "expiresAt": null },
+  "storageUsedBytes": 0,
+  "invoiceGranted": false,
+  "manageUrl": null,
+  "lifecycle": {
+    "state": "erased",
+    "closedReason": "canceled",
+    "trialEndsAt": null,
+    "graceUntil": null,
+    "closedAt": "2026-06-16T00:00:00.000Z",
+    "erasureAt": null,
+    "erasedAt": "2026-09-14T00:00:00.000Z",
+    "formerlyPaid": true,
+    "lifecycleEpoch": "2026-09-22T00:00:00.000Z"
+  }
+}

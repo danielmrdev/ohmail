@@ -1,0 +1,184 @@
+import { randomUUID } from "node:crypto";
+import { describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
+import {
+  accounts, contacts, folderState, mailboxes, messageBodies, messages, rules, threads,
+} from "@trafficflow/db";
+import { makeTestDb } from "@trafficflow/db/testing";
+import {
+  screenUnscreened, unscreenedSummary, type ServiceContext,
+} from "../src/mail.js";
+
+/**
+ * THE UNDECIDED-SENDER WALK, ON BOTH STORES.
+ *
+ * This service is on the mail leaf, so the sidecar and the STANDALONE PHONE serve its two routes
+ * out of `localRoutes` — the phone against SQLite through the drizzle proxy. Its first draft spelled
+ * `::uuid`, `::jsonb` and `FOR UPDATE OF folder_state` inline; `dialect-census.test.ts` refused all
+ * four by name, and this file is the behavioural half of that refusal: the same walk, the same
+ * press, run in BOTH projects (the default PGlite one and `pnpm test:sqlite`), so a server-only
+ * spelling is a red here rather than a phone that cannot draw its own Screener.
+ */
+
+const OHBOX = "INBOX";
+const GATE = "ohmail/Screener";
+const NOW = new Date("2026-09-22T09:00:00.000Z");
+const ARRIVED = new Date("2024-03-01T08:00:00.000Z");
+
+async function world() {
+  const db = await makeTestDb();
+  const accountId = randomUUID();
+  await db.insert(accounts).values({ id: accountId, name: `oud-${accountId.slice(0, 8)}` });
+  const [mb] = await db.insert(mailboxes).values({
+    accountId, provider: "imap", address: `oud-${accountId.slice(0, 8)}@example.test`,
+    organizerRole: "organizer",
+  }).returning();
+  return { db, accountId, mailboxId: mb!.id };
+}
+
+let n = 0;
+
+async function seed(
+  w: Awaited<ReturnType<typeof world>>, from: string, body = "",
+  thread?: { threadId: string; to?: string[]; headers?: Record<string, string[]> },
+): Promise<string> {
+  const i = n++;
+  const [m] = await w.db.insert(messages).values({
+    accountId: w.accountId, mailboxId: w.mailboxId, bodyHash: `h${i}`,
+    dedupKey: `oud:${randomUUID()}`, subject: `Note ${i}`, fromAddress: from,
+    date: ARRIVED, createdAt: ARRIVED, unread: false,
+    nativeLocator: { folder: OHBOX, ref: `1:${i}` },
+    ...(thread ? {
+      threadId: thread.threadId, messageIdHeader: `m${i}@x.test`,
+      toAddresses: (thread.to ?? []).map((address) => ({ name: null, address })),
+    } : {}),
+  }).returning();
+  await w.db.insert(messageBodies).values({
+    messageId: m!.id, text: body, html: null, headers: thread?.headers ?? {},
+  });
+  await w.db.insert(folderState).values({
+    messageId: m!.id, desiredFolder: OHBOX, observedFolder: OHBOX,
+    lastSetBy: "external", reconcileStatus: "reconciled", conflict: false,
+  });
+  return m!.id;
+}
+
+/** A thread row for the three thread cases — the column is a foreign key on both stores. */
+async function threadOf(w: Awaited<ReturnType<typeof world>>): Promise<string> {
+  const [t] = await w.db.insert(threads).values({ accountId: w.accountId, subject: "Plans" }).returning();
+  return t!.id;
+}
+
+const ctxOf = (w: Awaited<ReturnType<typeof world>>): ServiceContext => ({
+  db: w.db as unknown as ServiceContext["db"], accountId: w.accountId, userId: null,
+  now: () => NOW, requestId: `oud-${randomUUID().slice(0, 8)}`,
+});
+
+const desiredOf = async (
+  w: Awaited<ReturnType<typeof world>>, id: string,
+): Promise<string> => {
+  const [row] = await w.db.select({ d: folderState.desiredFolder })
+    .from(folderState).where(eq(folderState.messageId, id));
+  return row!.d;
+};
+
+describe("the undecided-sender walk speaks both dialects", () => {
+  it("counts the stranger's mail and leaves the decided sender's alone", async () => {
+    const w = await world();
+    await w.db.insert(rules).values({
+      accountId: w.accountId, kind: "sender", match: "ruled@x.test", destination: "INBOX",
+      provenance: "manual", enabled: true, priority: 0, retroRequestedAt: null,
+    });
+    await w.db.insert(contacts).values({ accountId: w.accountId, address: "pal@x.test" });
+    await seed(w, "ruled@x.test");
+    await seed(w, "pal@x.test");
+    await seed(w, "stranger@x.test");
+    await seed(w, "stranger@x.test");
+
+    const summary = await unscreenedSummary(w.db as never, w.accountId);
+    expect(summary.groups).toEqual([
+      { address: "stranger@x.test", count: 2, newestAt: ARRIVED.toISOString() },
+    ]);
+    expect(summary.total).toBe(2);
+  });
+
+  it("the press writes the intent, on either store, and a second press finds nothing", async () => {
+    const w = await world();
+    const id = await seed(w, "stranger@x.test");
+
+    const pressed = await screenUnscreened(ctxOf(w));
+    expect(pressed.total).toBe(1);
+    expect(await desiredOf(w, id)).toBe(GATE);
+
+    expect((await unscreenedSummary(w.db as never, w.accountId)).total).toBe(0);
+    expect(await screenUnscreened(ctxOf(w))).toEqual({ screened: [], total: 0 });
+  });
+
+  it("a rule's body term is read, so the wide column round-trips on either store", async () => {
+    const w = await world();
+    await w.db.insert(rules).values({
+      accountId: w.accountId, kind: "header", match: "list-id", destination: "ohmail/News",
+      provenance: "manual", enabled: true, priority: 0, retroRequestedAt: null,
+      bodyContains: "invoice",
+    });
+    await seed(w, "list@x.test", "your invoice is ready");
+    await seed(w, "list@x.test", "hello there");
+    // No header on either row, so the rule fires on neither and both senders stay undecided —
+    // what this arm measures is the JOIN and the cast, which the walk now takes for both columns.
+    expect((await unscreenedSummary(w.db as never, w.accountId)).total).toBe(2);
+  });
+
+  /* AN UNRELATED REPLY IN A THREAD NEVER ADMITS A STRANGER. Thread membership was the question
+     here while the three worker passes asked `weAnsweredThisSenderWhere`, so a reply of ours to
+     somebody else on the thread kept a newcomer in the Ohbox for ever. The control is the reply
+     that IS to them, by recipient and by naming their message. */
+  it("our reply to somebody else on the thread does not keep a stranger out of the offer", async () => {
+    const w = await world();
+    const own = (await w.db.select({ a: mailboxes.address }).from(mailboxes)
+      .where(eq(mailboxes.id, w.mailboxId)))[0]!.a;
+    const threadId = await threadOf(w);
+    await seed(w, "colleague@x.test", "", { threadId });
+    await seed(w, own, "", { threadId, to: ["colleague@x.test"] });
+    await seed(w, "newcomer@x.test", "", { threadId });
+    const offered = (await unscreenedSummary(w.db as never, w.accountId)).groups.map((g) => g.address);
+    expect(offered).toContain("newcomer@x.test");
+  });
+
+  it("CONTROL — our reply TO them, or naming their message, keeps them out", async () => {
+    const w = await world();
+    const own = (await w.db.select({ a: mailboxes.address }).from(mailboxes)
+      .where(eq(mailboxes.id, w.mailboxId)))[0]!.a;
+    const t1 = await threadOf(w);
+    await seed(w, "addressed@x.test", "", { threadId: t1 });
+    await seed(w, own, "", { threadId: t1, to: ["addressed@x.test"] });
+    const t2 = await threadOf(w);
+    const theirs = await seed(w, "named@x.test", "", { threadId: t2 });
+    const [row] = await w.db.select({ h: messages.messageIdHeader }).from(messages).where(eq(messages.id, theirs));
+    await seed(w, own, "", { threadId: t2, to: ["list@x.test"], headers: { "in-reply-to": [`<${row!.h}>`] } });
+    await seed(w, "stranger@x.test");
+    const offered = (await unscreenedSummary(w.db as never, w.accountId)).groups.map((g) => g.address);
+    expect(offered).toEqual(["stranger@x.test"]);
+  });
+
+  /* A PADDED RULE IS A DECISION HERE AS IN THE QUEUE: the queue's SQL trims `rules.match`, and the
+     gate this screen asks now does too (`ruleMatchKey`). The unpadded control is the first case. */
+  it("a rule stored with surrounding spaces decides its sender, on either store", async () => {
+    const w = await world();
+    await w.db.insert(rules).values({
+      accountId: w.accountId, kind: "sender", match: "  padded@x.test ", destination: "INBOX",
+      provenance: "manual", enabled: true, priority: 0, retroRequestedAt: null,
+    });
+    await seed(w, "padded@x.test");
+    await seed(w, "stranger@x.test");
+    const offered = (await unscreenedSummary(w.db as never, w.accountId)).groups.map((g) => g.address);
+    expect(offered).toEqual(["stranger@x.test"]);
+  });
+
+  it("a reader install offers nothing on either store", async () => {
+    const w = await world();
+    await w.db.update(mailboxes).set({ organizerRole: "reader" })
+      .where(eq(mailboxes.id, w.mailboxId));
+    await seed(w, "stranger@x.test");
+    expect(await unscreenedSummary(w.db as never, w.accountId)).toEqual({ groups: [], total: 0 });
+  });
+});

@@ -1,0 +1,457 @@
+{
+  "image": "ghcr.io/trafficflowhq/mirror-caddy:2.10.2@sha256:c3d7ee5d2b11f9dc54f947f68a734c84e9c9666c92c88a7f30b9cba5da182adb",
+  "recordedBy": "a control run against the real image, kept with the self-host kit",
+  "imageEntrypoint": null,
+  "imageCmd": [
+    "caddy",
+    "run",
+    "--config",
+    "/etc/caddy/Caddyfile",
+    "--adapter",
+    "caddyfile"
+  ],
+  "verdicts": [
+    {
+      "form": "bare-v4",
+      "value": "203.0.113.9",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "203.0.113.9"
+        ],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    },
+    {
+      "form": "bare-v6",
+      "value": "2001:db8::9",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "2001:db8::9"
+        ],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    },
+    {
+      "form": "bracketed",
+      "value": "[2001:db8::9]",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "[2001:db8::9]"
+        ],
+        "strict": 1,
+        "validates": false,
+        "error": "Error: loading http app module: provision http: loading trusted proxies modules: loading module 'static': provision http.ip_sources.static: invalid IP address: '[2001:db8::9]': ParseAddr(\"[2001:db8::9]\"): each colon-separated field must have at least one digit (at \"[2001:db8::9]\")"
+      }
+    },
+    {
+      "form": "comma",
+      "value": "10.0.0.0/8,192.168.1.5",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "10.0.0.0/8,192.168.1.5"
+        ],
+        "strict": 1,
+        "validates": false,
+        "error": "Error: loading http app module: provision http: loading trusted proxies modules: loading module 'static': provision http.ip_sources.static: parsing CIDR expression: '10.0.0.0/8,192.168.1.5': netip.ParsePrefix(\"10.0.0.0/8,192.168.1.5\"): bad bits after slash: \"8,192.168.1.5\""
+      }
+    },
+    {
+      "form": "comma-space",
+      "value": "10.0.0.0/8, 192.168.1.5",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "10.0.0.0/8,",
+          "192.168.1.5"
+        ],
+        "strict": 1,
+        "validates": false,
+        "error": "Error: loading http app module: provision http: loading trusted proxies modules: loading module 'static': provision http.ip_sources.static: parsing CIDR expression: '10.0.0.0/8,': netip.ParsePrefix(\"10.0.0.0/8,\"): bad bits after slash: \"8,\""
+      }
+    },
+    {
+      "form": "double-space",
+      "value": "10.0.0.0/8  192.168.1.5",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "10.0.0.0/8",
+          "192.168.1.5"
+        ],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    },
+    {
+      "form": "empty",
+      "value": "",
+      "entrypoint": "unset",
+      "caddy": {
+        "adapted": true,
+        "ranges": [],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    },
+    {
+      "form": "host-name",
+      "value": "terminator.example",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "terminator.example"
+        ],
+        "strict": 1,
+        "validates": false,
+        "error": "Error: loading http app module: provision http: loading trusted proxies modules: loading module 'static': provision http.ip_sources.static: invalid IP address: 'terminator.example': ParseAddr(\"terminator.example\"): unexpected character (at \"terminator.example\")"
+      }
+    },
+    {
+      "form": "leading-newline",
+      "value": "\n203.0.113.9",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": false,
+        "ranges": null,
+        "strict": null,
+        "validates": false,
+        "error": "Error: adapting config using caddyfile: parsing caddyfile tokens for 'servers': unrecognized servers option '203.0.113.9', at /etc/caddy/Caddyfile.external-tls:24"
+      }
+    },
+    {
+      "form": "leading-space",
+      "value": " 203.0.113.9",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "203.0.113.9"
+        ],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    },
+    {
+      "form": "leading-zero-prefix",
+      "value": "10.0.0.0/08",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "10.0.0.0/08"
+        ],
+        "strict": 1,
+        "validates": false,
+        "error": "Error: loading http app module: provision http: loading trusted proxies modules: loading module 'static': provision http.ip_sources.static: parsing CIDR expression: '10.0.0.0/08': netip.ParsePrefix(\"10.0.0.0/08\"): bad bits after slash: \"08\""
+      }
+    },
+    {
+      "form": "malformed-v4",
+      "value": "300.1.1.1",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "300.1.1.1"
+        ],
+        "strict": 1,
+        "validates": false,
+        "error": "Error: loading http app module: provision http: loading trusted proxies modules: loading module 'static': provision http.ip_sources.static: invalid IP address: '300.1.1.1': ParseAddr(\"300.1.1.1\"): IPv4 field has value >255"
+      }
+    },
+    {
+      "form": "mapped-address",
+      "value": "::ffff:203.0.113.9",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "::ffff:203.0.113.9"
+        ],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    },
+    {
+      "form": "mapped-cidr",
+      "value": "::ffff:172.16.0.0/108",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "::ffff:172.16.0.0/108"
+        ],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    },
+    {
+      "form": "multi-line-list",
+      "value": "203.0.113.9\n10.0.0.1",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": false,
+        "ranges": null,
+        "strict": null,
+        "validates": false,
+        "error": "Error: adapting config using caddyfile: parsing caddyfile tokens for 'servers': unrecognized servers option '10.0.0.1', at /etc/caddy/Caddyfile.external-tls:24"
+      }
+    },
+    {
+      "form": "multi-line-only",
+      "value": "\n \n",
+      "entrypoint": "unset",
+      "caddy": {
+        "adapted": true,
+        "ranges": [],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    },
+    {
+      "form": "nbsp-between",
+      "value": "10.0.0.1 192.168.1.5",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "10.0.0.1",
+          "192.168.1.5"
+        ],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    },
+    {
+      "form": "nbsp-only",
+      "value": " ",
+      "entrypoint": "unset",
+      "caddy": {
+        "adapted": true,
+        "ranges": [],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    },
+    {
+      "form": "newline",
+      "value": "10.0.0.0/8\n192.168.1.5",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": false,
+        "ranges": null,
+        "strict": null,
+        "validates": false,
+        "error": "Error: adapting config using caddyfile: parsing caddyfile tokens for 'servers': unrecognized servers option '192.168.1.5', at /etc/caddy/Caddyfile.external-tls:24"
+      }
+    },
+    {
+      "form": "newline-only",
+      "value": "\n",
+      "entrypoint": "unset",
+      "caddy": {
+        "adapted": true,
+        "ranges": [],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    },
+    {
+      "form": "plain-v4-cidr",
+      "value": "172.16.0.0/12",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "172.16.0.0/12"
+        ],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    },
+    {
+      "form": "plain-v6-cidr",
+      "value": "fd00::/8",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "fd00::/8"
+        ],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    },
+    {
+      "form": "prefix-too-long",
+      "value": "10.0.0.0/33",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "10.0.0.0/33"
+        ],
+        "strict": 1,
+        "validates": false,
+        "error": "Error: loading http app module: provision http: loading trusted proxies modules: loading module 'static': provision http.ip_sources.static: parsing CIDR expression: '10.0.0.0/33': netip.ParsePrefix(\"10.0.0.0/33\"): prefix length out of range"
+      }
+    },
+    {
+      "form": "private-ranges",
+      "value": "private_ranges",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "192.168.0.0/16",
+          "172.16.0.0/12",
+          "10.0.0.0/8",
+          "127.0.0.1/8",
+          "fd00::/8",
+          "::1"
+        ],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    },
+    {
+      "form": "space-list",
+      "value": "10.0.0.0/8 192.168.1.5",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "10.0.0.0/8",
+          "192.168.1.5"
+        ],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    },
+    {
+      "form": "spaces-only",
+      "value": "   ",
+      "entrypoint": "unset",
+      "caddy": {
+        "adapted": true,
+        "ranges": [],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    },
+    {
+      "form": "tab-list",
+      "value": "10.0.0.0/8\t192.168.1.5",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "10.0.0.0/8",
+          "192.168.1.5"
+        ],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    },
+    {
+      "form": "trailing-newline",
+      "value": "203.0.113.9\n",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "203.0.113.9"
+        ],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    },
+    {
+      "form": "trailing-space",
+      "value": "203.0.113.9 ",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "203.0.113.9"
+        ],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    },
+    {
+      "form": "trust-nothing",
+      "value": "0.0.0.0/32",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "0.0.0.0/32"
+        ],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    },
+    {
+      "form": "unmasked-cidr",
+      "value": "172.16.5.5/12",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "172.16.5.5/12"
+        ],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    },
+    {
+      "form": "zone",
+      "value": "fe80::1%eth0",
+      "entrypoint": "set",
+      "caddy": {
+        "adapted": true,
+        "ranges": [
+          "fe80::1%eth0"
+        ],
+        "strict": 1,
+        "validates": true,
+        "error": null
+      }
+    }
+  ]
+}
