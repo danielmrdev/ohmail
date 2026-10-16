@@ -36,16 +36,16 @@
 .set-row .lab{flex:1 1 300px;min-width:0}
 .set-row .lab b{font-size:calc(13px + var(--type-up));font-weight:600;display:block}
 .set-row .lab span{font-size:calc(11.5px + var(--type-up));color:var(--ink2);display:block;line-height:1.5;max-width:62ch}
-/* whatever follows the label block is the row's ONE control cluster: right-aligned, never shrunk */
+/* Controls stay right-aligned and never shrink; static values may wrap. */
 .set-row > .lab + *{margin-left:auto}
-.set-row > .lab ~ *{flex:0 0 auto}
+.set-row > .lab ~ *:not(.set-val){flex:0 0 auto}
 /* a text control IS the flexible thing in its row (the away responder's subject line) */
 .set-row > .lab ~ :is(input,textarea,.set-tag-input){flex:1 1 200px;min-width:0}
 /* A SWITCH KEEPS ITS ROW. It is 44px wide at most, so the label block gives way to it at every
    width (basis 0) rather than claiming its 200-300px floor and pushing the switch under the text. */
 .set-row:has(> .switch) > .lab{flex:1 1 0}
 .set-row > .switch{flex:0 0 auto}
-.set-val{margin-left:auto;font-size:calc(12.5px + var(--type-up));color:var(--ink2);flex:none;text-align:right}
+.set-val{margin-left:auto;font-size:calc(12.5px + var(--type-up));color:var(--ink2);flex:0 1 auto;min-width:0;overflow-wrap:anywhere;text-align:right}
 .set-sub{font-size:calc(12px + var(--type-up));font-weight:600;color:var(--ink3);padding:24px 0 2px}
 .set-sub:first-child{padding-top:12px}
 /* ── microcopy ── the quiet line under a row; tucked against the row it explains */
