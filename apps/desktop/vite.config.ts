@@ -157,10 +157,9 @@ const BASE_MESSAGE_NAMESPACES = [
   // `draftReply`, `history` and `seed` are the three the shell started reading without this
   // array following, which is precisely the omission `desktop-messages.test.ts` exists to
   // catch — and it was catching it: the guard has been red since those surfaces landed.
-  // `draftReply` is the AI drafter's offer, and the desktop is the one place its
-  // `unavailable` sentence is the ONLY reachable branch — `apiConfigured()` is false there,
-  // so a stranger who presses "Draft reply" in the binary gets the explanation rather than a
-  // raw key. `history` and `seed` are listed for the reason `body` and `sync` are: the guard
+  // `draftReply` is the AI drafter's offer. Desktop injects its engine-pipe transport on both
+  // doors; browser builds retain the Cloud API fallback and its unavailable sentence. `history`
+  // and `seed` are listed for the reason `body` and `sync` are: the guard
   // compares this array against what the sources READ, not against what they can display.
   "draftReply", "history", "seed",
   // `reply`, `screening` and `shortcuts` arrived with the 2026-08-02 frontend slice

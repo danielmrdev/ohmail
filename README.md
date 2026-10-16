@@ -58,8 +58,8 @@ New senders wait here until you decide where they go. Someone you have written
 to since you set up ohmail, or who answers a message you sent, goes straight to
 the Ohbox.
 
-With AI on — your own Anthropic or OpenAI key, or a local model through
-[Ollama](https://ollama.com), and off until you turn it on — the Screener
+With AI on — your own Anthropic, OpenAI or OpenCode Go key, or a local model
+through [Ollama](https://ollama.com), and off until you turn it on — the Screener
 proposes a door for each waiting sender, with a confidence and a reason, and one
 press accepts. Switch on auto-suggest and the proposal is already waiting as the
 mail arrives. Nothing applies itself unless you ask: a pattern you have
@@ -538,12 +538,32 @@ mail, its folders and the profile above are what travel.
 ### Model providers and keys
 
 Pick the model in **Settings → Desktop**, under *AI for suggestions and drafts*.
-Three options, and each model is yours to name:
+Four provider choices:
 
 - **Your Anthropic key** — requests go to `api.anthropic.com`, billed to your
   account.
 - **Your OpenAI key** — requests go to `api.openai.com`, billed to your
   account.
+- **Your OpenCode Go key** — configure it with the dedicated key and choose
+  independent classification and drafting models from the documented Go Chat
+  Completions IDs `glm-5.2`, `glm-5.3`, `glm-5.3-flash`, `kimi-k2.6`,
+  `kimi-k2.7-code`, `kimi-k3`, `deepseek-v4.1-flash`, `deepseek-v4-pro`,
+  `longcat-2.0`, `hy3`, `hy4-preview`, `space-bunny`, `mimo-v2.5`,
+  `mimo-v2.5-pro`, `mimo-v2.6-flash`, `mimo-v2.6-pro`,
+  `longcat-2.5-preview-free`, `step-5-preview-free`, and `cat-jam-free`, when
+  listed in your workspace's Go config. Other protocols are not offered here;
+  for example, Responses-only `grok-4.6` is excluded. Direct model IDs are bare,
+  without the `opencode-go/` selector prefix. Saving or explicitly
+  verifying sends the key only as a Bearer credential to
+  `GET https://opencode.ai/console/api/v2/config` and reads only
+  `providers.opencode-go.models`; it does not send inference or test quota or runtime
+  availability. Once both selected models are listed and the config read succeeds, Go can
+  power classification, interactive screening and reviewable reply drafts. Those operations
+  use the fixed Go Chat Completions endpoint and dedicated Go key; failures do not fall back
+  to another provider or model. A successful config read does not guarantee that inference
+  will succeed or establish quota/runtime availability. When Go is used for AI, sender,
+  subject and message context go to `opencode.ai` and the upstream provider behind your
+  chosen model.
 - **A model on this machine** — served by Ollama at
   `http://127.0.0.1:11434` by default, or any address you give it. Install
   Ollama and `ollama pull llama3.2` before choosing it. Nothing leaves the
@@ -552,12 +572,18 @@ Three options, and each model is yours to name:
   a door and then fail to write a draft, and says so rather than hanging.
 
 A key is sealed under a key held in your operating system's keystore, is never
-written down in the clear, is never read back, and is sent to no host but its
-own vendor's. The endpoint for a key is fixed in the code and no setting can
-move it — the option whose address you can change is the local one, which
-carries no key. Saving runs a fresh test, so a server that is not running, or
-is running without the model you named, is reported while you are still in the
-settings rather than the next time you open your mail.
+written down in the clear, and is never read back. When verification runs, each
+key is sent only to its own provider's fixed endpoint. The option whose address
+can change is the local one,
+which carries no key. Saving runs a fresh verification: for Anthropic, OpenAI
+and Ollama this checks the provider/model as before; for OpenCode Go it is only
+a configuration read and does not send inference.
+
+OpenCode Go account eligibility, model privacy, billing, Extra usage/Use
+balance, and Auto-reload/Auto-recharge are managed in your OpenCode account.
+Ohmail cannot inspect, change or enforce those controls and does not guarantee
+upstream retention or training behavior. Go allowance use and account-side
+extra-usage or recharge settings may result in charges; OpenCode controls them.
 
 ### Linux, in detail
 

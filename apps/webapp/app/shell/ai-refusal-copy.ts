@@ -14,6 +14,7 @@ const BY_CODE: Readonly<Record<string, "insufficientCredits" | "aiDisabled" | "a
   ai_disabled: "aiDisabled",
   ai_unavailable: "aiUnavailable",
   suggest_unconfigured: "noModel",
+  drafter_unconfigured: "noModel",
 };
 
 /**

@@ -73,7 +73,7 @@ import {
   type ReplyEnvelopeEdit,
 } from "./compose-from";
 import type { ConsentState } from "./consent-state";
-import { useDraftReply, type DraftedReply } from "./draft-reply";
+import { useDraftReply, type DraftedReply, type DraftReplyTransport } from "./draft-reply";
 import { useReplyAutosave, type ReplyDraftForm } from "./reply-autosave";
 import { forwardEnvelopePlan, forwardSend } from "./forward-send";
 import {
@@ -193,6 +193,8 @@ export interface ShellComposeInput {
   /** The host's mailto: click, or nothing. Required fields: an absent one selects no branch. */
   mailtoDraft: ComposePrefill | null | undefined;
   onMailtoDraftSeeded: (() => void) | undefined;
+  /** Optional host-owned AI draft path; absent means the browser's Cloud API. */
+  draftReplyTransport?: DraftReplyTransport;
 }
 
 /** The record the shell composes with. Consumers destructure it: a memo may not depend on it. */
@@ -202,6 +204,7 @@ export function useShellCompose({
   engine, reader, t, toast, route, consent, facts, mailboxes, drafts, ownAddresses,
   fallbackMailboxId, replyTo, setReplyTo, setReaderFor, fr, setFr, setFrDone, setFrValues,
   setOhboxSel, mailtoDraft, onMailtoDraftSeeded, presented, mutateAndReport, toastWithUndo,
+  draftReplyTransport,
 }: ShellComposeInput) {
   /**
    * Whether the open editor answers EVERYONE on the message (reply all). Set by every open —
@@ -718,7 +721,7 @@ export function useShellCompose({
     setPendingDraft({ draft, messageId });
   });
 
-  const draftReply = useDraftReply({ onDraft });
+  const draftReply = useDraftReply({ onDraft, transport: draftReplyTransport });
 
   const resolveDraft = useStableCallback((mode: "replace" | "append") => {
     if (!pendingDraft) return;

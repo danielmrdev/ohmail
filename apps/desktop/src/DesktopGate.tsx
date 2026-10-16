@@ -82,6 +82,7 @@ import { consentOverBridge, consentOverBridgeStandalone } from "./local-consent.
 import { olderBodyOverBridge } from "./local-older-body.js";
 import { junkOverBridge } from "./local-junk.js";
 import { trashOverBridge } from "./local-trash.js";
+import { desktopDraftReplyTransport } from "./local-draft-reply.js";
 import { cloudSuggestWire } from "./cloud-suggest.js";
 import { readAiStatus, type LocalAiStatus } from "./local-ai.js";
 import { AiProviderForm } from "./AiProviderForm.js";
@@ -1235,6 +1236,9 @@ export function DesktopGate() {
            doors name no Cloud holder and state no credit price (`managed-service.ts`). */
         managedService={isManagedDoor(status)}
         {...(engine ? { engine } : {})}
+        /* Draft requests use this pipe on both doors: the standalone engine invokes its verified
+           local provider; the hosted engine forwards the same route to the account. */
+        draftReplyTransport={desktopDraftReplyTransport}
         /* WHAT THE SYNC LINE IS ALLOWED TO SAY. Its ladder begins with "can we see this
            account's mailboxes?" and stays silent when it cannot — which this window used to
            be through the whole of a first sync. `GET /mailboxes` is served by both doors

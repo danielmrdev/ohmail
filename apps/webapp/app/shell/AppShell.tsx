@@ -149,7 +149,7 @@ import {
   SIG_FOLLOWING, effectiveSignature, effectiveSignatureHtml, withSignature,
   type SignatureState,
 } from "./signature";
-import { useDraftReply, type DraftedReply } from "./draft-reply";
+import { useDraftReply, type DraftedReply, type DraftReplyTransport } from "./draft-reply";
 import { RichEditor, preloadRichEditor } from "./RichEditorLazy";
 import { TagPicker, placePicker } from "./TagPicker";
 /**
@@ -579,6 +579,7 @@ export function AppShell({
   screeningSection,
   actRulesUnmarked,
   screenerSuggest,
+  draftReplyTransport,
   awayTransport,
   awayIsLocal,
   awayOnHost,
@@ -909,6 +910,8 @@ export function AppShell({
    * hosted client; `false` on standalone: no account, no ledger, no spend.
    */
   suggestWire?: SuggestWire;
+  /** The host's create-and-read path for an AI reply draft; absent uses the browser Cloud API. */
+  draftReplyTransport?: DraftReplyTransport;
   /**
    * THE FIRST-RUN STAGE'S DOOR — the calls setup makes, from the surface that can make them.
    *
@@ -982,6 +985,7 @@ export function AppShell({
             screeningSection={screeningSection}
             actRulesUnmarked={actRulesUnmarked === true}
             screenerSuggest={screenerSuggest}
+            draftReplyTransport={draftReplyTransport}
             awayTransport={awayTransport}
             awayIsLocal={awayIsLocal}
             awayOnHost={awayOnHost}
@@ -1046,7 +1050,7 @@ function MailStateHost({ probe, freshnessProbe, children }: { probe?: MailboxPro
   );
 }
 
-function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTransport, hostConnection, sessionRefused, sendSurfaceMaxTotalBytes, accountSection, mailboxSection, aiSection, billingSection, accountNotice, invitesSection, securitySection, aboutSection, desktopSection, devicesSection, defaultMailSection, notificationHost, screeningSection, actRulesUnmarked, screenerSuggest, awayTransport, awayIsLocal, awayOnHost, profileImportTransport, consentTransport, imageWire, imagesFromComputer, olderBodyWire, junkWire, trashWire, suggestWire, firstRun, mailtoDraft, onMailtoDraftSeeded, onUnread }: {
+function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTransport, hostConnection, sessionRefused, sendSurfaceMaxTotalBytes, accountSection, mailboxSection, aiSection, billingSection, accountNotice, invitesSection, securitySection, aboutSection, desktopSection, devicesSection, defaultMailSection, notificationHost, screeningSection, actRulesUnmarked, screenerSuggest, draftReplyTransport, awayTransport, awayIsLocal, awayOnHost, profileImportTransport, consentTransport, imageWire, imagesFromComputer, olderBodyWire, junkWire, trashWire, suggestWire, firstRun, mailtoDraft, onMailtoDraftSeeded, onUnread }: {
   /** The pull settle watch's read — the same probe `MailStateHost` above provides the strip. */
   mailboxFacts?: MailboxProbe;
   /** See `AppShell`'s prop of this name — absent withholds the organizer notice. */
@@ -1075,6 +1079,7 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTranspor
   notificationHost?: NotificationHost;
   screeningSection?: ReactNode;
   actRulesUnmarked: boolean;
+  draftReplyTransport?: DraftReplyTransport;
   screenerSuggest?: (ctx: {
     senders: string[];
     resuggestable: string[];
@@ -1886,6 +1891,7 @@ function ShellInner({ mailboxFacts, organizerNoticeTransport, gapLettersTranspor
     engine, reader, t, toast, route, consent, facts, mailboxes, drafts, ownAddresses,
     fallbackMailboxId, replyTo, setReplyTo, setReaderFor, fr, setFr, setFrDone, setFrValues,
     setOhboxSel, mailtoDraft, onMailtoDraftSeeded, presented, mutateAndReport, toastWithUndo,
+    draftReplyTransport,
   });
 
   /**

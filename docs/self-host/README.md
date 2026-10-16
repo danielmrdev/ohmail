@@ -186,10 +186,10 @@ broken.
 choices today.** They are listed apart rather than together because a single
 sentence covering both would be wrong about one of them:
 
-| Surface | Anthropic | OpenAI | Local (Ollama) |
-| --- | --- | --- | --- |
-| **Desktop app**, opening your mail server directly | yes | yes | yes |
-| **This server stack** (`docker compose`) | yes | not yet | not yet |
+| Surface | Anthropic | OpenAI | OpenCode Go | Local (Ollama) |
+| --- | --- | --- | --- | --- |
+| **Desktop app**, opening your mail server directly | yes | yes | yes, after config verification | yes |
+| **This server stack** (`docker compose`) | yes | not yet | not yet | not yet |
 
 ### On this server stack
 
@@ -200,16 +200,33 @@ ANTHROPIC_API_KEY=sk-ant-…
 ```
 
 Requests go to Anthropic under your own key, billed to your account. Leave it
-unset and the AI surfaces answer as unconfigured. **OpenAI and a local Ollama
-are not wired into this stack yet** — the desktop app has them, this one does
-not, and setting an `OPENAI_API_KEY` here does nothing.
+unset and the AI surfaces answer as unconfigured. **OpenAI, OpenCode Go and a
+local Ollama are not wired into this stack yet** — these are desktop-only
+options, and setting an `OPENAI_API_KEY` here does nothing.
 
 ### In the desktop app
 
-Settings → Suggestions and drafts, where you pick one of three:
+Settings → Suggestions and drafts, where you pick among four providers:
 
 - **Your Anthropic key.** Requests go to `api.anthropic.com`, billed to you.
 - **Your OpenAI key.** Requests go to `api.openai.com`, billed to you.
+- **Your OpenCode Go key.** In the desktop app, the dedicated key selects
+  separate classification and drafting models from the documented Chat
+  Completions IDs `glm-5.2`, `glm-5.3`, `glm-5.3-flash`, `kimi-k2.6`,
+  `kimi-k2.7-code`, `kimi-k3`, `deepseek-v4.1-flash`, `deepseek-v4-pro`,
+  `longcat-2.0`, `hy3`, `hy4-preview`, `space-bunny`, `mimo-v2.5`,
+  `mimo-v2.5-pro`, `mimo-v2.6-flash`, `mimo-v2.6-pro`,
+  `longcat-2.5-preview-free`, `step-5-preview-free`, and `cat-jam-free`, when
+  listed in your workspace config. Other protocols such as Responses-only
+  `grok-4.6` are excluded. Once both selected models are listed and config
+  verification succeeds, Go can power classification, interactive screening and
+  reviewable reply drafts. Save and Verify send the key only as Bearer
+  authentication to `GET https://opencode.ai/console/api/v2/config` and read
+  the Go model set; they do not send inference. This verifies configuration only,
+  not inference success, quota or runtime availability. Go operations use the
+  fixed Chat Completions endpoint with no alternate-provider/model fallback.
+  When Go is used for AI, message context goes to `opencode.ai` and the
+  upstream provider behind your chosen model.
 - **A model on this machine**, served by [Ollama](https://ollama.com). The
   address defaults to `http://127.0.0.1:11434` and is yours to change; nothing
   leaves the machine if the server is on it.
@@ -227,14 +244,20 @@ what you get is a refusal saying the model did not finish rather than a draft.
 Ollama also has to be running when you press Save, or the test that runs then
 reports that nothing answered.
 
-Saving discards the previous test and runs a new one, so the pane tells you
-whether what you just saved actually works rather than leaving you to find out
-when the next message arrives. A model server that is running but does not have
-the model you named is reported as exactly that — the most common way this is
-set up wrongly, and the one that otherwise looks identical to a working setup.
+Saving discards the previous verification and runs the selected provider's
+check. For OpenCode Go, that is only the authenticated Console config read; it
+does not prove inference will succeed or establish quota/runtime availability.
+The Ollama check lists
+the local server's models, so a server that is running without the model you
+named is reported while you are still in settings.
 
-Whichever you choose, an API key is sealed under a key held in your operating
-system's keystore, is never written down in the clear, is never read back, and
-is sent to no host but its own vendor's. Mail carrying a one-time code or other
+An API key is sealed under a key held in your operating system's keystore, is
+never written down in the clear, is never read back, and is sent only to its
+own provider's fixed endpoint. OpenCode Go eligibility,
+model privacy, billing, Extra usage/Use balance, and Auto-reload/Auto-recharge
+are managed in your OpenCode account. Ohmail cannot inspect, change or enforce
+those controls and does not guarantee upstream retention or training behavior.
+Go allowance use or account-side extra usage/recharge settings may result in
+charges; OpenCode controls them. Mail carrying a one-time code or other
 authentication material is refused before any request is built and is never
 sent to any model, under any provider.

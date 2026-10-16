@@ -47,6 +47,12 @@ export interface DraftReplyControl {
 /** One draft, in the shape the editor holds. */
 export type DraftedReply = RichValue;
 
+/** The two reads/writes required to create and then load one generated reply. */
+export interface DraftReplyTransport {
+  create: (messageId: string, idempotencyKey: string) => Promise<{ draftId: string }>;
+  read: (draftId: string) => Promise<{ body?: string; html?: string | null }>;
+}
+
 /**
  * What one draft costs: 15 credits. The plan is sold in CREDITS and an action has its own price
  * (a draft 15 against a classification's 1, on the metering service's card). A literal, not an
@@ -57,6 +63,8 @@ export type DraftedReply = RichValue;
 export const DRAFT_REPLY_COST_CREDITS = 15;
 
 export function useDraftReply(opts: {
+  /** Optional host-owned transport; absent means the browser's metered API. */
+  transport?: DraftReplyTransport;
   /**
    * Where the answer goes. Called with the drafted reply and the message it answers; the
    * CALLER decides whether it replaces or is appended to whatever is already typed, because
@@ -67,7 +75,7 @@ export function useDraftReply(opts: {
   const t = useTranslations("draftReply");
   /** The three AI refusals both surfaces share — see `ai-refusal-copy.ts`. */
   const tAi = useTranslations("aiRefusal");
-  const { onDraft } = opts;
+  const { onDraft, transport } = opts;
 
   const [phase, setPhase] = useState<DraftReplyPhase>("closed");
   const [messageId, setMessageId] = useState<string | null>(null);
@@ -102,7 +110,7 @@ export function useDraftReply(opts: {
   const confirm = useCallback(() => {
     const id = messageId;
     if (!id || phase === "running") return;
-    if (!apiConfigured()) {
+    if (!transport && !apiConfigured()) {
       // The demo world has no API. Saying so beats a spinner that never resolves.
       setNotice(t("unavailable"));
       return;
@@ -126,14 +134,18 @@ export function useDraftReply(opts: {
        */
       let bought = false;
       try {
-        const { draftId } = await api<{ draftId: string }>(`/messages/${id}/draft`, {
-          method: "POST",
-          headers: { "Idempotency-Key": key },
-        });
+        const { draftId } = transport
+          ? await transport.create(id, key)
+          : await api<{ draftId: string }>(`/messages/${id}/draft`, {
+              method: "POST",
+              headers: { "Idempotency-Key": key },
+            });
         bought = true;
         // `GET /drafts/:id` rather than the mirror — see the header. `cost: read`, spends
         // nothing, and the row was written inside the request that answered above.
-        const draft = await api<{ body?: string; html?: string | null }>(`/drafts/${draftId}`);
+        const draft = transport
+          ? await transport.read(draftId)
+          : await api<{ body?: string; html?: string | null }>(`/drafts/${draftId}`);
         if (io.current.run !== run) return;
         io.current.key = null;
         setPhase("closed");
@@ -165,7 +177,7 @@ export function useDraftReply(opts: {
             : tAi(key));
       }
     })();
-  }, [messageId, phase, onDraft, t, tAi]);
+  }, [messageId, phase, onDraft, transport, t, tAi]);
 
   return {
     phase,
