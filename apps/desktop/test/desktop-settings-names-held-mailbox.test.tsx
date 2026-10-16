@@ -83,12 +83,14 @@ describe("Settings → Desktop names the mailbox this install holds", () => {
     ]);
     expect(said).toContain(SURVIVOR);
     expect(said, "the pane named a mailbox this install no longer holds").not.toContain(SEED);
+    expect(hostEl?.querySelector(".set-val-left"), "single mailbox should keep default alignment").toBeNull();
   });
 
-  it("two mailboxes held: both are named", async () => {
+  it("two mailboxes held: both are named and the summary aligns left", async () => {
     const said = await mount([row("mbx-1", SEED), row("mbx-2", SURVIVOR)]);
     expect(said).toContain(SEED);
     expect(said).toContain(SURVIVOR);
+    expect(hostEl?.querySelector(".set-val-left"), "multiple mailbox summary should align left").not.toBeNull();
   });
 
   it("CONTROL: before the roster has answered, the pane says what it always said", async () => {

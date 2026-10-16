@@ -25,8 +25,10 @@ export function SettingsSubhead({ children }: SettingsSubheadProps) {
 export interface SettingsRowProps {
   label: ReactNode;
   description?: ReactNode;
-  /** Static right-aligned value ("English", "Connected"). */
+  /** Static value, right-aligned by default ("English", "Connected"). */
   value?: ReactNode;
+  /** Additional class for the static value cell. */
+  valueClassName?: string;
   /** Interactive control at the right (Switch, SegmentedControl, buttons). */
   control?: ReactNode;
   /** Leading decoration (tag dot). */
@@ -47,7 +49,7 @@ export interface SettingsRowProps {
  * no control at all. The id is emitted only with a sentence: a reference to nothing is a
  * description a reader is promised and does not get.
  */
-export function SettingsRow({ label, description, value, control, leading }: SettingsRowProps) {
+export function SettingsRow({ label, description, value, valueClassName, control, leading }: SettingsRowProps) {
   const id = useId();
   const labelId = `${id}-label`;
   const descId = `${id}-desc`;
@@ -74,7 +76,7 @@ export function SettingsRow({ label, description, value, control, leading }: Set
           what it is told without asking.
         */}
       {value !== undefined ? (
-        <span className="set-val" role="status" aria-live="off">{value}</span>
+        <span className={valueClassName ? `set-val ${valueClassName}` : "set-val"} role="status" aria-live="off">{value}</span>
       ) : null}
       {control}
     </div>

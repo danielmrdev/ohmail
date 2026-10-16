@@ -288,6 +288,7 @@ export function DesktopSettings({
      seed in the settings file, which stays when the seed is removed while another mailbox remains,
      so it named a mailbox the install no longer held. Before the roster answers: the seed. */
   const held = facts === null ? null : facts.filter((m) => !isRemovedMailbox(m)).map((m) => m.address);
+  const multipleMailboxes = held !== null && held.length > 1;
   const mailboxValue = held === null ? (status.address ?? "—") : held.length > 0 ? held.join(", ") : "—";
 
   const signOut = async (): Promise<void> => {
@@ -308,9 +309,10 @@ export function DesktopSettings({
   return (
     <SettingsSection>
       <SettingsRow
-        label={held !== null && held.length > 1 ? DOOR_COPY.mailboxesLabel : DOOR_COPY.mailboxLabel}
+        label={multipleMailboxes ? DOOR_COPY.mailboxesLabel : DOOR_COPY.mailboxLabel}
         description={mailboxRowWhy(readOnly, paired ? host : null)}
         value={mailboxValue}
+        valueClassName={multipleMailboxes ? "set-val-left" : undefined}
       />
       <SettingsRow
         label={DOOR_COPY.installConnectedThrough}

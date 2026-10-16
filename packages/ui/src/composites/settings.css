@@ -46,6 +46,7 @@
 .set-row:has(> .switch) > .lab{flex:1 1 0}
 .set-row > .switch{flex:0 0 auto}
 .set-val{margin-left:auto;font-size:calc(12.5px + var(--type-up));color:var(--ink2);flex:0 1 auto;min-width:0;overflow-wrap:anywhere;text-align:right}
+.set-val-left{text-align:left}
 .set-sub{font-size:calc(12px + var(--type-up));font-weight:600;color:var(--ink3);padding:24px 0 2px}
 .set-sub:first-child{padding-top:12px}
 /* ── microcopy ── the quiet line under a row; tucked against the row it explains */
