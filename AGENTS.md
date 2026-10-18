@@ -14,7 +14,11 @@ This repository is the public mirror of Ohmail: a Tauri desktop mail client and 
 
 - Keep fork-only files and changes on `origin/main`. Start every PR for `trafficflowhq/ohmail` from `upstream/main`, never from `main` or `origin/main`; prefer a separate worktree.
 - Commit only PR-scoped changes. When reusing work from another branch, cherry-pick only clean feature commits; split mixed commits first.
-- Before pushing, inspect `git log --oneline upstream/main..HEAD` and `git diff --name-status upstream/main...HEAD`. Check both commit history and final file changes for fork-only content.
+- Before pushing, inspect `git log --oneline upstream/main..HEAD` and `git diff --name-status upstream/main...HEAD`. Check both commit history and final file changes for fork-only content, unrelated local docs/research, or other out-of-scope changes.
+- Before opening a follow-up issue, search upstream issues, PRs, and branch history; link an existing report or fix instead of filing a duplicate.
+- For shared Cloud paths, read the shared-path and licensing guidance in `CONTRIBUTING.md`; state which surfaces change and test the intended Cloud/desktop boundary. For behavior or timing changes, test adjacent paths and keep the change scoped to the path that needs it.
+- Keep test evidence baseline-aware: compare unexplained failures with the same tests on `upstream/main`, separate pre-existing failures from regressions, and report remaining red checks honestly.
+- If a maintainer carries work into a replacement PR, follow it to merge and confirm your authorship and sign-off/co-author attribution survive.
 - Push the feature branch to `origin` and target the PR at `trafficflowhq/ohmail:main`.
 
 ## Agent skills
